@@ -14,6 +14,40 @@ const userSchema = new mongoose.Schema({
         unique: true,
         match: [/^\+?[\d\s-()]+$/, 'Please enter a valid phone number']
     },
+    email: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    },
+    dateOfBirth: {
+        type: Date
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'other'],
+        lowercase: true
+    },
+    height: {
+        type: Number, // in cm
+        min: [50, 'Height must be at least 50cm'],
+        max: [300, 'Height cannot exceed 300cm']
+    },
+    weight: {
+        type: Number, // in kg
+        min: [10, 'Weight must be at least 10kg'],
+        max: [500, 'Weight cannot exceed 500kg']
+    },
+    fitnessGoal: {
+        type: String,
+        trim: true,
+        maxlength: [100, 'Fitness goal cannot exceed 100 characters']
+    },
+    activityLevel: {
+        type: String,
+        enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
+        lowercase: true
+    },
     role: {
         type: String,
         enum: ['admin', 'user'],
