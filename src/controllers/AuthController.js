@@ -98,6 +98,7 @@ class AuthController {
 
             // Generate JWT token with user ID
             const token = this.generateToken(user._id);
+            console.log(token);
 
             // Set JWT token in Authorization header
             res.set('Authorization', `Bearer ${token}`);
