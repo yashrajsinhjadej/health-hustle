@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, userOnly } = require('../middleware/auth');
+const HealthController = require('../controllers/HealthController');
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
@@ -40,7 +41,20 @@ router.put('/dashboard', async (req, res) =>{
             role: req.user.role
         }
     });
-})
+});
 
+// Health Tracking Routes
+
+// PUT /user/health/bulk - Bulk update health data for multiple dates
+router.put('/health/bulk', HealthController.bulkUpdateHealthData);
+
+// PUT /user/health/:date - Update daily health data for specific date
+router.put('/health/:date', HealthController.updateDailyHealth);
+
+// GET /user/health/today - Get today's health data (convenience route)
+router.get('/health/today', HealthController.getTodayHealth);
+
+// GET /user/health/:date - Get daily health data for specific date  
+router.get('/health/:date', HealthController.getDailyHealth);
 
 module.exports = router;
