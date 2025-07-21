@@ -4,6 +4,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
 
 // Routes
 const authRoutes = require('./src/routes/authRoutes');
@@ -13,7 +14,31 @@ const userRoutes = require('./src/routes/userRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Security Middleware - Apply helmet before other middleware
+app.use(helmet({
+    // Configure for API usage
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            connectSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles if needed
+            imgSrc: ["'self'", "data:", "https:"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        },
+    },
+    crossOriginEmbedderPolicy: false, // Disable for API compatibility
+    hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true
+    }
+}));
+
+// Other Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -28,12 +53,25 @@ mongoose.connect(process.env.MONGODB_URI)
         process.exit(1);
     });
 
-// Health check route
+// Enhanced Health check route
 app.get('/health', (req, res) => {
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    
     res.json({
+        status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
         message: 'Health Hustle API Server is running!',
-        status: 'Active',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+        memory: {
+            used: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,
+            total: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`
+        },
+        database: {
+            status: dbStatus,
+            name: 'health-hustle'
+        }
     });
 });
 
