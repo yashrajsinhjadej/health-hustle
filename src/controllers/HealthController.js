@@ -1,6 +1,100 @@
 // Health Controller - Daily health data management
 const DailyHealthData = require('../models/DailyHealthData');
 
+/**
+ * HEALTH DATA FORMAT DOCUMENTATION
+ * ===============================
+ * 
+ * 1. UPDATE DAILY HEALTH DATA - PUT /user/health/:date
+ * Expected Body Format:
+ * {
+ *   "steps": {
+ *     "count": 8500,
+ *     "goal": 10000,
+ *     "calories": 340
+ *   },
+ *   "water": {
+ *     "consumed": 2.5,
+ *     "goal": 3.0,
+ *     "unit": "liters"
+ *   },
+ *   "bodyMetrics": {
+ *     "weight": 75.5,
+ *     "height": 175,
+ *     "bmi": 24.6
+ *   },
+ *   "bloodPressure": {
+ *     "systolic": 120,
+ *     "diastolic": 80,
+ *     "timestamp": "2025-07-21T10:30:00Z"
+ *   },
+ *   "heartRate": {
+ *     "readings": [
+ *       {
+ *         "time": "10:30",
+ *         "bpm": 72,
+ *         "activity": "resting"
+ *       }
+ *     ],
+ *     "average": 75,
+ *     "max": 85,
+ *     "min": 65
+ *   },
+ *   "sleep": {
+ *     "duration": 7.5,
+ *     "quality": "good",
+ *     "bedtime": "23:00",
+ *     "wakeup": "06:30"
+ *   },
+ *   "meals": [
+ *     {
+ *       "type": "breakfast",
+ *       "time": "08:00",
+ *       "calories": 450,
+ *       "description": "Oatmeal with fruits"
+ *     }
+ *   ],
+ *   "exercise": [
+ *     {
+ *       "type": "running",
+ *       "duration": 30,
+ *       "calories": 300,
+ *       "time": "07:00"
+ *     }
+ *   ]
+ * }
+ * 
+ * 2. QUICK UPDATE - PUT /user/health/quick
+ * Expected Body Format:
+ * {
+ *   "metric": "steps|water|weight|heartRate",
+ *   "value": 8500
+ * }
+ * 
+ * 3. BULK UPDATE - PUT /user/health/bulk
+ * Expected Body Format:
+ * {
+ *   "health_data": [
+ *     {
+ *       "date": "2025-07-21",
+ *       "data": {
+ *         // Same format as daily health data above
+ *       }
+ *     },
+ *     {
+ *       "date": "2025-07-20",
+ *       "data": {
+ *         // Same format as daily health data above
+ *       }
+ *     }
+ *   ]
+ * }
+ * 
+ * DATE FORMAT: All dates should be in YYYY-MM-DD format (e.g., "2025-07-21")
+ * TIME FORMAT: Times should be in HH:MM format (e.g., "10:30")
+ * UNITS: Weight in kg, Height in cm, Water in liters, Duration in minutes/hours
+ */
+
 class HealthController {
     
     // Update or create daily health data
