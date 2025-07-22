@@ -43,10 +43,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+// Connect to MongoDB with connection pooling
+mongoose.connect(process.env.MONGODB_URI, {
+    maxPoolSize: 10,              // Maximum 10 simultaneous connections
+    serverSelectionTimeoutMS: 5000, // 5 seconds timeout for server selection
+    socketTimeoutMS: 45000,       // 45 seconds socket timeout
+    family: 4                     // Use IPv4, skip trying IPv6
+})
     .then(() => {
-        console.log('✅ Connected to MongoDB Atlas');
+        console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 10)');
     })
     .catch((error) => {
         console.error('❌ MongoDB connection error:', error);
