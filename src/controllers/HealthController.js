@@ -63,7 +63,7 @@ const DailyHealthData = require('../models/DailyHealthData');
  *     }
  *   ]
  * }
- * 
+ * ~
  * 2. QUICK UPDATE - PUT /user/health/quick
  * Expected Body Format:
  * {
