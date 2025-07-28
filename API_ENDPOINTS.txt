@@ -1,0 +1,126 @@
+HEALTH HUSTLE API ENDPOINTS
+============================
+
+Base URL: https://js81lw8g-3000.inc1.devtunnels.ms
+
+AUTHENTICATION ROUTES
+=====================
+
+POST /api/auth/send-otp
+- Send OTP to phone number for registration/login
+
+POST /api/auth/verify-otp  
+- Verify OTP and get authentication token
+
+USER ROUTES (Requires Authentication)
+====================================
+
+GET /api/user/dashboard
+- Get user profile information
+
+PUT /api/user/dashboard
+- Complete/update user profile (first time only)
+
+GET /api/user/health/today
+- Get today's health data
+
+GET /api/user/health/:date
+- Get health data for specific date (YYYY-MM-DD format)
+
+PUT /api/user/health/:date
+- Update daily health data for specific date
+
+PUT /api/user/health/bulk
+- Bulk update health data for multiple dates
+
+PUT /api/user/health/quick-update
+- Quick update for water, steps, calories, etc.
+
+ADMIN ROUTES (Requires Admin Authentication)
+===========================================
+
+GET /api/admin/dashboard
+- Admin dashboard with user statistics
+
+AUTHENTICATION FLOW
+===================
+
+1. Send OTP: POST /api/auth/send-otp
+   Body: { "phone": "+1234567890", "name": "User Name" }
+
+2. Verify OTP: POST /api/auth/verify-otp
+   Body: { "phone": "+1234567890", "otp": "123456" }
+   Response: Returns JWT token in Authorization header
+
+3. Use Token: Add header to all protected routes
+   Header: Authorization: Bearer <token>
+
+PROFILE COMPLETION FIELDS
+=========================
+
+Required fields for profile completion:
+- name (string)
+- email (valid email)
+- gender (male/female/other)
+- height (number in cm)
+- weight (number in kg)
+- age (number)
+- loyaltyPercentage (number 0-100)
+- bodyProfile (slim/average/muscular/overweight)
+- mainGoal (weight_loss/build_muscles/full_body_detox/fit_body)
+- sportsAmbitions (array of strings)
+
+SAMPLE REQUESTS
+===============
+
+1. Send OTP:
+POST /api/auth/send-otp
+{
+  "phone": "+1234567890",
+  "name": "John Doe"
+}
+
+2. Verify OTP:
+POST /api/auth/verify-otp
+{
+  "phone": "+1234567890",
+  "otp": "123456"
+}
+
+3. Complete Profile:
+PUT /api/user/dashboard
+Headers: Authorization: Bearer <token>
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "gender": "male",
+  "height": 175,
+  "weight": 70,
+  "age": 25,
+  "loyaltyPercentage": 80,
+  "bodyProfile": "average",
+  "mainGoal": "fit_body",
+  "sportsAmbitions": ["running", "swimming"]
+}
+
+4. Quick Health Update:
+PUT /api/user/health/quick-update
+Headers: Authorization: Bearer <token>
+{
+  "metric": "water",
+  "value": 2.5
+}
+
+5. Get Today's Health:
+GET /api/user/health/today
+Headers: Authorization: Bearer <token>
+
+NOTES
+=====
+
+- All user routes require authentication token
+- Profile can only be completed once
+- Health data is tracked per date
+- Quick update supports: water, steps, calories, weight, heartRate
+- All dates should be in YYYY-MM-DD format
+- Phone numbers should include country code
