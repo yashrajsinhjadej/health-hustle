@@ -57,7 +57,7 @@ class AuthController {
     async verifyOTP(req, res) {
         try {
             const { phone, otp } = req.body;
-
+            console.log(phone, otp);
             if (!phone || !otp) {
                 return res.status(400).json({
                     success: false,

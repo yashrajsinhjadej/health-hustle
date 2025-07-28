@@ -9,6 +9,27 @@ const UserController = require('../controllers/UserController');
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
 router.use(userOnly);// for checking user authorization 
 
+router.get('/', (req, res) => {
+    res.json({
+        success: true,
+        message: 'User API endpoints',
+        user: {
+            id: req.user._id,
+            name: req.user.name,
+            role: req.user.role
+        },
+        availableEndpoints: [
+            'GET /api/user/dashboard - Get user profile',
+            'PUT /api/user/dashboard - Update user profile',
+            'GET /api/user/health/today - Get today\'s health data',
+            'GET /api/user/health/:date - Get health data by date',
+            'PUT /api/user/health/:date - Update health data',
+            'PUT /api/user/health/bulk - Bulk update health data',
+            'PUT /api/user/health/quick-update - Quick health update'
+        ]
+    });
+});
+
 // get user profile 
 router.get('/dashboard',UserController.getUserProfile);   // verified by yash
 
