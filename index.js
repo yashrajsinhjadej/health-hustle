@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 
+
+
 // Routes
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
@@ -59,10 +61,14 @@ mongoose.connect(process.env.MONGODB_URI, {
     });
 
 // Enhanced Health check route
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
     const memUsage = process.memoryUsage();
     const uptime = process.uptime();
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    
+    // Check Twilio status
+    const TwilioSMSService = require('./src/services/twilioSMSService');
+    const twilioStatus = await TwilioSMSService.healthCheck();
     
     res.json({
         status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
@@ -76,7 +82,8 @@ app.get('/health', (req, res) => {
         database: {
             status: dbStatus,
             name: 'health-hustle'
-        }
+        },
+        twilio: twilioStatus
     });
 });
 
