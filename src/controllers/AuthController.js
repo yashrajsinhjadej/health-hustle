@@ -28,7 +28,6 @@ class AuthController {
 
             // Use service for complete OTP workflow
             const result = await OTPService.sendOTP(phone);
-            
             if (!result.success) {
                 const statusCode = result.waitTime ? 429 : 400;
                 return res.status(statusCode).json({
@@ -41,7 +40,8 @@ class AuthController {
             res.json({
                 success: true,
                 message: result.message,
-                expiresIn: result.expiresIn
+                expiresIn: result.expiresIn,
+                otp: result.otp // Only for testing; remove in production!
             });
 
         } catch (error) {
@@ -67,8 +67,8 @@ class AuthController {
 
             // Use service for OTP verification
             const verificationResult = await OTPService.verifyOTP(phone, otp);
-            
-            if (!verificationResult.success) {
+
+            if (!verificationResult.success ) {
                 return res.status(400).json({
                     success: false,
                     error: verificationResult.message

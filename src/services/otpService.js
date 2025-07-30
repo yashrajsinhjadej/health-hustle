@@ -1,6 +1,7 @@
 // OTP Service - Business logic for OTP operations
 const OTP = require('../models/OTP');
 const OTPUtils = require('../utils/otpUtils');
+const TwilioSMSService = require('./twilioSMSService');
 
 class OTPService {
     
@@ -15,7 +16,7 @@ class OTPService {
             
             if (existingOTP) {
                 // Check rate limiting
-                const timeDiff = (new Date() - existingOTP.updatedAt) / 1000 / 60; // minutes
+                const timeDiff = (new Date() - existingOTP.updatedAt) / 1000 ; // minutes. for minutes divide with 60 
                 
                 if (timeDiff < cooldownMinutes) {
                     const waitTime = Math.ceil(cooldownMinutes - timeDiff);
@@ -66,26 +67,23 @@ class OTPService {
     // Complete OTP sending workflow (create + send SMS)
     async sendOTP(phone, cooldownMinutes = 1) {
         try {
-            // Validate phone format using utils
-            if (!OTPUtils.isValidPhoneNumber(phone)) {
+            // Accept only string of 10 digits
+            if (typeof phone !== 'string' || !/^[0-9]{10}$/.test(phone)) {
                 return {
                     success: false,
-                    message: 'Invalid phone number format'
+                    message: 'Phone number must be a string of exactly 10 digits.'
                 };
             }
 
-            // Clean phone using utils
-            const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
-
             // Create or update OTP in database
-            const otpResult = await this.createOrUpdateOTP(cleanPhone, cooldownMinutes);
+            const otpResult = await this.createOrUpdateOTP(phone, cooldownMinutes);
             
             if (!otpResult.success) {
                 return otpResult; // Return rate limit error
             }
 
-            // Send SMS using utils
-            const smsResult = await OTPUtils.sendOTP(cleanPhone, otpResult.otp);
+            // Send SMS using Twilio
+            const smsResult = await TwilioSMSService.sendOTP(phone, otpResult.otp);
             
             if (!smsResult.success) {
                 return {
@@ -97,7 +95,8 @@ class OTPService {
             return {
                 success: true,
                 message: 'OTP sent successfully',
-                expiresIn: '5 minutes'
+                expiresIn: '5 minutes',
+                otp: otpResult.otp // Only for testing; remove in production!
             };
 
         } catch (error) {
@@ -113,14 +112,15 @@ class OTPService {
     // Verify OTP
     async verifyOTP(phone, otp) {
         try {
-            // Validate inputs using utils
-            if (!OTPUtils.isValidPhoneNumber(phone)) {
+            // Accept only string of 10 digits
+            if (typeof phone !== 'string' || !/^[0-9]{10}$/.test(phone)) {
                 return {
                     success: false,
-                    message: 'Invalid phone number format'
+                    message: 'Phone number must be a string of exactly 10 digits.'
                 };
             }
 
+            // Validate OTP format (6 digits)
             if (!OTPUtils.isValidOTP(otp)) {
                 return {
                     success: false,
@@ -128,15 +128,12 @@ class OTPService {
                 };
             }
 
-            // Clean phone using utils
-            const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
-
             // Find valid OTP in database
-            const otpRecord = await this.findValidOTP(cleanPhone, otp);
+            const otpRecord = await this.findValidOTP(phone, otp);
             
             if (!otpRecord) {
                 // Try to find any OTP for this phone to increment attempts
-                const anyOTP = await OTP.findOne({ phone: cleanPhone });
+                const anyOTP = await OTP.findOne({ phone: phone });
                 
                 if (anyOTP && !this.isExpired(anyOTP) && !this.hasMaxAttempts(anyOTP)) {
                     await this.incrementAttempts(anyOTP);

@@ -40,7 +40,8 @@ class OTPUtils {
             return {
                 success: true,
                 message: 'OTP sent successfully',
-                messageId: `msg_${Date.now()}`
+                messageId: `msg_${Date.now()}`,
+                otp: otp
             };
         } catch (error) {
             console.error('SMS sending failed:', error);
