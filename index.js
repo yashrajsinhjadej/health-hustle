@@ -56,19 +56,30 @@ if (!process.env.JWT_SECRET) {
     process.exit(1);
 }
 
-// MongoDB connection with retry logic for serverless
+// MongoDB connection with on-demand connection
 let mongoConnected = false;
+let connectionAttempted = false;
 
 const connectToMongo = async () => {
+    if (connectionAttempted) {
+        return mongoConnected;
+    }
+    
+    connectionAttempted = true;
     try {
         console.log('🔗 Attempting MongoDB connection...');
         console.log('📡 Connection string:', process.env.MONGODB_URI ? 'Present' : 'Missing');
         console.log('🌐 Environment:', process.env.NODE_ENV);
         
-        // Try with explicit connection string parameters
-        const mongoUri = process.env.MONGODB_URI + '?retryWrites=true&w=majority&maxPoolSize=1&serverSelectionTimeoutMS=5000&socketTimeoutMS=5000&connectTimeoutMS=5000';
+        // Check if connection string already has parameters
+        let mongoUri = process.env.MONGODB_URI;
+        if (!mongoUri.includes('?')) {
+            mongoUri += '?retryWrites=true&w=majority&maxPoolSize=1&serverSelectionTimeoutMS=5000&socketTimeoutMS=5000&connectTimeoutMS=5000';
+        } else {
+            mongoUri += '&maxPoolSize=1&serverSelectionTimeoutMS=5000&socketTimeoutMS=5000&connectTimeoutMS=5000';
+        }
         
-        console.log('🔗 Using enhanced connection string');
+        console.log('🔗 Using optimized connection string');
         
         const connectionPromise = mongoose.connect(mongoUri);
         
@@ -85,16 +96,8 @@ const connectToMongo = async () => {
         console.error('❌ MongoDB connection error:', error.message);
         console.error('🔍 Error type:', error.constructor.name);
         
-        // Try one more time with even simpler approach
-        try {
-            console.log('🔄 Retrying with minimal connection...');
-            await mongoose.connect(process.env.MONGODB_URI, { maxPoolSize: 1 });
-            mongoConnected = true;
-            console.log('✅ Connected to MongoDB Atlas (retry successful)');
-        } catch (retryError) {
-            console.error('❌ MongoDB retry also failed:', retryError.message);
-            mongoConnected = false;
-        }
+        // No retry - single connection attempt only
+        mongoConnected = false;
     }
 };
 
@@ -121,6 +124,15 @@ app.get('/health', async (req, res) => {
     try {
         const memUsage = process.memoryUsage();
         const uptime = process.uptime();
+        // Try to connect if not already connected
+        if (!mongoConnected) {
+            try {
+                await connectToMongo();
+            } catch (error) {
+                console.log('🔗 Connection attempt during health check failed');
+            }
+        }
+        
         const dbStatus = mongoConnected && mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
         
         // Check Twilio status (with timeout)
