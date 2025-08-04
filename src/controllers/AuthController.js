@@ -93,8 +93,7 @@ class AuthController {
             
             console.log(token);
 
-            // Set JWT token in custom header (without Bearer)
-            res.set('X-Auth-Token', `${token}`);
+            // Set cache control headers
             res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.set('Pragma', 'no-cache');
             res.set('Expires', '0');
@@ -102,6 +101,7 @@ class AuthController {
             res.json({
                 success: true,
                 message: 'OTP verified successfully',
+                token: token, // Return token in response body
                 user: {
                     id: user._id,
                     name: user.name,
