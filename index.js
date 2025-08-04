@@ -109,7 +109,13 @@ app.use((error, req, res, next) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`�� Health Hustle server running on port ${PORT}`);
-    console.log(`📍 Server URL: http://localhost:${PORT}`);
-});
+// Export for Vercel deployment
+module.exports = app;
+
+// Start server only for local development
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`Health Hustle server running on port ${PORT}`);
+        console.log(`Server URL: http://localhost:${PORT}`);
+    });
+}
