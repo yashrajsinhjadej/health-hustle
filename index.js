@@ -361,39 +361,31 @@ app.get('/health', async (req, res) => {
         
         // Always try to ensure connection is established
         try {
+            console.log('🔄 Health check - MongoDB readyState:', mongoose.connection.readyState);
+            
+            // Try to connect regardless of current state
+            await mongoose.connect(process.env.MONGODB_URI, {
+                maxPoolSize: 5,
+                serverSelectionTimeoutMS: 10000,
+                socketTimeoutMS: 45000,
+                family: 4,
+                retryWrites: true,
+                w: 'majority',
+                bufferCommands: false,
+                autoIndex: false,
+                maxIdleTimeMS: 30000,
+                connectTimeoutMS: 10000,
+                heartbeatFrequencyMS: 10000,
+            });
+            
+            // Check if connection was successful
             if (mongoose.connection.readyState === 1) {
-                // Already connected
                 dbStatus = 'connected';
                 dbHost = mongoose.connection.host;
-                console.log('✅ MongoDB already connected');
+                console.log('✅ MongoDB connected successfully during health check');
             } else {
-                // Not connected or connecting, try to connect
-                console.log('🔄 MongoDB connection status:', mongoose.connection.readyState);
-                console.log('🔄 Attempting to connect to MongoDB...');
-                
-                await mongoose.connect(process.env.MONGODB_URI, {
-                    maxPoolSize: 5,
-                    serverSelectionTimeoutMS: 10000,
-                    socketTimeoutMS: 45000,
-                    family: 4,
-                    retryWrites: true,
-                    w: 'majority',
-                    bufferCommands: false,
-                    autoIndex: false,
-                    maxIdleTimeMS: 30000,
-                    connectTimeoutMS: 10000,
-                    heartbeatFrequencyMS: 10000,
-                });
-                
-                // Check if connection was successful
-                if (mongoose.connection.readyState === 1) {
-                    dbStatus = 'connected';
-                    dbHost = mongoose.connection.host;
-                    console.log('✅ MongoDB connected successfully during health check');
-                } else {
-                    console.log('❌ MongoDB connection failed - readyState:', mongoose.connection.readyState);
-                    dbStatus = 'disconnected';
-                }
+                console.log('❌ MongoDB connection failed - readyState:', mongoose.connection.readyState);
+                dbStatus = 'disconnected';
             }
         } catch (dbError) {
             console.error('❌ MongoDB connection failed during health check:', dbError);
