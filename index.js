@@ -61,6 +61,9 @@ let mongoConnected = false;
 
 const connectToMongo = async () => {
     try {
+        console.log('🔗 Attempting MongoDB connection...');
+        console.log('📡 Connection string:', process.env.MONGODB_URI ? 'Present' : 'Missing');
+        
         // Use the most basic connection possible
         await mongoose.connect(process.env.MONGODB_URI);
         
@@ -68,6 +71,7 @@ const connectToMongo = async () => {
         console.log('✅ Connected to MongoDB Atlas (basic connection)');
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
+        console.error('🔍 Error details:', error);
         mongoConnected = false;
     }
 };
