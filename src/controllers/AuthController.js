@@ -93,7 +93,7 @@ class AuthController {
             console.log(token);
 
             // Set JWT token in Authorization header
-            res.set('Authorization', `Bearer ${token}`);
+            res.set('Authorization', `${token}`);
 
             res.json({
                 success: true,
