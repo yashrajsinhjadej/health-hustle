@@ -343,19 +343,56 @@ app.get('/test-connection', async (req, res) => {
     }
 });
 
-// Enhanced Health check route
+// Enhanced Health check route with MongoDB connection wait
 app.get('/health', async (req, res) => {
     console.log('🏥 Health check route accessed');
     try {
         const memUsage = process.memoryUsage();
         const uptime = process.uptime();
-        const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
         
         console.log('🔍 Health check details:');
         console.log('   - Memory usage:', memUsage);
         console.log('   - Uptime:', uptime);
-        console.log('   - DB Status:', dbStatus);
         console.log('   - MongoDB ready state:', mongoose.connection.readyState);
+        
+        // Wait for MongoDB connection if not already connected
+        let dbStatus = 'disconnected';
+        let dbHost = null;
+        
+        if (mongoose.connection.readyState === 1) {
+            // Already connected
+            dbStatus = 'connected';
+            dbHost = mongoose.connection.host;
+            console.log('✅ MongoDB already connected');
+        } else if (mongoose.connection.readyState === 0) {
+            // Not connected, try to connect
+            console.log('🔄 MongoDB not connected, attempting to connect...');
+            try {
+                await mongoose.connect(process.env.MONGODB_URI, {
+                    maxPoolSize: 5,
+                    serverSelectionTimeoutMS: 10000,
+                    socketTimeoutMS: 45000,
+                    family: 4,
+                    retryWrites: true,
+                    w: 'majority',
+                    bufferCommands: false,
+                    autoIndex: false,
+                    maxIdleTimeMS: 30000,
+                    connectTimeoutMS: 10000,
+                    heartbeatFrequencyMS: 10000,
+                });
+                dbStatus = 'connected';
+                dbHost = mongoose.connection.host;
+                console.log('✅ MongoDB connected successfully during health check');
+            } catch (dbError) {
+                console.error('❌ MongoDB connection failed during health check:', dbError);
+                dbStatus = 'disconnected';
+            }
+        } else {
+            // Connecting or disconnecting
+            console.log('⏳ MongoDB connection in progress...');
+            dbStatus = 'connecting';
+        }
         
         // Check Twilio status
         const TwilioSMSService = require('./src/services/twilioSMSService');
@@ -374,7 +411,7 @@ app.get('/health', async (req, res) => {
                 status: dbStatus,
                 name: 'health-hustle',
                 readyState: mongoose.connection.readyState,
-                host: mongoose.connection.host
+                host: dbHost
             },
             twilio: twilioStatus,
             environment: process.env.NODE_ENV || 'development'
