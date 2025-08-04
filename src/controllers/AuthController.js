@@ -93,8 +93,8 @@ class AuthController {
             
             console.log(token);
 
-            // Set JWT token in Authorization header (without Bearer)
-            res.set('Authorization', `${token}`);
+            // Set JWT token in custom header (without Bearer)
+            res.set('X-Auth-Token', `${token}`);
             res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.set('Pragma', 'no-cache');
             res.set('Expires', '0');
