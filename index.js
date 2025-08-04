@@ -64,6 +64,23 @@ const connectDB = async () => {
 // Connect to MongoDB on startup
 connectDB();
 
+// Home route
+app.get('/', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Health Hustle API Server is running! 🚀',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            health: '/health',
+            auth: '/api/auth',
+            user: '/api/user',
+            admin: '/api/admin'
+        },
+        documentation: 'Check /health for detailed server status'
+    });
+});
+
 // Enhanced Health check route
 app.get('/health', async (req, res) => {
     try {
