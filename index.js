@@ -63,15 +63,28 @@ const connectToMongo = async () => {
     try {
         console.log('🔗 Attempting MongoDB connection...');
         console.log('📡 Connection string:', process.env.MONGODB_URI ? 'Present' : 'Missing');
+        console.log('🌐 Environment:', process.env.NODE_ENV);
         
-        // Use the most basic connection possible
-        await mongoose.connect(process.env.MONGODB_URI);
+        // Set connection timeout
+        const connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000, // 10 seconds
+            socketTimeoutMS: 10000,          // 10 seconds
+            connectTimeoutMS: 10000          // 10 seconds
+        });
+        
+        // Add timeout to the connection
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000);
+        });
+        
+        await Promise.race([connectionPromise, timeoutPromise]);
         
         mongoConnected = true;
         console.log('✅ Connected to MongoDB Atlas (basic connection)');
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
-        console.error('🔍 Error details:', error);
+        console.error('🔍 Error type:', error.constructor.name);
+        console.error('🔍 Error stack:', error.stack);
         mongoConnected = false;
     }
 };
@@ -85,7 +98,9 @@ app.get('/test', (req, res) => {
         message: 'Server is running!',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development',
-        version: '1.0.1'
+        version: '1.0.2',
+        mongoUri: process.env.MONGODB_URI ? 'Present' : 'Missing',
+        mongoConnected: mongoConnected
     });
 });
 
