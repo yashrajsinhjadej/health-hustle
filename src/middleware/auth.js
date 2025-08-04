@@ -5,22 +5,8 @@ const User = require('../models/User');
 // Verify JWT token
 const authenticateToken = async (req, res, next) => {
     try {
-        // Check for token in multiple places: custom header, Authorization header, or request body
-        let token = req.headers['x-auth-token'] || req.headers['X-Auth-Token'];
-        
-        if (!token) {
-            const authHeader = req.headers['authorization'];
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                token = authHeader.split(' ')[1]; // Bearer TOKEN
-            } else if (authHeader) {
-                token = authHeader; // Direct token without Bearer
-            }
-        }
-        
-        // If still no token, check request body (for backward compatibility)
-        if (!token && req.body && req.body.token) {
-            token = req.body.token;
-        }
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
         if (!token) {
             return res.status(401).json({
