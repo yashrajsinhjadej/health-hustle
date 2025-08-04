@@ -6,7 +6,12 @@ const User = require('../models/User');
 const authenticateToken = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
-        const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+        let token = authHeader;
+        
+        // Handle both "Bearer TOKEN" and "TOKEN" formats
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.split(' ')[1]; // Bearer TOKEN
+        }
 
         if (!token) {
             return res.status(401).json({

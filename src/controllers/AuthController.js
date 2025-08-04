@@ -90,10 +90,14 @@ class AuthController {
 
             // Generate JWT token with user ID
             const token = this.generateToken(user._id);
+            
             console.log(token);
 
-            // Set JWT token in Authorization header
+            // Set JWT token in Authorization header (without Bearer)
             res.set('Authorization', `${token}`);
+            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.set('Pragma', 'no-cache');
+            res.set('Expires', '0');
 
             res.json({
                 success: true,
