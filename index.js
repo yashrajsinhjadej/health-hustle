@@ -65,16 +65,16 @@ const connectToMongo = async () => {
         console.log('📡 Connection string:', process.env.MONGODB_URI ? 'Present' : 'Missing');
         console.log('🌐 Environment:', process.env.NODE_ENV);
         
-        // Set connection timeout
-        const connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 10000, // 10 seconds
-            socketTimeoutMS: 10000,          // 10 seconds
-            connectTimeoutMS: 10000          // 10 seconds
-        });
+        // Try with explicit connection string parameters
+        const mongoUri = process.env.MONGODB_URI + '?retryWrites=true&w=majority&maxPoolSize=1&serverSelectionTimeoutMS=5000&socketTimeoutMS=5000&connectTimeoutMS=5000';
+        
+        console.log('🔗 Using enhanced connection string');
+        
+        const connectionPromise = mongoose.connect(mongoUri);
         
         // Add timeout to the connection
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000);
+            setTimeout(() => reject(new Error('Connection timeout after 5 seconds')), 5000);
         });
         
         await Promise.race([connectionPromise, timeoutPromise]);
@@ -84,13 +84,25 @@ const connectToMongo = async () => {
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);
         console.error('🔍 Error type:', error.constructor.name);
-        console.error('🔍 Error stack:', error.stack);
-        mongoConnected = false;
+        
+        // Try one more time with even simpler approach
+        try {
+            console.log('🔄 Retrying with minimal connection...');
+            await mongoose.connect(process.env.MONGODB_URI, { maxPoolSize: 1 });
+            mongoConnected = true;
+            console.log('✅ Connected to MongoDB Atlas (retry successful)');
+        } catch (retryError) {
+            console.error('❌ MongoDB retry also failed:', retryError.message);
+            mongoConnected = false;
+        }
     }
 };
 
-// Connect to MongoDB
-connectToMongo();
+// Connect to MongoDB (non-blocking)
+connectToMongo().catch(error => {
+    console.error('❌ Initial MongoDB connection failed:', error.message);
+    // Don't block server startup - let it try again on first request
+});
 
 // Simple test endpoint (no MongoDB required)
 app.get('/test', (req, res) => {
