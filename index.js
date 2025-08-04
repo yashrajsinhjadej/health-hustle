@@ -64,6 +64,28 @@ const connectDB = async () => {
         }
 
         console.log('🔍 MONGODB_URI preview:', process.env.MONGODB_URI.substring(0, 30) + '...');
+        console.log('🔍 MONGODB_URI full length:', process.env.MONGODB_URI.length);
+        console.log('🔍 MONGODB_URI contains @:', process.env.MONGODB_URI.includes('@'));
+        console.log('🔍 MONGODB_URI contains %40:', process.env.MONGODB_URI.includes('%40'));
+
+        // Parse connection string to check components
+        try {
+            const uri = process.env.MONGODB_URI;
+            const protocolMatch = uri.match(/^(mongodb\+srv:\/\/)/);
+            const userPassMatch = uri.match(/mongodb\+srv:\/\/([^:]+):([^@]+)@/);
+            const hostMatch = uri.match(/@([^\/]+)\//);
+            const dbMatch = uri.match(/\/([^?]+)\?/);
+            
+            console.log('🔍 Connection string analysis:');
+            console.log('   - Protocol:', protocolMatch ? protocolMatch[1] : 'NOT_FOUND');
+            console.log('   - Username:', userPassMatch ? userPassMatch[1] : 'NOT_FOUND');
+            console.log('   - Password length:', userPassMatch ? userPassMatch[2].length : 'NOT_FOUND');
+            console.log('   - Password contains @:', userPassMatch ? userPassMatch[2].includes('@') : 'NOT_FOUND');
+            console.log('   - Host:', hostMatch ? hostMatch[1] : 'NOT_FOUND');
+            console.log('   - Database:', dbMatch ? dbMatch[1] : 'NOT_FOUND');
+        } catch (parseError) {
+            console.error('❌ Error parsing connection string:', parseError.message);
+        }
 
         const mongoOptions = {
             maxPoolSize: 5,               // Reduced for serverless
@@ -84,18 +106,20 @@ const connectDB = async () => {
         console.log('🔍 MongoDB options configured:', JSON.stringify(mongoOptions, null, 2));
         console.log('🔄 Attempting to connect to MongoDB...');
         
-        await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
-        console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 5)');
-        console.log('🔍 Connection details:');
-        console.log('   - Host:', mongoose.connection.host);
-        console.log('   - Port:', mongoose.connection.port);
-        console.log('   - Database:', mongoose.connection.name);
-        console.log('   - Ready State:', mongoose.connection.readyState);
+        // Add connection event listeners before connecting
+        mongoose.connection.on('connecting', () => {
+            console.log('🔄 MongoDB connecting...');
+        });
         
-        // Handle connection events
+        mongoose.connection.on('connected', () => {
+            console.log('✅ MongoDB connected successfully!');
+        });
+        
         mongoose.connection.on('error', (err) => {
             console.error('❌ MongoDB connection error:', err);
             console.error('❌ Error stack:', err.stack);
+            console.error('❌ Error code:', err.code);
+            console.error('❌ Error name:', err.name);
         });
         
         mongoose.connection.on('disconnected', () => {
@@ -106,12 +130,60 @@ const connectDB = async () => {
             console.log('✅ MongoDB reconnected');
         });
         
+        mongoose.connection.on('close', () => {
+            console.log('🔒 MongoDB connection closed');
+        });
+        
+        // Try to connect with detailed error handling
+        try {
+            await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
+            console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 5)');
+            console.log('🔍 Connection details:');
+            console.log('   - Host:', mongoose.connection.host);
+            console.log('   - Port:', mongoose.connection.port);
+            console.log('   - Database:', mongoose.connection.name);
+            console.log('   - Ready State:', mongoose.connection.readyState);
+            console.log('   - Connection ID:', mongoose.connection.id);
+        } catch (connectError) {
+            console.error('❌ Mongoose.connect() failed:');
+            console.error('   - Error message:', connectError.message);
+            console.error('   - Error name:', connectError.name);
+            console.error('   - Error code:', connectError.code);
+            console.error('   - Error stack:', connectError.stack);
+            
+            // Check for specific error types
+            if (connectError.name === 'MongoParseError') {
+                console.error('❌ This is a connection string parsing error');
+            } else if (connectError.name === 'MongoNetworkError') {
+                console.error('❌ This is a network connectivity error');
+            } else if (connectError.name === 'MongoServerSelectionError') {
+                console.error('❌ This is a server selection error');
+            } else if (connectError.name === 'MongoAuthenticationError') {
+                console.error('❌ This is an authentication error');
+            }
+            
+            throw connectError; // Re-throw to be caught by outer try-catch
+        }
+        
     } catch (error) {
-        console.error('❌ MongoDB connection error:', error);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error stack:', error.stack);
-        console.error('❌ Error code:', error.code);
-        console.error('❌ Error name:', error.name);
+        console.error('❌ MongoDB connection error in outer catch:');
+        console.error('   - Error message:', error.message);
+        console.error('   - Error name:', error.name);
+        console.error('   - Error code:', error.code);
+        console.error('   - Error stack:', error.stack);
+        
+        // Additional error analysis
+        if (error.message.includes('Invalid scheme')) {
+            console.error('❌ CONNECTION STRING FORMAT ERROR: Check if MONGODB_URI starts with mongodb+srv://');
+        } else if (error.message.includes('Authentication failed')) {
+            console.error('❌ AUTHENTICATION ERROR: Check username/password');
+        } else if (error.message.includes('ENOTFOUND')) {
+            console.error('❌ DNS ERROR: Cannot resolve hostname');
+        } else if (error.message.includes('ECONNREFUSED')) {
+            console.error('❌ CONNECTION REFUSED: Network access issue');
+        } else if (error.message.includes('ETIMEDOUT')) {
+            console.error('❌ TIMEOUT ERROR: Connection timed out');
+        }
         
         // Don't exit process in serverless environment
         if (process.env.NODE_ENV !== 'production') {
@@ -204,6 +276,71 @@ app.get('/env-debug', (req, res) => {
             hasMongoUri: !!process.env.MONGODB_URI
         }
     });
+});
+
+// Test MongoDB connection route
+app.get('/test-connection', async (req, res) => {
+    console.log('🔍 Test connection route accessed');
+    
+    try {
+        console.log('🔄 Attempting to test MongoDB connection...');
+        console.log('🔍 Current connection state:', mongoose.connection.readyState);
+        
+        // Test if we can connect
+        if (mongoose.connection.readyState === 1) {
+            console.log('✅ Already connected to MongoDB');
+            res.json({
+                success: true,
+                message: 'Already connected to MongoDB',
+                connectionState: mongoose.connection.readyState,
+                host: mongoose.connection.host,
+                database: mongoose.connection.name
+            });
+        } else {
+            console.log('🔄 Connection not ready, attempting to connect...');
+            
+            // Try to connect
+            await mongoose.connect(process.env.MONGODB_URI, {
+                maxPoolSize: 5,
+                serverSelectionTimeoutMS: 10000,
+                socketTimeoutMS: 45000,
+                family: 4,
+                retryWrites: true,
+                w: 'majority',
+                bufferCommands: false,
+                autoIndex: false,
+                maxIdleTimeMS: 30000,
+                connectTimeoutMS: 10000,
+                heartbeatFrequencyMS: 10000,
+            });
+            
+            console.log('✅ Test connection successful!');
+            res.json({
+                success: true,
+                message: 'Test connection successful',
+                connectionState: mongoose.connection.readyState,
+                host: mongoose.connection.host,
+                database: mongoose.connection.name
+            });
+        }
+    } catch (error) {
+        console.error('❌ Test connection failed:');
+        console.error('   - Error message:', error.message);
+        console.error('   - Error name:', error.name);
+        console.error('   - Error code:', error.code);
+        console.error('   - Error stack:', error.stack);
+        
+        res.status(500).json({
+            success: false,
+            message: 'Test connection failed',
+            error: {
+                message: error.message,
+                name: error.name,
+                code: error.code
+            },
+            connectionState: mongoose.connection.readyState
+        });
+    }
 });
 
 // Enhanced Health check route
