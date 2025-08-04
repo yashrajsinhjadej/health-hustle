@@ -181,6 +181,31 @@ app.get('/debug', (req, res) => {
     res.json(debugInfo);
 });
 
+// Environment variable debug route
+app.get('/env-debug', (req, res) => {
+    console.log('🔍 Environment debug route accessed');
+    const mongoUri = process.env.MONGODB_URI;
+    
+    res.json({
+        success: true,
+        message: 'Environment Variable Debug',
+        timestamp: new Date().toISOString(),
+        mongoUri: {
+            exists: !!mongoUri,
+            length: mongoUri ? mongoUri.length : 0,
+            startsWithMongo: mongoUri ? mongoUri.startsWith('mongodb') : false,
+            startsWithMongoUri: mongoUri ? mongoUri.startsWith('MONGODB_URI=') : false,
+            value: mongoUri || 'NOT_SET',
+            preview: mongoUri ? mongoUri.substring(0, 50) + '...' : 'NOT_SET'
+        },
+        environment: {
+            NODE_ENV: process.env.NODE_ENV,
+            VERCEL: process.env.VERCEL,
+            hasMongoUri: !!process.env.MONGODB_URI
+        }
+    });
+});
+
 // Enhanced Health check route
 app.get('/health', async (req, res) => {
     console.log('🏥 Health check route accessed');
