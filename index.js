@@ -45,12 +45,35 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to MongoDB with connection pooling
+// Check required environment variables
+if (!process.env.MONGODB_URI) {
+    console.error('❌ MONGODB_URI environment variable is required');
+    process.exit(1);
+}
+
+if (!process.env.JWT_SECRET) {
+    console.error('❌ JWT_SECRET environment variable is required');
+    process.exit(1);
+}
+
+// Connect to MongoDB with serverless-optimized settings
 mongoose.connect(process.env.MONGODB_URI, {
-    maxPoolSize: 10,              // Maximum 10 simultaneous connections
-    serverSelectionTimeoutMS: 5000, // 5 seconds timeout for server selection
-    socketTimeoutMS: 45000,       // 45 seconds socket timeout
-    family: 4                     // Use IPv4, skip trying IPv6
+    maxPoolSize: 1,               // Reduce for serverless
+    serverSelectionTimeoutMS: 5000, // 5 seconds timeout
+    socketTimeoutMS: 8000,        // 8 seconds socket timeout
+    connectTimeoutMS: 8000,       // 8 seconds connection timeout
+    family: 4,                    // Use IPv4
+    retryWrites: true,
+    w: 'majority',
+    bufferCommands: false,        // Disable buffering for serverless
+    bufferMaxEntries: 0,          // Disable buffer max entries
+    autoIndex: false,             // Disable auto index creation
+    maxIdleTimeMS: 30000,         // 30 seconds max idle time
+    serverApi: {
+        version: '1',
+        strict: true,
+        deprecationErrors: true,
+    }
 })
     .then(() => {
         console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 10)');
@@ -60,31 +83,49 @@ mongoose.connect(process.env.MONGODB_URI, {
         process.exit(1);
     });
 
-// Enhanced Health check route
+// Enhanced Health check route (serverless-optimized)
 app.get('/health', async (req, res) => {
-    const memUsage = process.memoryUsage();
-    const uptime = process.uptime();
-    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    
-    // Check Twilio status
-    const TwilioSMSService = require('./src/services/twilioSMSService');
-    const twilioStatus = await TwilioSMSService.healthCheck();
-    
-    res.json({
-        status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
-        message: 'Health Hustle API Server is running!',
-        timestamp: new Date().toISOString(),
-        uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
-        memory: {
-            used: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,
-            total: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`
-        },
-        database: {
-            status: dbStatus,
-            name: 'health-hustle'
-        },
-        twilio: twilioStatus
-    });
+    try {
+        const memUsage = process.memoryUsage();
+        const uptime = process.uptime();
+        const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+        
+        // Check Twilio status (with timeout)
+        let twilioStatus = { status: 'unavailable', message: 'Twilio not configured' };
+        try {
+            const TwilioSMSService = require('./src/services/twilioSMSService');
+            twilioStatus = await Promise.race([
+                TwilioSMSService.healthCheck(),
+                new Promise(resolve => setTimeout(() => resolve({ status: 'timeout', message: 'Twilio check timed out' }), 2000))
+            ]);
+        } catch (error) {
+            twilioStatus = { status: 'error', message: error.message };
+        }
+        
+        res.json({
+            status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
+            message: 'Health Hustle API Server is running!',
+            timestamp: new Date().toISOString(),
+            uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+            memory: {
+                used: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,
+                total: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`
+            },
+            database: {
+                status: dbStatus,
+                name: 'health-hustle'
+            },
+            twilio: twilioStatus,
+            environment: process.env.NODE_ENV || 'development'
+        });
+    } catch (error) {
+        console.error('Health check error:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Health check failed',
+            error: error.message
+        });
+    }
 });
 
 // API Routes
