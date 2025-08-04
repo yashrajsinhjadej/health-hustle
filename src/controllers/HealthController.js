@@ -1,25 +1,7 @@
 // Health Controller - Daily health data management
 const DailyHealthData = require('../models/DailyHealthData');
 
-/**
- * HEALTH DATA FORMAT DOCUMENTATION
- * ===============================
- * 
- * 1. UPDATE DAILY HEALTH DATA - PUT /user/health/:date
- * Expected Body Format:
- * {
- *   "steps": {
- *     "count": 8500,
- *     "goal": 10000,
- *     "calories": 340
- *   },
- *   "water": {
- *     "consumed": 2.5,
- *     "goal": 3.0,
- *     "unit": "liters"
- *   },
- *   "bodyMetrics": {
- *     "weight": 75.5,
+/**b6h
  *     "height": 175,
  *     "bmi": 24.6
  *   },
