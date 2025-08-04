@@ -45,13 +45,35 @@ app.use(express.urlencoded({ extended: true }));
 // MongoDB connection function
 const connectDB = async () => {
     try {
-        await mongoose.connect(process.env.MONGODB_URI, {
+        const mongoOptions = {
             maxPoolSize: 10,              // Maximum 10 simultaneous connections
-            serverSelectionTimeoutMS: 5000, // 5 seconds timeout for server selection
+            serverSelectionTimeoutMS: 10000, // 10 seconds timeout for server selection (increased for Vercel)
             socketTimeoutMS: 45000,       // 45 seconds socket timeout
-            family: 4                     // Use IPv4, skip trying IPv6
-        });
+            family: 4,                    // Use IPv4, skip trying IPv6
+            retryWrites: true,
+            w: 'majority',
+            // Vercel-specific optimizations
+            bufferCommands: false,        // Disable mongoose buffering
+            autoIndex: false,             // Disable auto-indexing in production
+            maxIdleTimeMS: 30000,         // Close connections after 30 seconds of inactivity
+        };
+
+        await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
         console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 10)');
+        
+        // Handle connection events
+        mongoose.connection.on('error', (err) => {
+            console.error('❌ MongoDB connection error:', err);
+        });
+        
+        mongoose.connection.on('disconnected', () => {
+            console.log('⚠️ MongoDB disconnected');
+        });
+        
+        mongoose.connection.on('reconnected', () => {
+            console.log('✅ MongoDB reconnected');
+        });
+        
     } catch (error) {
         console.error('❌ MongoDB connection error:', error);
         // Don't exit process in serverless environment
@@ -78,6 +100,34 @@ app.get('/', (req, res) => {
             admin: '/api/admin'
         },
         documentation: 'Check /health for detailed server status'
+    });
+});
+
+// Debug route for MongoDB connection testing
+app.get('/debug', (req, res) => {
+    const mongoUri = process.env.MONGODB_URI;
+    const hasMongoUri = !!mongoUri;
+    const mongoUriPreview = hasMongoUri ? 
+        mongoUri.substring(0, 20) + '...' + mongoUri.substring(mongoUri.length - 20) : 
+        'Not set';
+    
+    res.json({
+        success: true,
+        message: 'Debug Information',
+        timestamp: new Date().toISOString(),
+        environment: {
+            NODE_ENV: process.env.NODE_ENV || 'not set',
+            hasMongoUri: hasMongoUri,
+            mongoUriPreview: mongoUriPreview,
+            mongoConnectionState: mongoose.connection.readyState,
+            mongoConnectionStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown'
+        },
+        mongoose: {
+            readyState: mongoose.connection.readyState,
+            host: mongoose.connection.host,
+            port: mongoose.connection.port,
+            name: mongoose.connection.name
+        }
     });
 });
 
