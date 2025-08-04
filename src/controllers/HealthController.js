@@ -104,15 +104,6 @@ class HealthController {
             const { date } = req.params; // Expected format: YYYY-MM-DD
             const healthData = req.body;
 
-            // Validate date format
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!dateRegex.test(date)) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Invalid date format. Use YYYY-MM-DD format.'
-                });
-            }
-
             // Find existing record or create new one
             let dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
@@ -157,15 +148,6 @@ class HealthController {
         try {
             const userId = req.user._id;
             const { date } = req.params; // Expected format: YYYY-MM-DD
-
-            // Validate date format
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!dateRegex.test(date)) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Invalid date format. Use YYYY-MM-DD format.'
-                });
-            }
 
             // Find health data for specific date
             const dailyHealth = await DailyHealthData.findOne({ 
@@ -244,14 +226,6 @@ class HealthController {
             const today = new Date().toISOString().split('T')[0];
             const { metric, value } = req.body;
 
-            // Validate metric and value
-            if (!metric || value === undefined) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Metric and value are required'
-                });
-            }
-
             // Find or create today's record
             let dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
@@ -290,11 +264,6 @@ class HealthController {
                         activity: 'manual'
                     });
                     break;
-                default:
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Invalid metric type'
-                    });
             }
 
             await dailyHealth.save();
@@ -327,21 +296,6 @@ class HealthController {
             const userId = req.user._id;
             const { health_data } = req.body;
 
-            // Validate health_data array
-            if (!health_data || !Array.isArray(health_data)) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'health_data must be an array'
-                });
-            }
-
-            if (health_data.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'health_data array cannot be empty'
-                });
-            }
-
             const results = [];
             const errors = [];
 
@@ -349,25 +303,6 @@ class HealthController {
             for (const dayData of health_data) {
                 try {
                     const { date, data } = dayData;
-
-                    // Validate date format
-                    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                    if (!date || !dateRegex.test(date)) {
-                        errors.push({
-                            date: date || 'undefined',
-                            error: 'Invalid date format. Use YYYY-MM-DD format.'
-                        });
-                        continue;
-                    }
-
-                    // Validate data object
-                    if (!data || typeof data !== 'object') {
-                        errors.push({
-                            date: date,
-                            error: 'Data object is required'
-                        });
-                        continue;
-                    }
 
                     // Find existing record or create new one
                     let dailyHealth = await DailyHealthData.findOne({ 

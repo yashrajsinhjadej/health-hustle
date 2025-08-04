@@ -7,10 +7,15 @@ const OTPService = require('../services/otpService');
 class AuthController {
     // Generate JWT token
     generateToken(userId) {
+        // Validate JWT_SECRET is set
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET environment variable is required');
+        }
+
         return jwt.sign(
             { userId },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
         );
     }
 
@@ -18,13 +23,6 @@ class AuthController {
     async sendOTP(req, res) {
         try {
             const { phone } = req.body;
-
-            if (!phone) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Phone number is required'
-                });
-            }
 
             // Use service for complete OTP workflow
             const result = await OTPService.sendOTP(phone);
@@ -58,12 +56,6 @@ class AuthController {
         try {
             const { phone, otp } = req.body;
             console.log(phone, otp);
-            if (!phone || !otp) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Phone number and OTP are required'
-                });
-            }
 
             // Use service for OTP verification
             const verificationResult = await OTPService.verifyOTP(phone, otp);
