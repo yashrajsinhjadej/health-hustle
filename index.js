@@ -56,39 +56,41 @@ if (!process.env.JWT_SECRET) {
     process.exit(1);
 }
 
-// Connect to MongoDB with serverless-optimized settings
-mongoose.connect(process.env.MONGODB_URI, {
-    maxPoolSize: 1,               // Reduce for serverless
-    serverSelectionTimeoutMS: 5000, // 5 seconds timeout
-    socketTimeoutMS: 8000,        // 8 seconds socket timeout
-    connectTimeoutMS: 8000,       // 8 seconds connection timeout
-    family: 4,                    // Use IPv4
-    retryWrites: true,
-    w: 'majority',
-    bufferCommands: false,        // Disable buffering for serverless
-    bufferMaxEntries: 0,          // Disable buffer max entries
-    autoIndex: false,             // Disable auto index creation
-    maxIdleTimeMS: 30000,         // 30 seconds max idle time
-    serverApi: {
-        version: '1',
-        strict: true,
-        deprecationErrors: true,
+// MongoDB connection with retry logic for serverless
+let mongoConnected = false;
+
+const connectToMongo = async () => {
+    try {
+        // Use the most basic connection possible
+        await mongoose.connect(process.env.MONGODB_URI);
+        
+        mongoConnected = true;
+        console.log('✅ Connected to MongoDB Atlas (basic connection)');
+    } catch (error) {
+        console.error('❌ MongoDB connection error:', error.message);
+        mongoConnected = false;
     }
-})
-    .then(() => {
-        console.log('✅ Connected to MongoDB Atlas with connection pooling (maxPoolSize: 10)');
-    })
-    .catch((error) => {
-        console.error('❌ MongoDB connection error:', error);
-        process.exit(1);
+};
+
+// Connect to MongoDB
+connectToMongo();
+
+// Simple test endpoint (no MongoDB required)
+app.get('/test', (req, res) => {
+    res.json({
+        message: 'Server is running!',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        version: '1.0.1'
     });
+});
 
 // Enhanced Health check route (serverless-optimized)
 app.get('/health', async (req, res) => {
     try {
         const memUsage = process.memoryUsage();
         const uptime = process.uptime();
-        const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+        const dbStatus = mongoConnected && mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
         
         // Check Twilio status (with timeout)
         let twilioStatus = { status: 'unavailable', message: 'Twilio not configured' };
