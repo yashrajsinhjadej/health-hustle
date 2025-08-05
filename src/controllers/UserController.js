@@ -1,4 +1,12 @@
 const User = require('../models/User');
+const { 
+    convertHeightToCm, 
+    convertWeightToKg, 
+    isValidHeight, 
+    isValidWeight,
+    getHeightRangeMessage,
+    getWeightRangeMessage
+} = require('../utils/unitConverter');
 
 
 async function getUserProfile(req, res) {
@@ -24,7 +32,8 @@ async function getUserProfile(req, res) {
                     bodyProfile: user.bodyProfile,
                     mainGoal: user.mainGoal,
                     sportsAmbitions: user.sportsAmbitions,
-                    activityLevel: user.activityLevel
+                    activityLevel: user.activityLevel,
+                    userPreferences: user.userPreferences
                 })
             }
         });
@@ -56,7 +65,9 @@ async function updateUserProfile(req, res) {
             email,
             gender,
             height,
+            heightUnit,
             weight,
+            weightUnit,
             age,
             loyaltyPercentage,
             bodyProfile,
@@ -64,18 +75,57 @@ async function updateUserProfile(req, res) {
             sportsAmbitions
         } = req.body;
 
-        // Prepare update data with only allowed fields
+        // Convert height and weight to standard units (cm and kg)
+        let heightInCm, weightInKg;
+        
+        try {
+            heightInCm = convertHeightToCm(height, heightUnit);
+            weightInKg = convertWeightToKg(weight, weightUnit);
+        } catch (conversionError) {
+            return res.status(400).json({
+                success: false,
+                error: 'Unit conversion failed',
+                message: conversionError.message
+            });
+        }
+
+        // Validate converted values are within acceptable ranges
+        if (!isValidHeight(heightInCm)) {
+            return res.status(400).json({
+                success: false,
+                error: `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`,
+                validationErrors: {
+                    height: `Height must be between ${getHeightRangeMessage(heightUnit)}`
+                }
+            });
+        }
+
+        if (!isValidWeight(weightInKg)) {
+            return res.status(400).json({
+                success: false,
+                error: `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`,
+                validationErrors: {
+                    weight: `Weight must be between ${getWeightRangeMessage(weightUnit)}`
+                }
+            });
+        }
+
+        // Prepare update data with converted values
         const updateData = {
             name: name.trim(),
             email: email.toLowerCase().trim(),
             gender: gender.toLowerCase(),
-            height: height,
-            weight: weight,
+            height: heightInCm, // Store in cm
+            weight: weightInKg, // Store in kg
             age: age,
             loyaltyPercentage: loyaltyPercentage,
             bodyProfile: bodyProfile.toLowerCase(),
             mainGoal: mainGoal.toLowerCase(),
             sportsAmbitions: sportsAmbitions ? sportsAmbitions.map(sport => sport.toLowerCase()) : [],
+            userPreferences: {
+                heightUnit: heightUnit,
+                weightUnit: weightUnit
+            },
             profileCompleted: true // Mark profile as completed
         };
 
@@ -97,6 +147,8 @@ async function updateUserProfile(req, res) {
         }
 
         console.log(`👤 Profile completed for user ${userUpdated._id} - ${userUpdated.name}`);
+        console.log(`📏 Height: ${height} ${heightUnit} → ${heightInCm} cm`);
+        console.log(`⚖️ Weight: ${weight} ${weightUnit} → ${weightInKg} kg`);
 
         res.json({
             success: true,
@@ -109,8 +161,11 @@ async function updateUserProfile(req, res) {
                 profileCompleted: userUpdated.profileCompleted,
                 age: userUpdated.age,
                 gender: userUpdated.gender,
+                height: userUpdated.height,
+                weight: userUpdated.weight,
                 bodyProfile: userUpdated.bodyProfile,
-                mainGoal: userUpdated.mainGoal
+                mainGoal: userUpdated.mainGoal,
+                userPreferences: userUpdated.userPreferences
             }
         });
 
