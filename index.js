@@ -1,4 +1,4 @@
-// Health Hustle Backend Server
+// Health Hustle Backend Server - Updated validation system
 require('dotenv').config();
 
 const express = require('express');

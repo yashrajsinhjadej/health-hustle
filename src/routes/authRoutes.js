@@ -20,5 +20,8 @@ router.post('/send-otp', validatePhoneNumber, handleValidationErrors, AuthContro
 // POST /auth/verify-otp - Verify OTP and login/register
 router.post('/verify-otp', validatePhoneNumber, validateOTP, handleValidationErrors, AuthController.verifyOTP.bind(AuthController));
 
+// POST /auth/logout - Logout current user
+router.post('/logout', authenticateToken, AuthController.logout.bind(AuthController));
+
 
 module.exports = router;
