@@ -31,19 +31,33 @@ const validateUserProfileUpdate = [
         .isIn(['male', 'female', 'other'])
         .withMessage('Gender must be male, female, or other'),
 
-    // Height validation
+    // Height validation (basic - detailed validation after conversion)
     body('height')
         .notEmpty()
         .withMessage('Height is required')
-        .isFloat({ min: 50, max: 300 })
-        .withMessage('Height must be between 50cm and 300cm'),
+        .isFloat({ min: 0.1 })
+        .withMessage('Height must be a positive number'),
 
-    // Weight validation
+    // Height unit validation (required)
+    body('heightUnit')
+        .notEmpty()
+        .withMessage('Height unit is required')
+        .isIn(['cm', 'ft'])
+        .withMessage('Height unit must be cm or ft'),
+
+    // Weight validation (basic - detailed validation after conversion)
     body('weight')
         .notEmpty()
         .withMessage('Weight is required')
-        .isFloat({ min: 10, max: 500 })
-        .withMessage('Weight must be between 10kg and 500kg'),
+        .isFloat({ min: 0.1 })
+        .withMessage('Weight must be a positive number'),
+
+    // Weight unit validation (required)
+    body('weightUnit')
+        .notEmpty()
+        .withMessage('Weight unit is required')
+        .isIn(['kg', 'lbs'])
+        .withMessage('Weight unit must be kg or lbs'),
 
     // Age validation
     body('age')

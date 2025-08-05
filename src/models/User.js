@@ -108,6 +108,18 @@ const userSchema = new mongoose.Schema({
         },
         default: []
     },
+    userPreferences: {
+        heightUnit: {
+            type: String,
+            enum: ['cm', 'ft'],
+            default: 'cm'
+        },
+        weightUnit: {
+            type: String,
+            enum: ['kg', 'lbs'],
+            default: 'kg'
+        }
+    },
     role: {
         type: String,
         enum: ['admin', 'user'],
