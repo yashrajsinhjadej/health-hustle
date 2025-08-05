@@ -88,8 +88,16 @@ class AuthController {
                 console.log(`👤 User already exists: ${user.name}`);
             }
 
-            // Generate JWT token with user ID
+            // Generate JWT token with user ID first to get the exact iat
             const token = this.generateToken(user._id);
+            
+            // Extract the iat from the token to set lastLoginAt to the same second
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
+            
+            // Update lastLoginAt to match token issue time (this invalidates all previous tokens)
+            user.lastLoginAt = tokenIssuedAt;
+            await user.save();
             
             console.log(token);
 
@@ -104,7 +112,8 @@ class AuthController {
                     name: user.name,
                     phone: user.phone,
                     role: user.role,
-                    profileCompleted: user.profileCompleted
+                    profileCompleted: user.profileCompleted,
+                    lastLoginAt: user.lastLoginAt
                 }
             });
 
@@ -239,6 +248,31 @@ class AuthController {
 
         } catch (error) {
             console.error('Update profile error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Internal server error'
+            });
+        }
+    }
+
+    // Logout user - invalidate current token
+    async logout(req, res) {
+        try {
+            const user = req.user;
+            
+            // Update lastLoginAt to current time (invalidates current token)
+            user.lastLoginAt = new Date();
+            await user.save();
+            
+            console.log(`🚪 User logged out: ${user.phone}`);
+            
+            res.json({
+                success: true,
+                message: 'Logged out successfully',
+                action: 'redirect_to_login'
+            });
+        } catch (error) {
+            console.error('Logout error:', error);
             res.status(500).json({
                 success: false,
                 error: 'Internal server error'

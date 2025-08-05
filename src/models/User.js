@@ -132,6 +132,9 @@ const userSchema = new mongoose.Schema({
     profileCompleted: {
         type: Boolean,
         default: false
+    },
+    lastLoginAt: {
+        type: Date
     }
 }, {
     timestamps: true
