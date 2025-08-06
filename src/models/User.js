@@ -135,16 +135,6 @@ const userSchema = new mongoose.Schema({
     },
     lastLoginAt: {
         type: Date
-    },
-    bmi:{
-        type: Number,
-        min: [10, 'BMI must be at least 10'],
-        max: [50, 'BMI cannot exceed 50']
-    },
-    bmiCategory: {
-        type: String,
-        enum: ['underweight', 'normal', 'overweight', 'obese'],
-        lowercase: true
     }
 
 }, {

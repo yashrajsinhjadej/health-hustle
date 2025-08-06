@@ -28,8 +28,6 @@ async function getUserProfile(req, res) {
                     gender: user.gender,
                     height: user.height,
                     weight: user.weight,
-                    bmi: user.bmi,
-                    bmiCategory: user.bmiCategory,
                     loyaltyPercentage: user.loyaltyPercentage,
                     bodyProfile: user.bodyProfile,
                     mainGoal: user.mainGoal,
@@ -48,14 +46,6 @@ async function getUserProfile(req, res) {
     }
 }
 
-
-// Add BMI category calculation
-function getBMICategory(bmi) {
-    if (bmi < 18.5) return 'underweight';
-    if (bmi < 25) return 'normal';
-    if (bmi < 30) return 'overweight';
-    return 'obese';
-}
 
 async function updateUserProfile(req, res) {
     try {
@@ -119,7 +109,7 @@ async function updateUserProfile(req, res) {
                 }
             });
         }
-        var bmi = weightInKg / ((heightInCm / 100) ** 2);
+        
         // Prepare update data with converted values
         const updateData = {
             name: name.trim(),
@@ -136,9 +126,7 @@ async function updateUserProfile(req, res) {
                 heightUnit: heightUnit,
                 weightUnit: weightUnit
             },
-            profileCompleted: true, // Mark profile as completed
-            bmi: bmi, // Store calculated BMI
-            bmiCategory: getBMICategory(bmi)
+            profileCompleted: true // Mark profile as completed
         };
 
         // Update user with validation
@@ -175,8 +163,6 @@ async function updateUserProfile(req, res) {
                 gender: userUpdated.gender,
                 height: userUpdated.height,
                 weight: userUpdated.weight,
-                bmi: userUpdated.bmi,
-                bmiCategory: userUpdated.bmiCategory,
                 bodyProfile: userUpdated.bodyProfile,
                 mainGoal: userUpdated.mainGoal,
                 userPreferences: userUpdated.userPreferences
