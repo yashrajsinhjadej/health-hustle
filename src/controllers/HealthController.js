@@ -224,7 +224,7 @@ class HealthController {
                     data: responseData,
                     date: today
                 });
-            }
+            } 
 
             console.log(`📊 Retrieved today's health data and goals for user ${userId}`);
 
