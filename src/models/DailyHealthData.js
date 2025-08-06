@@ -34,14 +34,13 @@ const dailyHealthDataSchema = new mongoose.Schema({
             type: Number,
             default: 0
         },
-        distance: Number,        // Distance in km
-        activeMinutes: Number    // Minutes of active movement
+        distance: Number         // Distance in km
     },
     
-    // Water Intake
+    // Water Intake (Manual tracking - not from watch)
     water: {
         consumed: {
-            type: Number,        // ml consumed
+            type: Number,        // ml consumed (manual entry)
             default: 0
         },
         entries: [{
@@ -51,14 +50,14 @@ const dailyHealthDataSchema = new mongoose.Schema({
         }]
     },
     
-    // Calorie Tracking
+    // Calorie Tracking (Mixed - burned from watch, consumed manual)
     calories: {
         consumed: {
-            type: Number,        // Total calories consumed
+            type: Number,        // Total calories consumed (manual entry)
             default: 0
         },
         burned: {
-            type: Number,        // Total calories burned
+            type: Number,        // Total calories burned (from watch)
             default: 0
         },
         entries: [{
@@ -73,7 +72,8 @@ const dailyHealthDataSchema = new mongoose.Schema({
     
     // Sleep Tracking
     sleep: {
-        duration: Number,        // Hours slept
+        duration: Number,        // Hours slept (from watch)
+        count: Number,           // Sleep count/sessions (from watch)
         quality: {
             type: String,
             enum: ['poor', 'fair', 'good', 'excellent']
@@ -106,78 +106,24 @@ const dailyHealthDataSchema = new mongoose.Schema({
         notes: String
     }],
     
-    // Nutrition Overview
-    nutrition: {
-        meals: [{
-            type: {
-                type: String,
-                enum: ['breakfast', 'lunch', 'dinner', 'snack']
-            },
-            foods: [{
-                name: String,
-                quantity: String,    // "1 cup", "100g"
-                calories: Number,
-                protein: Number,     // grams
-                carbs: Number,       // grams
-                fats: Number         // grams
-            }],
-            totalCalories: Number
+    // Meal Tracking (Manual food logging)
+    meals: [{
+        type: {
+            type: String,
+            enum: ['breakfast', 'lunch', 'dinner', 'snack']
+        },
+        time: String,            // "08:00", "12:30", "19:00"
+        foods: [{
+            name: String,        // "Grilled Chicken", "Brown Rice", "Apple"
+            quantity: String,    // "150g", "1 cup", "1 medium"
+            calories: Number     // Estimated calories for this food item
         }],
-        totalProtein: Number,
-        totalCarbs: Number,
-        totalFats: Number
-    },
-    
-    // Mood & Wellness
-    mood: {
-        level: {
-            type: Number,
-            min: 1,
-            max: 10
-        },
-        note: String,
-        factors: [String],       // ["good_sleep", "exercise", "stress"]
-        stressLevel: {
-            type: Number,
-            min: 1,
-            max: 10
-        }
-    },
-    
-    // Vital Signs
-    vitals: {
-        bloodPressure: {
-            systolic: Number,
-            diastolic: Number,
-            readings: [{
-                time: String,
-                systolic: Number,
-                diastolic: Number
-            }]
-        },
-        bloodSugar: {
-            avg: Number,
-            readings: [{
-                time: String,
-                value: Number,
-                type: String     // "fasting", "post_meal"
-            }]
-        }
-    },
-    
-    // Medications & Supplements
-    medications: [{
-        name: String,
-        dosage: String,
-        taken: Boolean,
-        timeScheduled: String,
-        timeTaken: String,
-        notes: String
+        totalCalories: Number,   // Total calories for this meal
+        notes: String           // Optional notes about the meal
     }],
     
     // Notes & Additional Data
     notes: String,
-    weatherCondition: String,    // For outdoor activity correlation
     
     // Flexible field for future additions
     customMetrics: mongoose.Schema.Types.Mixed

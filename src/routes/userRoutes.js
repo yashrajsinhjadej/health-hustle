@@ -42,7 +42,7 @@ router.get('/', (req, res) => {
 });
 
 // get user profile 
-router.get('/dashboard',UserController.getUserProfile);   // verified by yash
+router.get('/profile',UserController.getUserProfile);   // verified by yash
 
 
 // Put all the necessary information at the timeof the first registration left somethings to update
