@@ -344,6 +344,51 @@ app.get('/test-connection', async (req, res) => {
     }
 });
 
+// Global MongoDB connection middleware - ensures DB is connected for all API requests
+const ensureMongoDBConnection = async (req, res, next) => {
+    // Skip for health and debug routes
+    if (req.path === '/health' || req.path === '/debug' || req.path === '/test-connection' || req.path === '/env-debug') {
+        return next();
+    }
+    
+    try {
+        // Check if MongoDB is connected
+        if (mongoose.connection.readyState === 1) {
+            // Already connected, proceed
+            return next();
+        }
+        
+        // Not connected, attempt to connect
+        console.log('🔄 MongoDB not connected for API request, attempting to connect...');
+        console.log('📥 Request path:', req.path);
+        console.log('📥 Request method:', req.method);
+        
+        await mongoose.connect(process.env.MONGODB_URI, {
+            maxPoolSize: 5,
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+            family: 4,
+            retryWrites: true,
+            w: 'majority',
+            bufferCommands: false,
+            autoIndex: false,
+            maxIdleTimeMS: 30000,
+            connectTimeoutMS: 10000,
+            heartbeatFrequencyMS: 10000,
+        });
+        
+        console.log('✅ MongoDB connected successfully for API request');
+        next();
+    } catch (error) {
+        console.error('❌ MongoDB connection failed for API request:', error);
+        res.status(503).json({
+            success: false,
+            error: 'Database connection failed',
+            message: 'Service temporarily unavailable. Please try again.'
+        });
+    }
+};
+
 // Enhanced Health check route with MongoDB connection wait
 app.get('/health', async (req, res) => {
     console.log('🏥 Health check route accessed');
@@ -429,50 +474,6 @@ app.get('/health', async (req, res) => {
     }
 });
 
-// Global MongoDB connection middleware - ensures DB is connected for all API requests
-const ensureMongoDBConnection = async (req, res, next) => {
-    // Skip for health and debug routes
-    if (req.path === '/health' || req.path === '/debug' || req.path === '/test-connection' || req.path === '/env-debug') {
-        return next();
-    }
-    
-    try {
-        // Check if MongoDB is connected
-        if (mongoose.connection.readyState === 1) {
-            // Already connected, proceed
-            return next();
-        }
-        
-        // Not connected, attempt to connect
-        console.log('🔄 MongoDB not connected for API request, attempting to connect...');
-        console.log('📥 Request path:', req.path);
-        console.log('📥 Request method:', req.method);
-        
-        await mongoose.connect(process.env.MONGODB_URI, {
-            maxPoolSize: 5,
-            serverSelectionTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
-            family: 4,
-            retryWrites: true,
-            w: 'majority',
-            bufferCommands: false,
-            autoIndex: false,
-            maxIdleTimeMS: 30000,
-            connectTimeoutMS: 10000,
-            heartbeatFrequencyMS: 10000,
-        });
-        
-        console.log('✅ MongoDB connected successfully for API request');
-        next();
-    } catch (error) {
-        console.error('❌ MongoDB connection failed for API request:', error);
-        res.status(503).json({
-            success: false,
-            error: 'Database connection failed',
-            message: 'Service temporarily unavailable. Please try again.'
-        });
-    }
-};
 
 // Apply MongoDB connection middleware to all API routes
 app.use('/api', ensureMongoDBConnection);
