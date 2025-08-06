@@ -107,6 +107,7 @@ class AuthController {
             res.json({
                 success: true,
                 message: 'OTP verified successfully',
+                token: token, // Adding token to response body for testing
                 user: {
                     id: user._id,
                     name: user.name,
