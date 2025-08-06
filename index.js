@@ -89,19 +89,22 @@ const connectDB = async () => {
         }
 
         const mongoOptions = {
-            maxPoolSize: 5,               // Reduced for serverless
-            serverSelectionTimeoutMS: 15000, // 15 seconds timeout for Vercel
+            maxPoolSize: 10,              // Increased for better serverless handling
+            serverSelectionTimeoutMS: 20000, // Increased timeout for Vercel
             socketTimeoutMS: 45000,       // 45 seconds socket timeout
             family: 4,                    // Use IPv4, skip trying IPv6
             retryWrites: true,
             w: 'majority',
             // Vercel-specific optimizations
-            bufferCommands: false,        // Disable mongoose buffering
+            bufferCommands: false,        // Critical: Disable mongoose buffering for serverless
             autoIndex: false,             // Disable auto-indexing in production
             maxIdleTimeMS: 30000,         // Close connections after 30 seconds of inactivity
             // Additional options for better serverless compatibility
-            connectTimeoutMS: 15000,      // Connection timeout
+            connectTimeoutMS: 20000,      // Increased connection timeout
             heartbeatFrequencyMS: 10000,  // Heartbeat frequency
+            // Additional serverless optimizations
+            compressors: 'zlib',          // Enable compression
+            zlibCompressionLevel: 1,      // Low compression for speed
         };
 
         console.log('🔍 MongoDB options configured:', JSON.stringify(mongoOptions, null, 2));
@@ -346,7 +349,7 @@ app.get('/test-connection', async (req, res) => {
 
 // Global MongoDB connection middleware - ensures DB is connected for all API requests
 const ensureMongoDBConnection = async (req, res, next) => {
-    // Skip for health and debug routes
+    // Skip for health check and debug routes (not API routes)
     if (req.path === '/health' || req.path === '/debug' || req.path === '/test-connection' || req.path === '/env-debug') {
         return next();
     }
@@ -355,6 +358,7 @@ const ensureMongoDBConnection = async (req, res, next) => {
         // Check if MongoDB is connected
         if (mongoose.connection.readyState === 1) {
             // Already connected, proceed
+            console.log('✅ MongoDB already connected for:', req.path);
             return next();
         }
         
@@ -364,27 +368,29 @@ const ensureMongoDBConnection = async (req, res, next) => {
         console.log('📥 Request method:', req.method);
         
         await mongoose.connect(process.env.MONGODB_URI, {
-            maxPoolSize: 5,
-            serverSelectionTimeoutMS: 10000,
+            maxPoolSize: 10,              // Increased for better serverless handling
+            serverSelectionTimeoutMS: 15000, // Increased timeout
             socketTimeoutMS: 45000,
             family: 4,
             retryWrites: true,
             w: 'majority',
-            bufferCommands: false,
+            bufferCommands: false,        // Critical for serverless
             autoIndex: false,
             maxIdleTimeMS: 30000,
-            connectTimeoutMS: 10000,
+            connectTimeoutMS: 15000,      // Increased timeout
             heartbeatFrequencyMS: 10000,
         });
         
-        console.log('✅ MongoDB connected successfully for API request');
+        console.log('✅ MongoDB connected successfully for API request:', req.path);
         next();
     } catch (error) {
-        console.error('❌ MongoDB connection failed for API request:', error);
+        console.error('❌ MongoDB connection failed for API request:', error.message);
+        console.error('❌ Request path:', req.path);
         res.status(503).json({
             success: false,
             error: 'Database connection failed',
-            message: 'Service temporarily unavailable. Please try again.'
+            message: 'Service temporarily unavailable. Please try again.',
+            path: req.path
         });
     }
 };
