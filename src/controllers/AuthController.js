@@ -95,8 +95,6 @@ class AuthController {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
-            // Set lastLoginAt to 30 seconds before token issue time
-            // This ensures the current token is always valid while invalidating previous tokens
             user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 30000); // 30 seconds before
             await user.save();
             
