@@ -10,6 +10,7 @@ const helmet = require('helmet');
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const userRoutes = require('./src/routes/userRoutes');
+const healthRoutes = require('./src/routes/healthRoutes');
 
 const app = express();
 
@@ -480,6 +481,7 @@ app.use('/api', ensureMongoDBConnection);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/health', healthRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
