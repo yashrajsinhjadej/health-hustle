@@ -34,10 +34,6 @@ const dailyHealthDataSchema = new mongoose.Schema({
             type: Number,
             default: 0
         },
-        target: {
-            type: Number,
-            default: 10000
-        },
         distance: Number,        // Distance in km
         activeMinutes: Number    // Minutes of active movement
     },
@@ -47,10 +43,6 @@ const dailyHealthDataSchema = new mongoose.Schema({
         consumed: {
             type: Number,        // ml consumed
             default: 0
-        },
-        target: {
-            type: Number,        // ml target
-            default: 2000
         },
         entries: [{
             time: String,        // "08:30", "12:00"
@@ -62,17 +54,20 @@ const dailyHealthDataSchema = new mongoose.Schema({
     // Calorie Tracking
     calories: {
         consumed: {
-            type: Number,
+            type: Number,        // Total calories consumed
             default: 0
         },
         burned: {
-            type: Number,
+            type: Number,        // Total calories burned
             default: 0
         },
-        target: {
-            type: Number,
-            default: 2000
-        },
+        entries: [{
+            time: String,        // "08:00", "12:30", "18:00"
+            amount: Number,      // Calories consumed at this time
+            type: String,        // "meal", "snack", "drink"
+            description: String, // "Breakfast - Oatmeal", "Apple snack"
+            notes: String        // Optional notes
+        }],
         bmr: Number              // Basal Metabolic Rate
     },
     
@@ -179,15 +174,6 @@ const dailyHealthDataSchema = new mongoose.Schema({
         timeTaken: String,
         notes: String
     }],
-    
-    // Daily Goals Progress
-    goals: {
-        stepsAchieved: Boolean,
-        waterAchieved: Boolean,
-        caloriesAchieved: Boolean,
-        sleepAchieved: Boolean,
-        workoutCompleted: Boolean
-    },
     
     // Notes & Additional Data
     notes: String,

@@ -46,7 +46,7 @@ router.get('/dashboard',UserController.getUserProfile);   // verified by yash
 
 
 // Put all the necessary information at the timeof the first registration left somethings to update
-router.put('/dashboard', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile); 
+router.put('/firsttime', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile); 
 
 // PUT /user/health/bulk - Bulk update health data for multiple dates
 router.put('/health/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yash
