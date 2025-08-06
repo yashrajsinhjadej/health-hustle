@@ -74,26 +74,6 @@ const goalsSchema = new mongoose.Schema({
         }
     },
     
-    // Workout Goals
-    workoutGoals: {
-        weeklyWorkouts: {
-            type: Number,
-            default: 3,
-            min: 0,
-            max: 14
-        },
-        preferredWorkoutTypes: [{
-            type: String,
-            enum: ['cardio', 'strength', 'yoga', 'pilates', 'running', 'cycling', 'swimming', 'sports', 'other']
-        }],
-        sessionDuration: {
-            type: Number, // in minutes
-            default: 30,
-            min: 5,
-            max: 300
-        }
-    },
-    
     // Health Monitoring Goals
     heartRateTargets: {
         restingHR: {
@@ -108,93 +88,12 @@ const goalsSchema = new mongoose.Schema({
         }
     },
     
-    // Medication Reminders
-    medicationReminders: [{
-        name: {
-            type: String,
-            required: true
-        },
-        dosage: String,
-        frequency: {
-            type: String,
-            enum: ['daily', 'twice-daily', 'thrice-daily', 'weekly', 'as-needed'],
-            default: 'daily'
-        },
-        reminderTimes: [String], // Array of times like ["08:00", "20:00"]
-        isActive: {
-            type: Boolean,
-            default: true
-        }
-    }],
-    
     // Goal Settings
     goalPeriod: {
         type: String,
         enum: ['daily', 'weekly', 'monthly'],
         default: 'daily'
     },
-    
-    // Notification Preferences
-    notifications: {
-        stepReminders: {
-            type: Boolean,
-            default: true
-        },
-        waterReminders: {
-            type: Boolean,
-            default: true
-        },
-        sleepReminders: {
-            type: Boolean,
-            default: true
-        },
-        workoutReminders: {
-            type: Boolean,
-            default: true
-        },
-        medicationReminders: {
-            type: Boolean,
-            default: true
-        }
-    },
-    
-    // Goal Achievement Tracking
-    achievements: {
-        totalGoalsAchieved: {
-            type: Number,
-            default: 0
-        },
-        streaks: {
-            steps: {
-                current: { type: Number, default: 0 },
-                longest: { type: Number, default: 0 }
-            },
-            water: {
-                current: { type: Number, default: 0 },
-                longest: { type: Number, default: 0 }
-            },
-            sleep: {
-                current: { type: Number, default: 0 },
-                longest: { type: Number, default: 0 }
-            },
-            workout: {
-                current: { type: Number, default: 0 },
-                longest: { type: Number, default: 0 }
-            }
-        }
-    },
-    
-    // Goal History (for tracking changes)
-    goalHistory: [{
-        changedAt: {
-            type: Date,
-            default: Date.now
-        },
-        changes: {
-            type: mongoose.Schema.Types.Mixed // Stores what goals were changed
-        },
-        reason: String // Why the goal was changed
-    }],
     
     isActive: {
         type: Boolean,
@@ -207,6 +106,5 @@ const goalsSchema = new mongoose.Schema({
 // Indexes for better query performance
 goalsSchema.index({ userId: 1 });
 goalsSchema.index({ userId: 1, isActive: 1 });
-goalsSchema.index({ 'medicationReminders.isActive': 1 });
 
 module.exports = mongoose.model('Goals', goalsSchema);

@@ -204,11 +204,6 @@ class HealthController {
                         hours: 8,
                         bedtime: "22:00",
                         wakeupTime: "06:00"
-                    },
-                    workoutGoals: {
-                        weeklyWorkouts: 3,
-                        preferredWorkoutTypes: ['cardio', 'strength'],
-                        sessionDuration: 30
                     }
                 });
                 
