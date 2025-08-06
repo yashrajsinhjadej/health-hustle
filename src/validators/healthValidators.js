@@ -1,27 +1,69 @@
 // Health Data Validation Rules using express-validator
 const { body, param, validationResult } = require('express-validator');
+const Logger = require('../utils/logger');
 
 // Date format validation helper
 const isValidDateFormat = (value) => {
+    const validationId = `date_val_${Date.now()}`;
+    Logger.info('HealthValidators', 'isValidDateFormat', 'Starting date validation', {
+        validationId,
+        dateValue: value
+    });
+    
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(value)) {
+        Logger.warn('HealthValidators', 'isValidDateFormat', 'Date format validation failed', {
+            validationId,
+            dateValue: value,
+            expectedFormat: 'YYYY-MM-DD',
+            error: 'Regex pattern mismatch'
+        });
         throw new Error('Invalid date format. Use YYYY-MM-DD format.');
     }
     
     const date = new Date(value);
     if (isNaN(date.getTime())) {
+        Logger.warn('HealthValidators', 'isValidDateFormat', 'Date value validation failed', {
+            validationId,
+            dateValue: value,
+            error: 'Invalid date value'
+        });
         throw new Error('Invalid date. Please provide a valid date.');
     }
+    
+    Logger.success('HealthValidators', 'isValidDateFormat', 'Date validation passed', {
+        validationId,
+        dateValue: value,
+        parsedDate: date.toISOString()
+    });
     
     return true;
 };
 
 // Time format validation helper
 const isValidTimeFormat = (value) => {
+    const validationId = `time_val_${Date.now()}`;
+    Logger.info('HealthValidators', 'isValidTimeFormat', 'Starting time validation', {
+        validationId,
+        timeValue: value
+    });
+    
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(value)) {
+        Logger.warn('HealthValidators', 'isValidTimeFormat', 'Time format validation failed', {
+            validationId,
+            timeValue: value,
+            expectedFormat: 'HH:MM (24-hour)',
+            error: 'Regex pattern mismatch'
+        });
         throw new Error('Invalid time format. Use HH:MM format (24-hour).');
     }
+    
+    Logger.success('HealthValidators', 'isValidTimeFormat', 'Time validation passed', {
+        validationId,
+        timeValue: value
+    });
+    
     return true;
 };
 

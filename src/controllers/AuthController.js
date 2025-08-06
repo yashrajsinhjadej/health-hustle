@@ -22,13 +22,24 @@ class AuthController {
 
     // Send OTP to phone number
     async sendOTP(req, res) {
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
+            console.log(`📱 [${requestId}] AuthController.sendOTP START`);
+            console.log(`📱 [${requestId}] Request body:`, req.body);
+            console.log(`📱 [${requestId}] Request headers:`, req.headers);
+            console.log(`📱 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            
             const { phone } = req.body;
+            console.log(`📱 [${requestId}] Extracted phone: ${phone} (type: ${typeof phone})`);
 
             // Use service for complete OTP workflow
+            console.log(`📱 [${requestId}] Calling OTPService.sendOTP...`);
             const result = await OTPService.sendOTP(phone);
+            console.log(`📱 [${requestId}] OTPService.sendOTP result:`, result);
+            
             if (!result.success) {
                 const statusCode = result.waitTime ? 429 : 400;
+                console.log(`📱 [${requestId}] OTP sending failed - Status: ${statusCode}, Message: ${result.message}`);
                 return res.status(statusCode).json({
                     success: false,
                     error: result.message,
@@ -36,6 +47,7 @@ class AuthController {
                 });
             }
 
+            console.log(`📱 [${requestId}] OTP sent successfully to ${phone}`);
             res.json({
                 success: true,
                 message: result.message,
@@ -44,7 +56,8 @@ class AuthController {
             });
 
         } catch (error) {
-            console.error('Send OTP error:', error);
+            console.error(`📱 [${requestId}] Send OTP error:`, error);
+            console.error(`📱 [${requestId}] Error stack:`, error.stack);
             res.status(500).json({
                 success: false,
                 error: 'Internal server error'
@@ -54,14 +67,23 @@ class AuthController {
 
     // Verify OTP and login/register user
     async verifyOTP(req, res) {
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
+            console.log(`🔐 [${requestId}] AuthController.verifyOTP START`);
+            console.log(`🔐 [${requestId}] Request body:`, req.body);
+            console.log(`🔐 [${requestId}] Request headers:`, req.headers);
+            console.log(`🔐 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            
             const { phone, otp } = req.body;
-            console.log(phone, otp);
+            console.log(`🔐 [${requestId}] Extracted - Phone: ${phone}, OTP: ${otp}`);
 
             // Use service for OTP verification
+            console.log(`🔐 [${requestId}] Calling OTPService.verifyOTP...`);
             const verificationResult = await OTPService.verifyOTP(phone, otp);
+            console.log(`🔐 [${requestId}] OTPService.verifyOTP result:`, verificationResult);
 
             if (!verificationResult.success ) {
+                console.log(`🔐 [${requestId}] OTP verification failed: ${verificationResult.message}`);
                 return res.status(400).json({
                     success: false,
                     error: verificationResult.message
@@ -70,39 +92,46 @@ class AuthController {
             
             // Clean phone for user lookup
             const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
-            console.log(`🔐 OTP verified successfully for ${cleanPhone}`);
+            console.log(`🔐 [${requestId}] OTP verified successfully for ${cleanPhone}`);
             
             // Ensure MongoDB connection is ready
+            console.log(`🔐 [${requestId}] Ensuring MongoDB connection...`);
             await ConnectionHelper.ensureConnection();
             
             // Check if user exists, if not create new user
+            console.log(`🔐 [${requestId}] Looking for existing user with phone: ${cleanPhone}`);
             let user = await User.findOne({ phone: cleanPhone });
             
             if (!user) {
                 // Create new user with incomplete profile
-                console.log(`👤 Creating new user for ${cleanPhone}`);
+                console.log(`� [${requestId}] Creating new user for ${cleanPhone}`);
                 user = new User({
                     name: 'New User', // Temporary name
                     phone: cleanPhone,
                     role: 'user', // Default role for new registrations
                     profileCompleted: false // Mark as incomplete
                 });
-                await user.save();
+                const savedUser = await user.save();
+                console.log(`🔐 [${requestId}] New user created with ID: ${savedUser._id}`);
             } else {
-                console.log(`👤 User already exists: ${user.name}`);
+                console.log(`� [${requestId}] User already exists: ${user.name} (ID: ${user._id})`);
             }
 
             // Generate JWT token with user ID first to get the exact iat
+            console.log(`🔐 [${requestId}] Generating JWT token for user: ${user._id}`);
             const token = this.generateToken(user._id);
             
             // Extract the iat from the token to set lastLoginAt safely before it
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
+            console.log(`🔐 [${requestId}] Token issued at: ${tokenIssuedAt}`);
+            console.log(`🔐 [${requestId}] Setting lastLoginAt to: ${new Date(tokenIssuedAt.getTime() - 30000)}`);
+            
             user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 30000); // 30 seconds before
             await user.save();
             
-            console.log(token);
+            console.log(`🔐 [${requestId}] JWT token generated: ${token.substring(0, 50)}...`);
 
             // Set JWT token in Authorization header
             res.set('Authorization', `Bearer ${token}`);

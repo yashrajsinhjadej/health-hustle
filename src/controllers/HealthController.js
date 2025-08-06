@@ -83,15 +83,27 @@ class HealthController {
     
     // Update or create daily health data
     async updateDailyHealth(req, res) {
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
+            console.log(`📊 [${requestId}] HealthController.updateDailyHealth START`);
+            console.log(`📊 [${requestId}] Request params:`, req.params);
+            console.log(`📊 [${requestId}] Request body:`, req.body);
+            console.log(`📊 [${requestId}] Request headers:`, req.headers);
+            console.log(`📊 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            
             // Ensure MongoDB connection for serverless
+            console.log(`📊 [${requestId}] Ensuring MongoDB connection...`);
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
             const { date } = req.params; // Expected format: YYYY-MM-DD
             const healthData = req.body;
+            
+            console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
+            console.log(`📊 [${requestId}] Health data received:`, healthData);
 
             // Find existing record or create new one
+            console.log(`📊 [${requestId}] Looking for existing health record...`);
             let dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
                 date: date 
@@ -99,20 +111,25 @@ class HealthController {
 
             if (dailyHealth) {
                 // Update existing record
+                console.log(`📊 [${requestId}] Found existing record, updating...`);
+                console.log(`📊 [${requestId}] Before update:`, dailyHealth.toObject());
                 Object.assign(dailyHealth, healthData);
-                await dailyHealth.save();
+                const savedHealth = await dailyHealth.save();
+                console.log(`📊 [${requestId}] After update:`, savedHealth.toObject());
                 
-                console.log(`📊 Updated health data for user ${userId} on ${date}`);
+                console.log(`📊 [${requestId}] Updated health data for user ${userId} on ${date}`);
             } else {
                 // Create new record
+                console.log(`📊 [${requestId}] No existing record, creating new one...`);
                 dailyHealth = new DailyHealthData({
                     userId: userId,
                     date: date,
                     ...healthData
                 });
-                await dailyHealth.save();
+                const savedHealth = await dailyHealth.save();
+                console.log(`📊 [${requestId}] Created new health record:`, savedHealth.toObject());
                 
-                console.log(`📊 Created new health data for user ${userId} on ${date}`);
+                console.log(`📊 [${requestId}] Created new health data for user ${userId} on ${date}`);
             }
 
             res.json({

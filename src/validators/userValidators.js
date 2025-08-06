@@ -1,5 +1,6 @@
 // User Profile Validation Rules using express-validator
 const { body, validationResult } = require('express-validator');
+const Logger = require('../utils/logger');
 
 // Validation rules for user profile update
 const validateUserProfileUpdate = [
@@ -116,6 +117,7 @@ const validateUserProfileUpdate = [
 
 // Validation result handler middleware
 const handleValidationErrors = (req, res, next) => {
+    const requestId = req.requestId || `val_${Date.now()}`;
     const errors = validationResult(req);
     
     if (!errors.isEmpty()) {
@@ -125,12 +127,27 @@ const handleValidationErrors = (req, res, next) => {
             validationErrors[error.path] = error.msg;
         });
         
+        Logger.warn('UserValidators', 'handleValidationErrors', 'Validation errors found', {
+            requestId,
+            method: req.method,
+            url: req.url,
+            errors: errors.array(),
+            errorCount: errors.array().length,
+            validationErrors
+        });
+        
         return res.status(400).json({
             success: false,
             error: 'Validation failed',
             validationErrors: validationErrors
         });
     }
+    
+    Logger.success('UserValidators', 'handleValidationErrors', 'Validation passed', {
+        requestId,
+        method: req.method,
+        url: req.url
+    });
     
     next();
 };

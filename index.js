@@ -16,7 +16,36 @@ const app = express();
 
 // Add request logging middleware
 app.use((req, res, next) => {
-    console.log(`📥 ${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    req.requestId = requestId; // Attach to request for use in controllers
+    
+    console.log(`📥 [${requestId}] ${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`📥 [${requestId}] Headers:`, req.headers);
+    console.log(`📥 [${requestId}] IP:`, req.ip || req.connection.remoteAddress);
+    console.log(`📥 [${requestId}] User-Agent:`, req.get('User-Agent'));
+    
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log(`📥 [${requestId}] Body:`, req.body);
+    }
+    
+    if (req.query && Object.keys(req.query).length > 0) {
+        console.log(`📥 [${requestId}] Query:`, req.query);
+    }
+    
+    if (req.params && Object.keys(req.params).length > 0) {
+        console.log(`📥 [${requestId}] Params:`, req.params);
+    }
+    
+    // Log response
+    const originalSend = res.send;
+    res.send = function(data) {
+        console.log(`📤 [${requestId}] Response sent - Status: ${res.statusCode}`);
+        if (res.statusCode >= 400) {
+            console.log(`📤 [${requestId}] Error response:`, data);
+        }
+        originalSend.call(this, data);
+    };
+    
     next();
 });
 
