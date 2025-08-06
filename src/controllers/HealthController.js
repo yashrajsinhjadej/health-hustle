@@ -172,25 +172,19 @@ class HealthController {
     // Get today's health data (convenience endpoint)
     async getTodayHealth(req, res) {
         try {
-            console.log('🔍 getTodayHealth: Starting method');
-            
             // Ensure MongoDB connection before proceeding
             await ConnectionHelper.ensureConnection();
-            console.log('🔍 getTodayHealth: DB connection verified');
             
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-            console.log('🔍 getTodayHealth: User ID:', userId, 'Today date:', today);
 
             // Find today's health data
             const dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
                 date: today 
             });
-            console.log('🔍 getTodayHealth: Query result:', dailyHealth ? 'Found data' : 'No data found');
 
             if (!dailyHealth) {
-                console.log('🔍 getTodayHealth: Returning null data response');
                 return res.json({
                     success: true,
                     message: 'No health data found for today',
@@ -199,7 +193,6 @@ class HealthController {
                 });
             }
 
-            console.log('🔍 getTodayHealth: Returning successful response with data');
             console.log(`📊 Retrieved today's health data for user ${userId}`);
 
             res.json({
@@ -210,7 +203,7 @@ class HealthController {
             });
 
         } catch (error) {
-            console.error('❌ Get today health error:', error);
+            console.error('Get today health error:', error);
             res.status(500).json({
                 success: false,
                 error: 'Failed to retrieve today\'s health data'

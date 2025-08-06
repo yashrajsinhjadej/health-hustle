@@ -35,13 +35,7 @@ router.get('/', (req, res) => {
 });
 
 // GET /health/today - Get today's health data (convenience route)
-router.get('/today', (req, res, next) => {
-    console.log('🔍 Today route hit - req.user exists:', !!req.user);
-    console.log('🔍 Today route - user ID:', req.user?._id);
-    console.log('🔍 Today route - path:', req.path);
-    console.log('🔍 Today route - original URL:', req.originalUrl);
-    next();
-}, HealthController.getTodayHealth); // verified by yash
+router.get('/today', HealthController.getTodayHealth); // verified by yash
 
 // PUT /health/bulk - Bulk update health data for multiple dates
 router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yash
