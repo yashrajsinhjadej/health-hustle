@@ -1,5 +1,6 @@
 // Health Controller - Daily health data management
 const DailyHealthData = require('../models/DailyHealthData');
+const ConnectionHelper = require('../utils/connectionHelper');
 
 /**b6h
  *     "height": 175,
@@ -82,6 +83,9 @@ class HealthController {
     // Update or create daily health data
     async updateDailyHealth(req, res) {
         try {
+            // Ensure MongoDB connection for serverless
+            await ConnectionHelper.ensureConnection();
+            
             const userId = req.user._id;
             const { date } = req.params; // Expected format: YYYY-MM-DD
             const healthData = req.body;
@@ -128,6 +132,9 @@ class HealthController {
     // Get specific day health data
     async getDailyHealth(req, res) {
         try {
+            // Ensure MongoDB connection for serverless
+            await ConnectionHelper.ensureConnection();
+            
             const userId = req.user._id;
             const { date } = req.params; // Expected format: YYYY-MM-DD
 
@@ -165,6 +172,9 @@ class HealthController {
     // Get today's health data (convenience endpoint)
     async getTodayHealth(req, res) {
         try {
+            // Ensure MongoDB connection before proceeding
+            await ConnectionHelper.ensureConnection();
+            
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
@@ -204,6 +214,9 @@ class HealthController {
     // Quick update for specific health metrics
     async quickUpdate(req, res) {
         try {
+            // Ensure MongoDB connection before proceeding
+            await ConnectionHelper.ensureConnection();
+            
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0];
             const { metric, value } = req.body;
@@ -275,6 +288,10 @@ class HealthController {
     // Bulk update health data for multiple dates
     async bulkUpdateHealthData(req, res) {
         try {
+            // Ensure MongoDB connection for serverless
+            await ConnectionHelper.ensureConnection();
+            console.log('✅ HealthController: DB connection verified for bulk update');
+            
             const userId = req.user._id;
             const { health_data } = req.body;
 
