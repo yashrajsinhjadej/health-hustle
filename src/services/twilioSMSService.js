@@ -21,30 +21,45 @@ class TwilioSMSService {
     
     // Send SMS via Twilio
     async sendSMS(phoneNumber, message) {
+        const smsId = `sms_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`📱 [${smsId}] TwilioSMSService.sendSMS START`);
+        console.log(`📱 [${smsId}] Phone: ${phoneNumber}, Message length: ${message.length}`);
+        console.log(`📱 [${smsId}] Twilio available: ${this.isAvailable}`);
+        console.log(`📱 [${smsId}] From number: ${this.fromNumber}`);
+        
         try {
             if (!this.isAvailable) {
+                console.log(`📱 [${smsId}] Twilio not available, using simulation`);
                 return this.simulateSMS(phoneNumber, message);
             }
             
             // Format phone number with country code
             let formattedPhone = phoneNumber;
+            console.log(`📱 [${smsId}] Original phone: ${phoneNumber}`);
             
             // If it's a 10-digit Indian number, add +91
             if (phoneNumber.length === 10 && !phoneNumber.startsWith('+')) {
                 formattedPhone = `+91${phoneNumber}`;
+                console.log(`📱 [${smsId}] Formatted as Indian number: ${formattedPhone}`);
             } else if (!phoneNumber.startsWith('+')) {
                 // For other numbers, just add +
                 formattedPhone = `+${phoneNumber}`;
+                console.log(`📱 [${smsId}] Added country code: ${formattedPhone}`);
+            } else {
+                console.log(`📱 [${smsId}] Phone already formatted: ${formattedPhone}`);
             }
             
             // Send SMS via Twilio
+            console.log(`📱 [${smsId}] Sending SMS via Twilio...`);
             const result = await this.client.messages.create({
                 body: message,
                 from: this.fromNumber,
                 to: formattedPhone
             });
             
-            console.log(`📱 [TWILIO] SMS sent to ${phoneNumber}: ${result.sid}`);
+            console.log(`📱 [${smsId}] ✅ SMS sent successfully to ${phoneNumber}`);
+            console.log(`📱 [${smsId}] Twilio message ID: ${result.sid}`);
+            console.log(`📱 [${smsId}] Twilio status: ${result.status}`);
             
             return {
                 success: true,

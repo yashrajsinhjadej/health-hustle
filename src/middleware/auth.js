@@ -5,30 +5,45 @@ const ConnectionHelper = require('../utils/connectionHelper');
 
 // Verify JWT token
 const authenticateToken = async (req, res, next) => {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
+        console.log(`🔐 [${requestId}] Auth middleware START - ${req.method} ${req.path}`);
+        console.log(`🔐 [${requestId}] Request headers:`, req.headers);
+        console.log(`🔐 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+        
         const authHeader = req.headers['authorization'];
+        console.log(`🔐 [${requestId}] Authorization header:`, authHeader ? `${authHeader.substring(0, 20)}...` : 'missing');
+        
         const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
         if (!token) {
+            console.log(`🔐 [${requestId}] No token provided`);
             return res.status(401).json({
                 success: false,
                 error: 'Access token required'
             });
         }
 
+        console.log(`🔐 [${requestId}] Token found, verifying...`);
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log(`🔐 [${requestId}] Token decoded - User ID: ${decoded.userId}, IAT: ${decoded.iat}, EXP: ${decoded.exp}`);
         
         // Ensure MongoDB connection is ready
+        console.log(`🔐 [${requestId}] Ensuring MongoDB connection...`);
         await ConnectionHelper.ensureConnection();
         
+        console.log(`🔐 [${requestId}] Looking up user in database...`);
         const user = await User.findById(decoded.userId).select('-otp');
 
         if (!user || !user.isActive) {
+            console.log(`🔐 [${requestId}] User not found or inactive - ID: ${decoded.userId}`);
             return res.status(401).json({
                 success: false,
                 error: 'Invalid token or user not found'
             });
         }
+
+        console.log(`🔐 [${requestId}] User found: ${user.name} (${user._id})`);
 
         // Check if token was issued before user's last login (session invalidation)
         const tokenIssuedAt = new Date(decoded.iat * 1000); // JWT iat is in seconds

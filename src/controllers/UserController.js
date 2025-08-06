@@ -11,10 +11,17 @@ const ConnectionHelper = require('../utils/connectionHelper');
 
 
 async function getUserProfile(req, res) {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-        const user = req.user; // User object is set by authenticateToken middleware
+        console.log(`👤 [${requestId}] UserController.getUserProfile START`);
+        console.log(`👤 [${requestId}] Request headers:`, req.headers);
+        console.log(`👤 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
         
-        res.json({
+        const user = req.user; // User object is set by authenticateToken middleware
+        console.log(`👤 [${requestId}] User from middleware: ${user ? user._id : 'null'}`);
+        console.log(`👤 [${requestId}] User profile completed: ${user ? user.profileCompleted : 'N/A'}`);
+        
+        const responseData = {
             success: true,
             user: {
                 id: user._id,
@@ -37,9 +44,13 @@ async function getUserProfile(req, res) {
                     userPreferences: user.userPreferences
                 })
             }
-        });
+        };
+        
+        console.log(`👤 [${requestId}] Sending response for user: ${user._id}`);
+        res.json(responseData);
     } catch (error) {
-        console.error('Get user profile error:', error);
+        console.error(`👤 [${requestId}] Get user profile error:`, error);
+        console.error(`👤 [${requestId}] Error stack:`, error.stack);
         res.status(500).json({
             success: false,
             error: 'Internal server error'
@@ -49,11 +60,20 @@ async function getUserProfile(req, res) {
 
 
 async function updateUserProfile(req, res) {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
+        console.log(`👤 [${requestId}] UserController.updateUserProfile START`);
+        console.log(`👤 [${requestId}] Request body:`, req.body);
+        console.log(`👤 [${requestId}] Request headers:`, req.headers);
+        console.log(`👤 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+        
         const user = req.user;
+        console.log(`👤 [${requestId}] User from middleware: ${user._id}`);
+        console.log(`👤 [${requestId}] User profile completed: ${user.profileCompleted}`);
 
         // Check if profile is already completed
         if (user.profileCompleted === true) {
+            console.log(`👤 [${requestId}] Profile already completed for user: ${user._id}`);
             return res.status(400).json({
                 success: false,
                 error: 'Profile already completed. Profile can only be updated once during initial setup.',
@@ -76,13 +96,21 @@ async function updateUserProfile(req, res) {
             sportsAmbitions
         } = req.body;
 
+        console.log(`👤 [${requestId}] Profile data received:`, {
+            name, email, gender, height, heightUnit, weight, weightUnit, 
+            age, loyaltyPercentage, bodyProfile, mainGoal, sportsAmbitions
+        });
+
         // Convert height and weight to standard units (cm and kg)
         let heightInCm, weightInKg;
         
         try {
+            console.log(`👤 [${requestId}] Converting units...`);
             heightInCm = convertHeightToCm(height, heightUnit);
             weightInKg = convertWeightToKg(weight, weightUnit);
+            console.log(`👤 [${requestId}] Converted - Height: ${heightInCm}cm, Weight: ${weightInKg}kg`);
         } catch (conversionError) {
+            console.error(`👤 [${requestId}] Unit conversion error:`, conversionError);
             return res.status(400).json({
                 success: false,
                 error: 'Unit conversion failed',
@@ -92,6 +120,7 @@ async function updateUserProfile(req, res) {
 
         // Validate converted values are within acceptable ranges
         if (!isValidHeight(heightInCm)) {
+            console.log(`👤 [${requestId}] Invalid height: ${heightInCm}cm`);
             return res.status(400).json({
                 success: false,
                 error: `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`,
@@ -102,6 +131,7 @@ async function updateUserProfile(req, res) {
         }
 
         if (!isValidWeight(weightInKg)) {
+            console.log(`👤 [${requestId}] Invalid weight: ${weightInKg}kg`);
             return res.status(400).json({
                 success: false,
                 error: `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`,
@@ -112,6 +142,7 @@ async function updateUserProfile(req, res) {
         }
         
         // Ensure MongoDB connection is ready
+        console.log(`👤 [${requestId}] Ensuring MongoDB connection...`);
         await ConnectionHelper.ensureConnection();
         
         // Prepare update data with converted values
