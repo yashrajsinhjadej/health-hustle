@@ -362,24 +362,14 @@ const ensureMongoDBConnection = async (req, res, next) => {
             return next();
         }
         
-        // Not connected, attempt to connect
+        // Not connected, use ConnectionHelper to wait for connection
         console.log('🔄 MongoDB not connected for API request, attempting to connect...');
         console.log('📥 Request path:', req.path);
         console.log('📥 Request method:', req.method);
         
-        await mongoose.connect(process.env.MONGODB_URI, {
-            maxPoolSize: 10,              // Increased for better serverless handling
-            serverSelectionTimeoutMS: 15000, // Increased timeout
-            socketTimeoutMS: 45000,
-            family: 4,
-            retryWrites: true,
-            w: 'majority',
-            bufferCommands: false,        // Critical for serverless
-            autoIndex: false,
-            maxIdleTimeMS: 30000,
-            connectTimeoutMS: 15000,      // Increased timeout
-            heartbeatFrequencyMS: 10000,
-        });
+        // Import and use ConnectionHelper for consistent connection handling
+        const ConnectionHelper = require('./src/utils/connectionHelper');
+        await ConnectionHelper.ensureConnection();
         
         console.log('✅ MongoDB connected successfully for API request:', req.path);
         next();

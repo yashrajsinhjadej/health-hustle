@@ -3,6 +3,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const OTPUtils = require('../utils/otpUtils');
 const OTPService = require('../services/otpService');
+const ConnectionHelper = require('../utils/connectionHelper');
 
 class AuthController {
     // Generate JWT token
@@ -70,6 +71,9 @@ class AuthController {
             // Clean phone for user lookup
             const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
             console.log(`🔐 OTP verified successfully for ${cleanPhone}`);
+            
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
             
             // Check if user exists, if not create new user
             let user = await User.findOne({ phone: cleanPhone });
@@ -259,6 +263,9 @@ class AuthController {
     async logout(req, res) {
         try {
             const user = req.user;
+            
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
             
             // Update lastLoginAt to current time (invalidates current token)
             user.lastLoginAt = new Date();
