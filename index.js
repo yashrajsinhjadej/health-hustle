@@ -407,38 +407,22 @@ app.get('/health', async (req, res) => {
         console.log('   - Uptime:', uptime);
         console.log('   - MongoDB ready state:', mongoose.connection.readyState);
         
-        // Wait for MongoDB connection if not already connected
+        // Use ConnectionHelper to wait for database connection
         let dbStatus = 'disconnected';
         let dbHost = null;
         
-        // Always try to ensure connection is established
         try {
-            console.log('🔄 Health check - MongoDB readyState:', mongoose.connection.readyState);
+            console.log('🔄 Health check - Waiting for MongoDB connection...');
             
-            // Try to connect regardless of current state
-            await mongoose.connect(process.env.MONGODB_URI, {
-                maxPoolSize: 5,
-                serverSelectionTimeoutMS: 10000,
-                socketTimeoutMS: 45000,
-                family: 4,
-                retryWrites: true,
-                w: 'majority',
-                bufferCommands: false,
-                autoIndex: false,
-                maxIdleTimeMS: 30000,
-                connectTimeoutMS: 10000,
-                heartbeatFrequencyMS: 10000,
-            });
+            // Import and use ConnectionHelper
+            const ConnectionHelper = require('./src/utils/connectionHelper');
+            await ConnectionHelper.ensureConnection();
             
-            // Check if connection was successful
-            if (mongoose.connection.readyState === 1) {
-                dbStatus = 'connected';
-                dbHost = mongoose.connection.host;
-                console.log('✅ MongoDB connected successfully during health check');
-            } else {
-                console.log('❌ MongoDB connection failed - readyState:', mongoose.connection.readyState);
-                dbStatus = 'disconnected';
-            }
+            // If we reach here, connection is successful
+            dbStatus = 'connected';
+            dbHost = mongoose.connection.host;
+            console.log('✅ MongoDB connected successfully during health check');
+            
         } catch (dbError) {
             console.error('❌ MongoDB connection failed during health check:', dbError);
             dbStatus = 'disconnected';
