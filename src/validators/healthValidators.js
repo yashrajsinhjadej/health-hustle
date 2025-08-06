@@ -3,16 +3,20 @@ const { body, param, validationResult } = require('express-validator');
 
 // Date format validation helper
 const isValidDateFormat = (value) => {
+    console.log('🔍 Validating date value:', value, 'type:', typeof value);
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(value)) {
+        console.log('❌ Date regex failed for:', value);
         throw new Error('Invalid date format. Use YYYY-MM-DD format.');
     }
     
     const date = new Date(value);
     if (isNaN(date.getTime())) {
+        console.log('❌ Date parsing failed for:', value);
         throw new Error('Invalid date. Please provide a valid date.');
     }
     
+    console.log('✅ Date validation passed for:', value);
     return true;
 };
 
@@ -265,6 +269,8 @@ const validateBulkUpdate = [
         .isArray()
         .withMessage('health_data must be an array')
         .custom((value) => {
+            console.log('🔍 Validating health_data array length:', value?.length);
+            console.log('🔍 First item structure:', JSON.stringify(value?.[0], null, 2));
             if (value.length === 0) {
                 throw new Error('health_data array cannot be empty');
             }
@@ -290,14 +296,22 @@ const validateBulkUpdate = [
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     
+    console.log('🔍 Validation check - has errors:', !errors.isEmpty());
+    if (!errors.isEmpty()) {
+        console.log('❌ Validation errors found:', errors.array());
+    }
+    
     if (!errors.isEmpty()) {
         const validationErrors = {};
         
         errors.array().forEach(error => {
             // Handle nested field errors (e.g., 'health_data.0.date')
             const fieldPath = error.path || error.param;
+            console.log('🔍 Processing error for field:', fieldPath, 'message:', error.msg);
             validationErrors[fieldPath] = error.msg;
         });
+        
+        console.log('❌ Final validation errors object:', validationErrors);
         
         return res.status(400).json({
             success: false,
@@ -306,6 +320,7 @@ const handleValidationErrors = (req, res, next) => {
         });
     }
     
+    console.log('✅ Validation passed, proceeding to controller');
     next();
 };
 
