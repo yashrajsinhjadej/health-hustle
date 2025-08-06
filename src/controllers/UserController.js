@@ -7,6 +7,7 @@ const {
     getHeightRangeMessage,
     getWeightRangeMessage
 } = require('../utils/unitConverter');
+const ConnectionHelper = require('../utils/connectionHelper');
 
 
 async function getUserProfile(req, res) {
@@ -109,6 +110,9 @@ async function updateUserProfile(req, res) {
                 }
             });
         }
+        
+        // Ensure MongoDB connection is ready
+        await ConnectionHelper.ensureConnection();
         
         // Prepare update data with converted values
         const updateData = {

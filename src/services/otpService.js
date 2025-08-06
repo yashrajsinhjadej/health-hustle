@@ -2,12 +2,16 @@
 const OTP = require('../models/OTP');
 const OTPUtils = require('../utils/otpUtils');
 const TwilioSMSService = require('./twilioSMSService');
+const ConnectionHelper = require('../utils/connectionHelper');
 
 class OTPService {
     
     // Create or update OTP with rate limiting
     async createOrUpdateOTP(phone, cooldownMinutes = 1) {
         try {
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
+            
             // Generate new OTP using utils
             const otp = OTPUtils.generateOTP();
             
@@ -112,6 +116,9 @@ class OTPService {
     // Verify OTP
     async verifyOTP(phone, otp) {
         try {
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
+            
             // Accept only string of 10 digits
             if (typeof phone !== 'string' || !/^[0-9]{10}$/.test(phone)) {
                 return {
@@ -173,6 +180,9 @@ class OTPService {
 
     // Helper methods that interact with the model
     async findValidOTP(phone, otp) {
+        // Ensure MongoDB connection is ready
+        await ConnectionHelper.ensureConnection();
+        
         return await OTP.findOne({
             phone: phone,
             otp: otp,
@@ -203,6 +213,9 @@ class OTPService {
     // Cleanup expired/used OTPs (can be called by cron job)
     async cleanupExpiredOTPs() {
         try {
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
+            
             const result = await OTP.deleteMany({
                 $or: [
                     { isUsed: true },
@@ -222,6 +235,9 @@ class OTPService {
     // Get OTP statistics (for admin/monitoring)
     async getOTPStats() {
         try {
+            // Ensure MongoDB connection is ready
+            await ConnectionHelper.ensureConnection();
+            
             const stats = await OTP.aggregate([
                 {
                     $group: {

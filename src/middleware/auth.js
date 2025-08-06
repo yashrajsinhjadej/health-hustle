@@ -1,6 +1,7 @@
 // JWT Authentication Middleware
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const ConnectionHelper = require('../utils/connectionHelper');
 
 // Verify JWT token
 const authenticateToken = async (req, res, next) => {
@@ -16,6 +17,10 @@ const authenticateToken = async (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Ensure MongoDB connection is ready
+        await ConnectionHelper.ensureConnection();
+        
         const user = await User.findById(decoded.userId).select('-otp');
 
         if (!user || !user.isActive) {
