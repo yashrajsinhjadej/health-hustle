@@ -1,5 +1,6 @@
 // Health Controller - Daily health data management
 const DailyHealthData = require('../models/DailyHealthData');
+const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 
 /**b6h
@@ -184,21 +185,58 @@ class HealthController {
                 date: today 
             });
 
+            // Check if user has goals, if not create default goals
+            let userGoals = await Goals.findOne({ userId: userId });
+            
+            if (!userGoals) {
+                console.log(`🎯 Creating default goals for new user ${userId}`);
+                
+                // Create default goals for the user
+                userGoals = new Goals({
+                    userId: userId,
+                    // Default values are already set in the schema
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    activeMinutesGoal: 30,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
+                    sleepGoal: {
+                        hours: 8,
+                        bedtime: "22:00",
+                        wakeupTime: "06:00"
+                    },
+                    workoutGoals: {
+                        weeklyWorkouts: 3,
+                        preferredWorkoutTypes: ['cardio', 'strength'],
+                        sessionDuration: 30
+                    }
+                });
+                
+                await userGoals.save();
+                console.log(`✅ Default goals created for user ${userId}`);
+            }
+
+            // Prepare response data
+            const responseData = {
+                healthData: dailyHealth,
+                goals: userGoals
+            };
+
             if (!dailyHealth) {
                 return res.json({
                     success: true,
-                    message: 'No health data found for today',
-                    data: null,
+                    message: 'No health data found for today, but goals are ready',
+                    data: responseData,
                     date: today
                 });
             }
 
-            console.log(`📊 Retrieved today's health data for user ${userId}`);
+            console.log(`📊 Retrieved today's health data and goals for user ${userId}`);
 
             res.json({
                 success: true,
-                message: 'Today\'s health data retrieved successfully',
-                data: dailyHealth,
+                message: 'Today\'s health data and goals retrieved successfully',
+                data: responseData,
                 date: today
             });
 
@@ -206,7 +244,7 @@ class HealthController {
             console.error('Get today health error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to retrieve today\'s health data'
+                error: 'Failed to retrieve today\'s health data and goals'
             });
         }
     }
