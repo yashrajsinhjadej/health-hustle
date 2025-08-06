@@ -143,7 +143,7 @@ const handleValidationErrors = (req, res, next) => {
         });
     }
     
-    Logger.success('UserValidators', 'handleValidationErrors', 'Validation passed', {
+    Logger.success('UserValidators', 'Validation passed', {
         requestId,
         method: req.method,
         url: req.url
