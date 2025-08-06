@@ -15,26 +15,53 @@ class Logger {
         return baseMsg;
     }
 
-    static info(id, message, data = null) {
+    // Helper to handle both (id, message, data) and (module, method, message, data) patterns
+    static _parseArgs(args) {
+        if (args.length === 3) {
+            // Pattern: (id, message, data)
+            return { id: args[0], message: args[1], data: args[2] };
+        } else if (args.length === 4) {
+            // Pattern: (module, method, message, data)
+            const id = `${args[0]}.${args[1]}`;
+            return { id, message: args[2], data: args[3] };
+        } else if (args.length === 2) {
+            // Pattern: (id, message)
+            return { id: args[0], message: args[1], data: null };
+        } else {
+            // Fallback
+            return { id: 'unknown', message: args[0] || 'No message', data: null };
+        }
+    }
+
+    static info(...args) {
+        const { id, message, data } = this._parseArgs(args);
         console.log(this.formatMessage('info', id, message, data));
     }
 
-    static error(id, message, error = null, data = null) {
+    static error(...args) {
+        const { id, message, data } = this._parseArgs(args);
         console.error(this.formatMessage('error', id, message, data));
-        if (error) {
-            console.error(`[${id}] Error details:`, error);
-            if (error.stack) {
-                console.error(`[${id}] Stack trace:`, error.stack);
+        if (data && data.error) {
+            console.error(`[${id}] Error details:`, data.error);
+            if (data.stack) {
+                console.error(`[${id}] Stack trace:`, data.stack);
             }
         }
     }
 
-    static warn(id, message, data = null) {
+    static warn(...args) {
+        const { id, message, data } = this._parseArgs(args);
         console.warn(this.formatMessage('warn', id, message, data));
     }
 
-    static debug(id, message, data = null) {
+    static success(...args) {
+        const { id, message, data } = this._parseArgs(args);
+        console.log(this.formatMessage('success', id, message, data));
+    }
+
+    static debug(...args) {
         if (process.env.NODE_ENV !== 'production') {
+            const { id, message, data } = this._parseArgs(args);
             console.log(this.formatMessage('debug', id, message, data));
         }
     }
