@@ -109,7 +109,7 @@ async function updateUserProfile(req, res) {
                 }
             });
         }
-
+        var bmi = weightInKg / ((heightInCm / 100) ** 2);
         // Prepare update data with converted values
         const updateData = {
             name: name.trim(),
@@ -126,7 +126,8 @@ async function updateUserProfile(req, res) {
                 heightUnit: heightUnit,
                 weightUnit: weightUnit
             },
-            profileCompleted: true // Mark profile as completed
+            profileCompleted: true, // Mark profile as completed
+            bmi: bmi // Store calculated BMI
         };
 
         // Update user with validation
