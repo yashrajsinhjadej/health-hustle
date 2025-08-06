@@ -37,16 +37,16 @@ router.get('/', (req, res) => {
 // GET /health/today - Get today's health data (convenience route)
 router.get('/today', HealthController.getTodayHealth); // verified by yash
 
-// GET /health/:date - Get daily health data for specific date  
-router.get('/:date', validateDateParam, handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
-
-// PUT /health/:date - Update daily health data for specific date
-router.put('/:date', validateDailyHealthData, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash
-
 // PUT /health/bulk - Bulk update health data for multiple dates
 router.put('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yash
 
 // PUT /health/quick-update - Quick updates for water counter, calories tracker etc.
 router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, HealthController.quickUpdate); // Quick update for water, calories, etc.
+
+// GET /health/:date - Get daily health data for specific date  
+router.get('/:date', validateDateParam, handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
+
+// PUT /health/:date - Update daily health data for specific date
+router.put('/:date', validateDailyHealthData, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash
 
 module.exports = router;
