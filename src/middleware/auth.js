@@ -25,7 +25,7 @@ const authenticateToken = async (req, res, next) => {
             });
         }
 
-        // NEW: Check if token was issued before user's last login
+        // Check if token was issued before user's last login (session invalidation)
         const tokenIssuedAt = new Date(decoded.iat * 1000); // JWT iat is in seconds
         
         if (user.lastLoginAt > tokenIssuedAt) {

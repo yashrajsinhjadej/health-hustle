@@ -91,12 +91,13 @@ class AuthController {
             // Generate JWT token with user ID first to get the exact iat
             const token = this.generateToken(user._id);
             
-            // Extract the iat from the token to set lastLoginAt to the same second
+            // Extract the iat from the token to set lastLoginAt safely before it
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
-            // Update lastLoginAt to match token issue time (this invalidates all previous tokens)
-            user.lastLoginAt = tokenIssuedAt;
+            // Set lastLoginAt to 30 seconds before token issue time
+            // This ensures the current token is always valid while invalidating previous tokens
+            user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 30000); // 30 seconds before
             await user.save();
             
             console.log(token);

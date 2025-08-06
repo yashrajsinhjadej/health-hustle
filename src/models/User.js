@@ -94,7 +94,7 @@ const userSchema = new mongoose.Schema({
         required: function() {
             return this.profileCompleted === true;
         },
-        enum: ['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body'],
+        enum: ['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'],
         lowercase: true
     },
     sportsAmbitions: {
