@@ -5,7 +5,9 @@ const {
     isValidHeight, 
     isValidWeight,
     getHeightRangeMessage,
-    getWeightRangeMessage
+    getWeightRangeMessage,
+    getDisplayHeight,
+    getDisplayWeight
 } = require('../utils/unitConverter');
 const ConnectionHelper = require('../utils/connectionHelper');
 
@@ -21,6 +23,21 @@ async function getUserProfile(req, res) {
         console.log(`👤 [${requestId}] User from middleware: ${user ? user._id : 'null'}`);
         console.log(`👤 [${requestId}] User profile completed: ${user ? user.profileCompleted : 'N/A'}`);
         
+        // Prepare display height and weight if user has completed profile
+        let displayHeight = null;
+        let displayWeight = null;
+        
+        if (user.profileCompleted && user.height && user.weight && user.userPreferences) {
+            const heightUnit = user.userPreferences.heightUnit || 'cm';
+            const weightUnit = user.userPreferences.weightUnit || 'kg';
+            
+            displayHeight = getDisplayHeight(user.height, heightUnit);
+            displayWeight = getDisplayWeight(user.weight, weightUnit);
+            
+            console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
+            console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+        }
+        
         const responseData = {
             success: true,
             user: {
@@ -34,8 +51,10 @@ async function getUserProfile(req, res) {
                 ...(user.profileCompleted && {
                     age: user.age,
                     gender: user.gender,
-                    height: user.height,
-                    weight: user.weight,
+                    height: user.height, // Raw height in cm
+                    weight: user.weight, // Raw weight in kg
+                    displayHeight: displayHeight, // Height in user's preferred unit
+                    displayWeight: displayWeight, // Weight in user's preferred unit
                     loyaltyPercentage: user.loyaltyPercentage,
                     bodyProfile: user.bodyProfile,
                     mainGoal: user.mainGoal,
@@ -185,6 +204,13 @@ async function updateUserProfile(req, res) {
         console.log(`📏 Height: ${height} ${heightUnit} → ${heightInCm} cm`);
         console.log(`⚖️ Weight: ${weight} ${weightUnit} → ${weightInKg} kg`);
 
+        // Calculate display height and weight for response
+        const displayHeight = getDisplayHeight(userUpdated.height, userUpdated.userPreferences.heightUnit);
+        const displayWeight = getDisplayWeight(userUpdated.weight, userUpdated.userPreferences.weightUnit);
+        
+        console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
+        console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+
         res.json({
             success: true,
             message: 'User profile updated successfully',
@@ -196,8 +222,10 @@ async function updateUserProfile(req, res) {
                 profileCompleted: userUpdated.profileCompleted,
                 age: userUpdated.age,
                 gender: userUpdated.gender,
-                height: userUpdated.height,
-                weight: userUpdated.weight,
+                height: userUpdated.height, // Raw height in cm
+                weight: userUpdated.weight, // Raw weight in kg
+                displayHeight: displayHeight, // Height in user's preferred unit
+                displayWeight: displayWeight, // Weight in user's preferred unit
                 bodyProfile: userUpdated.bodyProfile,
                 mainGoal: userUpdated.mainGoal,
                 userPreferences: userUpdated.userPreferences
