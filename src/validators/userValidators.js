@@ -64,8 +64,8 @@ const validateUserProfileUpdate = [
     body('age')
         .notEmpty()
         .withMessage('Age is required')
-        .isInt({ min: 13, max: 120 })
-        .withMessage('Age must be between 13 and 120'),
+        .isInt({ min: 2, max: 102 })
+        .withMessage('Age must be between 2 and 102'),
 
     // Loyalty percentage validation
     body('loyaltyPercentage')
@@ -94,7 +94,7 @@ const validateUserProfileUpdate = [
         .notEmpty()
         .withMessage('Main goal is required')
         .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'])
-        .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, or fit_body'),
+        .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, athletic_performance, weight_gain, or fit_body'),
 
     // Sports ambitions validation (optional)
     body('sportsAmbitions')
