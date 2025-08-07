@@ -75,7 +75,7 @@ function convertKgToUnit(kg, unit) {
  * @returns {boolean} True if valid, false if invalid
  */
 function isValidHeight(heightInCm) {
-    return heightInCm >= 50 && heightInCm <= 300;
+    return heightInCm >= 50 && heightInCm <= 305;
 }
 
 /**
