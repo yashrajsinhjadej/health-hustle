@@ -115,6 +115,190 @@ const validateDateParam = [
         .custom(isNotFutureDate)
 ];
 
+// Validation for date in request body
+const validateDateBody = [
+    body('date')
+        .trim()
+        .notEmpty()
+        .withMessage('Date is required in request body')
+        .custom(isValidDateFormat)
+        .custom(isNotFutureDate)
+];
+
+// Validation for daily health data update with date in body
+const validateDailyHealthDataBody = [
+    // Date body validation - REQUIRED
+    body('date')
+        .trim()
+        .notEmpty()
+        .withMessage('Date is required in request body')
+        .custom(isValidDateFormat)
+        .custom(isNotFutureDate),
+
+    // Steps validation (optional)
+    body('steps.count')
+        .optional()
+        .isInt({ min: 0, max: 100000 })
+        .withMessage('Steps count must be between 0 and 100,000'),
+    
+    body('steps.goal')
+        .optional()
+        .isInt({ min: 1000, max: 50000 })
+        .withMessage('Steps goal must be between 1,000 and 50,000'),
+    
+    body('steps.calories')
+        .optional()
+        .isFloat({ min: 0, max: 10000 })
+        .withMessage('Steps calories must be between 0 and 10,000'),
+
+    // Water validation (optional) - frontend sends glasses, backend stores ml
+    body('water.consumed')
+        .optional()
+        .isFloat({ min: 0, max: 50 })
+        .withMessage('Water consumed must be between 0 and 50 glasses'),
+    
+    body('water.goal')
+        .optional()
+        .isFloat({ min: 1, max: 25 })
+        .withMessage('Water goal must be between 1 and 25 glasses'),
+
+    // Body metrics validation (optional)
+    body('bodyMetrics.weight')
+        .optional()
+        .isFloat({ min: 10, max: 500 })
+        .withMessage('Weight must be between 10kg and 500kg'),
+    
+    body('bodyMetrics.height')
+        .optional()
+        .isFloat({ min: 50, max: 300 })
+        .withMessage('Height must be between 50cm and 300cm'),
+    
+    body('bodyMetrics.bmi')
+        .optional()
+        .isFloat({ min: 10, max: 100 })
+        .withMessage('BMI must be between 10 and 100'),
+
+    // Blood pressure validation (optional)
+    body('bloodPressure.systolic')
+        .optional()
+        .isInt({ min: 70, max: 250 })
+        .withMessage('Systolic pressure must be between 70 and 250'),
+    
+    body('bloodPressure.diastolic')
+        .optional()
+        .isInt({ min: 40, max: 150 })
+        .withMessage('Diastolic pressure must be between 40 and 150'),
+    
+    body('bloodPressure.timestamp')
+        .optional()
+        .isISO8601()
+        .withMessage('Blood pressure timestamp must be a valid ISO 8601 date'),
+
+    // Heart rate validation (optional)
+    body('heartRate.readings')
+        .optional()
+        .isArray()
+        .withMessage('Heart rate readings must be an array'),
+    
+    body('heartRate.readings.*.time')
+        .optional()
+        .custom(isValidTimeFormat),
+    
+    body('heartRate.readings.*.bpm')
+        .optional()
+        .isInt({ min: 30, max: 250 })
+        .withMessage('Heart rate BPM must be between 30 and 250'),
+    
+    body('heartRate.readings.*.activity')
+        .optional()
+        .isIn(['resting', 'active', 'exercise', 'manual'])
+        .withMessage('Heart rate activity must be resting, active, exercise, or manual'),
+    
+    body('heartRate.average')
+        .optional()
+        .isInt({ min: 30, max: 250 })
+        .withMessage('Average heart rate must be between 30 and 250'),
+    
+    body('heartRate.max')
+        .optional()
+        .isInt({ min: 30, max: 250 })
+        .withMessage('Max heart rate must be between 30 and 250'),
+    
+    body('heartRate.min')
+        .optional()
+        .isInt({ min: 30, max: 250 })
+        .withMessage('Min heart rate must be between 30 and 250'),
+
+    // Sleep validation (optional)
+    body('sleep.duration')
+        .optional()
+        .isFloat({ min: 0, max: 24 })
+        .withMessage('Sleep duration must be between 0 and 24 hours'),
+    
+    body('sleep.quality')
+        .optional()
+        .isIn(['poor', 'fair', 'good', 'excellent'])
+        .withMessage('Sleep quality must be poor, fair, good, or excellent'),
+    
+    body('sleep.bedtime')
+        .optional()
+        .custom(isValidTimeFormat),
+    
+    body('sleep.wakeup')
+        .optional()
+        .custom(isValidTimeFormat),
+
+    // Meals validation (optional)
+    body('meals')
+        .optional()
+        .isArray()
+        .withMessage('Meals must be an array'),
+    
+    body('meals.*.type')
+        .optional()
+        .isIn(['breakfast', 'lunch', 'dinner', 'snack'])
+        .withMessage('Meal type must be breakfast, lunch, dinner, or snack'),
+    
+    body('meals.*.time')
+        .optional()
+        .custom(isValidTimeFormat),
+    
+    body('meals.*.calories')
+        .optional()
+        .isInt({ min: 1, max: 5000 })
+        .withMessage('Meal calories must be between 1 and 5000'),
+    
+    body('meals.*.description')
+        .optional()
+        .isLength({ min: 1, max: 200 })
+        .withMessage('Meal description must be between 1 and 200 characters'),
+
+    // Exercise validation (optional)
+    body('exercise')
+        .optional()
+        .isArray()
+        .withMessage('Exercise must be an array'),
+    
+    body('exercise.*.type')
+        .optional()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Exercise type must be between 1 and 50 characters'),
+    
+    body('exercise.*.duration')
+        .optional()
+        .isInt({ min: 1, max: 600 })
+        .withMessage('Exercise duration must be between 1 and 600 minutes'),
+    
+    body('exercise.*.calories')
+        .optional()
+        .isInt({ min: 1, max: 2000 })
+        .withMessage('Exercise calories must be between 1 and 2000'),
+    
+    body('exercise.*.time')
+        .optional()
+        .custom(isValidTimeFormat)
+];
+
 // Validation for daily health data update
 const validateDailyHealthData = [
     // Date parameter validation
@@ -389,7 +573,9 @@ const handleValidationErrors = (req, res, next) => {
 
 module.exports = {
     validateDateParam,
+    validateDateBody,
     validateDailyHealthData,
+    validateDailyHealthDataBody,
     validateQuickUpdate,
     validateBulkUpdate,
     handleValidationErrors

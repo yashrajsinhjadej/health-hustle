@@ -4,7 +4,24 @@ const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 
-/**b6h
+/**
+ * HEALTH CONTROLLER API DOCUMENTATION
+ * 
+ * 1. DAILY UPDATE - PUT /api/health/date
+ * Expected Body Format:
+ * {
+ *   "date": "2025-08-07",  // REQUIRED - Date is always required in request body
+ *   "steps": {
+ *     "count": 8500,
+ *     "goal": 10000,
+ *     "calories": 340
+ *   },
+ *   "water": {
+ *     "consumed": 6,  // Frontend sends glasses, backend stores as ml
+ *     "goal": 8
+ *   },
+ *   "bodyMetrics": {
+ *     "weight": 70,
  *     "height": 175,
  *     "bmi": 24.6
  *   },
@@ -48,19 +65,32 @@ const WaterConverter = require('../utils/waterConverter');
  *     }
  *   ]
  * }
- * ~
- * 2. QUICK UPDATE - PUT /user/health/quick
+ * 
+ * 2. GET SPECIFIC DATE - GET /api/health/date
  * Expected Body Format:
  * {
- *   "metric": "steps|water|weight|heartRate",
+ *   "date": "2025-08-06"  // REQUIRED - Date is always required in request body
+ * }
+ * 
+ * 3. QUICK UPDATE - PUT /api/health/quick-update (TODAY ONLY)
+ * Expected Body Format:
+ * {
+ *   "metric": "steps|water|calories|sleep|weight|heartRate",
  *   "value": 8500
  * }
  * 
- * Note for WATER: Frontend sends in glasses, backend converts to ml automatically
- * - 1 glass = 200ml
- * - Example: value: 4 (glasses) → stored as 800ml
+ * BEHAVIOR BY METRIC:
+ * - WATER & CALORIES: Adds entry to array + updates total (additive)
+ *   Example: water=2 glasses → adds 2 glasses to today's water entries
+ * - STEPS & SLEEP & WEIGHT: Updates whole field (replacement)
+ *   Example: steps=8500 → sets today's step count to 8500
+ * - HEART RATE: Adds reading to array with current time
  * 
- * 3. BULK UPDATE - PUT /user/health/bulk
+ * Note for WATER: Frontend sends in glasses, backend stores ml + creates entries
+ * - 1 glass = 200ml
+ * - Example: value: 2 (glasses) → adds entry + increases total by 400ml
+ * 
+ * 4. BULK UPDATE - POST /api/health/bulk
  * Expected Body Format:
  * {
  *   "health_data": [
@@ -88,13 +118,17 @@ const WaterConverter = require('../utils/waterConverter');
  * - Backend stores: ml (glasses × 200ml)
  * - Frontend receives: glasses (ml ÷ 200ml)
  * - No unit tracking needed - always glasses in/out, ml stored internally
+ * 
+ * IMPORTANT: Date is ALWAYS required in request body for all date-specific operations
+ * No automatic fallback to "today" - user must explicitly specify the date they want
  */
 
 class HealthController {
     
     // Update or create daily health data
     async updateDailyHealth(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `update_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
             console.log(`📊 [${requestId}] HealthController.updateDailyHealth START`);
             console.log(`📊 [${requestId}] Request params:`, req.params);
@@ -107,8 +141,23 @@ class HealthController {
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
-            const { date } = req.params; // Expected format: YYYY-MM-DD
+            const date = req.body.date; // Date is required in body, no fallback to today
             const healthData = req.body;
+
+            // Additional controller-level validation for future dates
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const inputDate = new Date(date);
+            inputDate.setHours(0, 0, 0, 0);
+            
+            if (inputDate > today) {
+                console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
+                return res.status(400).json({
+                    success: false,
+                    message: `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`,
+                    data: null
+                });
+            }
             
             console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
             console.log(`📊 [${requestId}] Health data received:`, healthData);
@@ -172,7 +221,7 @@ class HealthController {
             });
 
         } catch (error) {
-            console.error('Update daily health error:', error);
+            console.error(`❌ [${requestId}] Update daily health error:`, error);
             res.status(500).json({
                 success: false,
                 error: 'Failed to update daily health data'
@@ -182,20 +231,47 @@ class HealthController {
 
     // Get specific day health data
     async getDailyHealth(req, res) {
+        const requestId = `get_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
+            console.log(`📊 [${requestId}] HealthController.getDailyHealth START`);
+            console.log(`📊 [${requestId}] Request body:`, req.body);
+            console.log(`📊 [${requestId}] Request headers:`, req.headers);
+            console.log(`📊 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            
             // Ensure MongoDB connection for serverless
+            console.log(`📊 [${requestId}] Ensuring MongoDB connection...`);
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
-            const { date } = req.params; // Expected format: YYYY-MM-DD
+            const date = req.body.date;
+
+            // Additional controller-level validation for future dates
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const inputDate = new Date(date);
+            inputDate.setHours(0, 0, 0, 0);
+            
+            if (inputDate > today) {
+                console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
+                return res.status(400).json({
+                    success: false,
+                    message: `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`,
+                    data: null
+                });
+            }
+
+            console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
 
             // Find health data for specific date
+            console.log(`📊 [${requestId}] Looking for health record...`);
             const dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
                 date: date 
             });
 
             if (!dailyHealth) {
+                console.log(`📊 [${requestId}] No health data found for ${date}`);
                 return res.status(404).json({
                     success: false,
                     message: 'No health data found for this date',
@@ -203,16 +279,22 @@ class HealthController {
                 });
             }
 
-            console.log(`📊 Retrieved health data for user ${userId} on ${date}`);
+            console.log(`📊 [${requestId}] Found health record:`, dailyHealth.toObject());
 
             // Convert ml back to glasses for frontend
             const responseData = { ...dailyHealth.toObject() };
             if (responseData.water && responseData.water.consumed !== undefined) {
-                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
+                const originalMl = responseData.water.consumed;
+                responseData.water.consumed = WaterConverter.mlToGlasses(originalMl);
+                console.log(`💧 [${requestId}] Converted water: ${originalMl}ml → ${responseData.water.consumed} glasses`);
             }
             if (responseData.water && responseData.water.goal !== undefined) {
-                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
+                const originalGoalMl = responseData.water.goal;
+                responseData.water.goal = WaterConverter.mlToGlasses(originalGoalMl);
+                console.log(`💧 [${requestId}] Converted water goal: ${originalGoalMl}ml → ${responseData.water.goal} glasses`);
             }
+
+            console.log(`📊 [${requestId}] Retrieved health data for user ${userId} on ${date}`);
 
             res.json({
                 success: true,
@@ -221,7 +303,7 @@ class HealthController {
             });
 
         } catch (error) {
-            console.error('Get daily health error:', error);
+            console.error(`❌ [${requestId}] Get daily health error:`, error);
             res.status(500).json({
                 success: false,
                 error: 'Failed to retrieve daily health data'
@@ -237,6 +319,7 @@ class HealthController {
             
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            
 
             // Find today's health data
             const dailyHealth = await DailyHealthData.findOne({ 
@@ -315,15 +398,27 @@ class HealthController {
         }
     }
 
-    // Quick update for specific health metrics
+    // Quick update for specific health metrics (TODAY ONLY)
     async quickUpdate(req, res) {
+        const requestId = `quick_update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
+            console.log(`📊 [${requestId}] HealthController.quickUpdate START`);
+            console.log(`📊 [${requestId}] Request body:`, req.body);
+            
             // Ensure MongoDB connection before proceeding
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0];
+            const currentTime = new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
             const { metric, value } = req.body;
+
+            console.log(`📊 [${requestId}] Processing quick update - User: ${userId}, Today: ${today}, Metric: ${metric}, Value: ${value}`);
 
             // Find or create today's record
             let dailyHealth = await DailyHealthData.findOne({ 
@@ -332,54 +427,143 @@ class HealthController {
             });
 
             if (!dailyHealth) {
+                console.log(`📊 [${requestId}] Creating new health record for today`);
                 dailyHealth = new DailyHealthData({
                     userId: userId,
                     date: today
                 });
+            } else {
+                console.log(`📊 [${requestId}] Found existing health record for today`);
             }
 
             // Update specific metric based on type
             switch (metric) {
                 case 'steps':
+                    // STEPS: Update whole field (replace current value)
+                    console.log(`👟 [${requestId}] Updating steps: ${dailyHealth.steps.count} → ${value}`);
                     dailyHealth.steps.count = value;
                     break;
+                    
                 case 'water':
+                    // WATER: Add entry to array AND update total consumed
+                    console.log(`💧 [${requestId}] Adding water entry: ${value} glasses at ${currentTime}`);
+                    
                     // Convert glasses to ml for storage
-                    console.log(`💧 Quick update: Converting ${value} glasses to ml`);
                     const waterMl = WaterConverter.glassesToMl(value);
-                    dailyHealth.water.consumed = waterMl;
-                    console.log(`💧 Quick update: Stored ${waterMl}ml (${value} glasses)`);
+                    
+                    // Initialize water object if it doesn't exist
+                    if (!dailyHealth.water) {
+                        dailyHealth.water = { consumed: 0, entries: [] };
+                    }
+                    if (!dailyHealth.water.entries) {
+                        dailyHealth.water.entries = [];
+                    }
+                    
+                    // Add new entry to the array
+                    dailyHealth.water.entries.push({
+                        time: currentTime,
+                        amount: waterMl,  // Store in ml
+                        notes: `Quick update: ${value} glasses`
+                    });
+                    
+                    // Update total consumed (add to existing)
+                    dailyHealth.water.consumed = (dailyHealth.water.consumed || 0) + waterMl;
+                    
+                    console.log(`💧 [${requestId}] Added water entry: ${value} glasses (${waterMl}ml) at ${currentTime}`);
+                    console.log(`💧 [${requestId}] Total water consumed today: ${dailyHealth.water.consumed}ml`);
                     break;
+                    
+                case 'calories':
+                    // CALORIES: Add entry to array AND update total consumed
+                    console.log(`🔥 [${requestId}] Adding calorie entry: ${value} calories at ${currentTime}`);
+                    
+                    // Initialize calories object if it doesn't exist
+                    if (!dailyHealth.calories) {
+                        dailyHealth.calories = { consumed: 0, entries: [] };
+                    }
+                    if (!dailyHealth.calories.entries) {
+                        dailyHealth.calories.entries = [];
+                    }
+                    
+                    // Add new entry to the array
+                    dailyHealth.calories.entries.push({
+                        time: currentTime,
+                        amount: value,
+                        type: "manual",
+                        description: "Quick update entry",
+                        notes: "Added via quick update"
+                    });
+                    
+                    // Update total consumed (add to existing)
+                    dailyHealth.calories.consumed = (dailyHealth.calories.consumed || 0) + value;
+                    
+                    console.log(`🔥 [${requestId}] Added calorie entry: ${value} calories at ${currentTime}`);
+                    console.log(`� [${requestId}] Total calories consumed today: ${dailyHealth.calories.consumed}`);
+                    break;
+                    
+                case 'sleep':
+                    // SLEEP: Update whole field (replace current value)
+                    console.log(`😴 [${requestId}] Updating sleep duration: ${dailyHealth.sleep?.duration || 0} → ${value} hours`);
+                    
+                    if (!dailyHealth.sleep) {
+                        dailyHealth.sleep = {};
+                    }
+                    dailyHealth.sleep.duration = value;
+                    break;
+                    
                 case 'weight':
+                    // WEIGHT: Update whole field (replace current value)
+                    console.log(`⚖️ [${requestId}] Updating weight: ${dailyHealth.bodyMetrics?.weight || 0} → ${value}kg`);
+                    
+                    if (!dailyHealth.bodyMetrics) {
+                        dailyHealth.bodyMetrics = {};
+                    }
                     dailyHealth.bodyMetrics.weight = value;
                     break;
+                    
                 case 'heartRate':
+                    // HEART RATE: Add entry to readings array
+                    console.log(`❤️ [${requestId}] Adding heart rate reading: ${value} bpm at ${currentTime}`);
+                    
+                    if (!dailyHealth.heartRate) {
+                        dailyHealth.heartRate = { readings: [] };
+                    }
                     if (!dailyHealth.heartRate.readings) {
                         dailyHealth.heartRate.readings = [];
                     }
+                    
                     dailyHealth.heartRate.readings.push({
-                        time: new Date().toLocaleTimeString('en-US', { 
-                            hour12: false, 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                        }),
+                        time: currentTime,
                         bpm: value,
                         activity: 'manual'
                     });
+                    
+                    console.log(`❤️ [${requestId}] Added heart rate reading: ${value} bpm at ${currentTime}`);
                     break;
+                    
+                default:
+                    console.log(`❌ [${requestId}] Unknown metric: ${metric}`);
+                    return res.status(400).json({
+                        success: false,
+                        error: `Unknown metric: ${metric}. Supported metrics: steps, water, calories, sleep, weight, heartRate`
+                    });
             }
 
-            await dailyHealth.save();
+            const savedHealth = await dailyHealth.save();
+            console.log(`📊 [${requestId}] Successfully updated ${metric} for user ${userId}`);
 
-            console.log(`📊 Quick updated ${metric} for user ${userId}`);
-
-            // Convert ml back to glasses for response
-            const responseData = { ...dailyHealth.toObject() };
+            // Format response data (convert ml back to glasses for water)
+            const responseData = { ...savedHealth.toObject() };
             if (responseData.water && responseData.water.consumed !== undefined) {
                 responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
-            }
-            if (responseData.water && responseData.water.goal !== undefined) {
-                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
+                
+                // Also convert entries back to glasses for response
+                if (responseData.water.entries) {
+                    responseData.water.entries = responseData.water.entries.map(entry => ({
+                        ...entry,
+                        amount: WaterConverter.mlToGlasses(entry.amount)
+                    }));
+                }
             }
 
             res.json({
@@ -389,12 +573,13 @@ class HealthController {
                     date: today,
                     metric: metric,
                     value: value,
+                    timestamp: currentTime,
                     updatedData: responseData
                 }
             });
 
         } catch (error) {
-            console.error('Quick update error:', error);
+            console.error(`❌ [${requestId}] Quick update error:`, error);
             res.status(500).json({
                 success: false,
                 error: 'Failed to update health metric'
