@@ -2,6 +2,7 @@
 const DailyHealthData = require('../models/DailyHealthData');
 const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
+const WaterConverter = require('../utils/waterConverter');
 
 /**b6h
  *     "height": 175,
@@ -55,6 +56,10 @@ const ConnectionHelper = require('../utils/connectionHelper');
  *   "value": 8500
  * }
  * 
+ * Note for WATER: Frontend sends in glasses, backend converts to ml automatically
+ * - 1 glass = 200ml
+ * - Example: value: 4 (glasses) → stored as 800ml
+ * 
  * 3. BULK UPDATE - PUT /user/health/bulk
  * Expected Body Format:
  * {
@@ -76,7 +81,13 @@ const ConnectionHelper = require('../utils/connectionHelper');
  * 
  * DATE FORMAT: All dates should be in YYYY-MM-DD format (e.g., "2025-07-21")
  * TIME FORMAT: Times should be in HH:MM format (e.g., "10:30")
- * UNITS: Weight in kg, Height in cm, Water in liters, Duration in minutes/hours
+ * UNITS: Weight in kg, Height in cm, Water in glasses (frontend) → ml (backend), Duration in minutes/hours
+ * 
+ * WATER CONVERSION (Simple):
+ * - Frontend always sends: glasses (e.g., 4 glasses)
+ * - Backend stores: ml (glasses × 200ml)
+ * - Frontend receives: glasses (ml ÷ 200ml)
+ * - No unit tracking needed - always glasses in/out, ml stored internally
  */
 
 class HealthController {
@@ -101,6 +112,19 @@ class HealthController {
             
             console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
             console.log(`📊 [${requestId}] Health data received:`, healthData);
+
+            // Simple water conversion: glasses to ml for storage
+            if (healthData.water && healthData.water.consumed !== undefined) {
+                const originalGlasses = healthData.water.consumed;
+                healthData.water.consumed = WaterConverter.glassesToMl(originalGlasses);
+                console.log(`💧 [${requestId}] Converted water: ${originalGlasses} glasses → ${healthData.water.consumed}ml`);
+            }
+            
+            if (healthData.water && healthData.water.goal !== undefined) {
+                const originalGoalGlasses = healthData.water.goal;
+                healthData.water.goal = WaterConverter.glassesToMl(originalGoalGlasses);
+                console.log(`💧 [${requestId}] Converted water goal: ${originalGoalGlasses} glasses → ${healthData.water.goal}ml`);
+            }
 
             // Find existing record or create new one
             console.log(`📊 [${requestId}] Looking for existing health record...`);
@@ -132,10 +156,19 @@ class HealthController {
                 console.log(`📊 [${requestId}] Created new health data for user ${userId} on ${date}`);
             }
 
+            // Format water data for response (ml back to glasses)
+            const responseData = { ...dailyHealth.toObject() };
+            if (responseData.water && responseData.water.consumed !== undefined) {
+                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
+            }
+            if (responseData.water && responseData.water.goal !== undefined) {
+                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
+            }
+
             res.json({
                 success: true,
                 message: 'Daily health data updated successfully',
-                data: dailyHealth
+                data: responseData
             });
 
         } catch (error) {
@@ -172,10 +205,19 @@ class HealthController {
 
             console.log(`📊 Retrieved health data for user ${userId} on ${date}`);
 
+            // Convert ml back to glasses for frontend
+            const responseData = { ...dailyHealth.toObject() };
+            if (responseData.water && responseData.water.consumed !== undefined) {
+                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
+            }
+            if (responseData.water && responseData.water.goal !== undefined) {
+                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
+            }
+
             res.json({
                 success: true,
                 message: 'Daily health data retrieved successfully',
-                data: dailyHealth
+                data: responseData
             });
 
         } catch (error) {
@@ -234,6 +276,18 @@ class HealthController {
                 goals: userGoals
             };
 
+            // Convert ml back to glasses for frontend if health data exists
+            if (dailyHealth && dailyHealth.water) {
+                const formattedHealthData = { ...dailyHealth.toObject() };
+                if (formattedHealthData.water.consumed !== undefined) {
+                    formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                }
+                if (formattedHealthData.water.goal !== undefined) {
+                    formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
+                }
+                responseData.healthData = formattedHealthData;
+            }
+
             if (!dailyHealth) {
                 return res.json({
                     success: true,
@@ -290,7 +344,11 @@ class HealthController {
                     dailyHealth.steps.count = value;
                     break;
                 case 'water':
-                    dailyHealth.water.consumed = value;
+                    // Convert glasses to ml for storage
+                    console.log(`💧 Quick update: Converting ${value} glasses to ml`);
+                    const waterMl = WaterConverter.glassesToMl(value);
+                    dailyHealth.water.consumed = waterMl;
+                    console.log(`💧 Quick update: Stored ${waterMl}ml (${value} glasses)`);
                     break;
                 case 'weight':
                     dailyHealth.bodyMetrics.weight = value;
@@ -315,6 +373,15 @@ class HealthController {
 
             console.log(`📊 Quick updated ${metric} for user ${userId}`);
 
+            // Convert ml back to glasses for response
+            const responseData = { ...dailyHealth.toObject() };
+            if (responseData.water && responseData.water.consumed !== undefined) {
+                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
+            }
+            if (responseData.water && responseData.water.goal !== undefined) {
+                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
+            }
+
             res.json({
                 success: true,
                 message: `${metric} updated successfully`,
@@ -322,7 +389,7 @@ class HealthController {
                     date: today,
                     metric: metric,
                     value: value,
-                    updatedData: dailyHealth
+                    updatedData: responseData
                 }
             });
 
@@ -347,11 +414,41 @@ class HealthController {
 
             const results = [];
             const errors = [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
 
             // Process each day's data
             for (const dayData of health_data) {
                 try {
                     const { date, data } = dayData;
+
+                    // Additional controller-level validation for future dates
+                    const inputDate = new Date(date);
+                    inputDate.setHours(0, 0, 0, 0);
+                    
+                    if (inputDate > today) {
+                        console.log(`❌ Bulk update: Rejecting future date ${date} for user ${userId}`);
+                        errors.push({
+                            date: date,
+                            error: `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`
+                        });
+                        continue; // Skip processing this date
+                    }
+                    
+                    console.log(`✅ Bulk update: Processing valid date ${date} for user ${userId}`);
+
+                    // Simple water conversion for bulk update
+                    if (data.water && data.water.consumed !== undefined) {
+                        const originalGlasses = data.water.consumed;
+                        data.water.consumed = WaterConverter.glassesToMl(originalGlasses);
+                        console.log(`💧 Bulk update: Converted water for ${date}: ${originalGlasses} glasses → ${data.water.consumed}ml`);
+                    }
+                    
+                    if (data.water && data.water.goal !== undefined) {
+                        const originalGoalGlasses = data.water.goal;
+                        data.water.goal = WaterConverter.glassesToMl(originalGoalGlasses);
+                        console.log(`💧 Bulk update: Converted water goal for ${date}: ${originalGoalGlasses} glasses → ${data.water.goal}ml`);
+                    }
 
                     // Find existing record or create new one
                     let dailyHealth = await DailyHealthData.findOne({ 
