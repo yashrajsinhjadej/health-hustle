@@ -5,7 +5,9 @@ const { authenticateToken, userOnly } = require('../middleware/auth');
 const HealthController = require('../controllers/HealthController');
 const {
     validateDateParam,
+    validateDateBody,
     validateDailyHealthData,
+    validateDailyHealthDataBody,
     validateQuickUpdate,
     validateBulkUpdate,
     handleValidationErrors: handleHealthValidationErrors
@@ -26,10 +28,10 @@ router.get('/', (req, res) => {
         },
         availableEndpoints: [
             'GET /api/health/today - Get today\'s health data',
-            'GET /api/health/:date - Get health data by date',
-            'PUT /api/health/:date - Update health data for specific date',
-            'PUT /api/health/bulk - Bulk update health data for multiple dates',
-            'PUT /api/health/quick-update - Quick health updates (water, calories, etc.)'
+            'GET /api/health/date - Get health data by specific date (date in body)',
+            'PUT /api/health/date - Update health data for specific date (date in body)',
+            'POST /api/health/bulk - Bulk update health data for multiple dates',
+            'PUT /api/health/quick-update - Quick health updates for TODAY only (water/calories=additive, steps/sleep/weight=replace)'
         ]
     });
 });
@@ -43,10 +45,10 @@ router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthCon
 // PUT /health/quick-update - Quick updates for water counter, calories tracker etc.
 router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, HealthController.quickUpdate); // Quick update for water, calories, etc.
 
-// GET /health/:date - Get daily health data for specific date  
-router.get('/:date', validateDateParam, handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
+// GET /health/date - Get daily health data for specific date (date in body)
+router.get('/date', validateDateBody, handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
 
-// PUT /health/:date - Update daily health data for specific date
-router.put('/:date', validateDailyHealthData, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash
+// PUT /health/date - Update daily health data for specific date (date in body)
+router.put('/date', validateDailyHealthDataBody, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash
 
 module.exports = router;
