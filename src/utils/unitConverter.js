@@ -119,6 +119,40 @@ function getWeightRangeMessage(unit) {
     return '10-500 kg';
 }
 
+/**
+ * Get display height in user's preferred unit with formatting
+ * @param {number} heightInCm - Height stored in cm
+ * @param {string} preferredUnit - User's preferred unit ('cm' or 'ft')
+ * @returns {object} { value: number, unit: string, display: string }
+ */
+function getDisplayHeight(heightInCm, preferredUnit = 'cm') {
+    if (!heightInCm) return null;
+    
+    const value = convertCmToUnit(heightInCm, preferredUnit);
+    return {
+        value: value,
+        unit: preferredUnit,
+        display: `${value} ${preferredUnit}`
+    };
+}
+
+/**
+ * Get display weight in user's preferred unit with formatting
+ * @param {number} weightInKg - Weight stored in kg
+ * @param {string} preferredUnit - User's preferred unit ('kg' or 'lbs')
+ * @returns {object} { value: number, unit: string, display: string }
+ */
+function getDisplayWeight(weightInKg, preferredUnit = 'kg') {
+    if (!weightInKg) return null;
+    
+    const value = convertKgToUnit(weightInKg, preferredUnit);
+    return {
+        value: value,
+        unit: preferredUnit,
+        display: `${value} ${preferredUnit}`
+    };
+}
+
 module.exports = {
     convertHeightToCm,
     convertWeightToKg,
@@ -127,5 +161,7 @@ module.exports = {
     isValidHeight,
     isValidWeight,
     getHeightRangeMessage,
-    getWeightRangeMessage
+    getWeightRangeMessage,
+    getDisplayHeight,
+    getDisplayWeight
 };
