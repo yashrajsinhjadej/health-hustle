@@ -93,7 +93,7 @@ const validateUserProfileUpdate = [
         .trim()
         .notEmpty()
         .withMessage('Main goal is required')
-        .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body'])
+        .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'])
         .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, or fit_body'),
 
     // Sports ambitions validation (optional)
