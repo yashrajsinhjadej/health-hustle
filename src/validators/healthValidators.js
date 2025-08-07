@@ -67,6 +67,44 @@ const isValidTimeFormat = (value) => {
     return true;
 };
 
+// Future date validation helper
+const isNotFutureDate = (value) => {
+    const validationId = `future_date_val_${Date.now()}`;
+    Logger.info('HealthValidators', 'isNotFutureDate', 'Starting future date validation', {
+        validationId,
+        dateValue: value
+    });
+    
+    const inputDate = new Date(value);
+    const today = new Date();
+    
+    // Set today to start of day for accurate comparison
+    today.setHours(0, 0, 0, 0);
+    
+    // Set input date to start of day for accurate comparison
+    inputDate.setHours(0, 0, 0, 0);
+    
+    if (inputDate > today) {
+        Logger.warn('HealthValidators', 'isNotFutureDate', 'Future date validation failed', {
+            validationId,
+            dateValue: value,
+            inputDate: inputDate.toISOString(),
+            today: today.toISOString(),
+            error: 'Date cannot be in the future'
+        });
+        throw new Error('Date cannot be in the future. Please provide today\'s date or a past date.');
+    }
+    
+    Logger.success('HealthValidators', 'isNotFutureDate', 'Future date validation passed', {
+        validationId,
+        dateValue: value,
+        inputDate: inputDate.toISOString(),
+        today: today.toISOString()
+    });
+    
+    return true;
+};
+
 // Validation for date parameter in routes
 const validateDateParam = [
     param('date')
@@ -74,6 +112,7 @@ const validateDateParam = [
         .notEmpty()
         .withMessage('Date parameter is required')
         .custom(isValidDateFormat)
+        .custom(isNotFutureDate)
 ];
 
 // Validation for daily health data update
@@ -83,7 +122,8 @@ const validateDailyHealthData = [
         .trim()
         .notEmpty()
         .withMessage('Date parameter is required')
-        .custom(isValidDateFormat),
+        .custom(isValidDateFormat)
+        .custom(isNotFutureDate),
 
     // Steps validation (optional)
     body('steps.count')
@@ -101,21 +141,16 @@ const validateDailyHealthData = [
         .isFloat({ min: 0, max: 10000 })
         .withMessage('Steps calories must be between 0 and 10,000'),
 
-    // Water validation (optional)
+    // Water validation (optional) - frontend sends glasses, backend stores ml
     body('water.consumed')
         .optional()
-        .isFloat({ min: 0, max: 20 })
-        .withMessage('Water consumed must be between 0 and 20 liters'),
+        .isFloat({ min: 0, max: 50 })
+        .withMessage('Water consumed must be between 0 and 50 glasses'),
     
     body('water.goal')
         .optional()
-        .isFloat({ min: 0.5, max: 10 })
-        .withMessage('Water goal must be between 0.5 and 10 liters'),
-    
-    body('water.unit')
-        .optional()
-        .isIn(['liters', 'ml', 'cups'])
-        .withMessage('Water unit must be liters, ml, or cups'),
+        .isFloat({ min: 1, max: 25 })
+        .withMessage('Water goal must be between 1 and 25 glasses'),
 
     // Body metrics validation (optional)
     body('bodyMetrics.weight')
@@ -280,8 +315,8 @@ const validateQuickUpdate = [
                     }
                     break;
                 case 'water':
-                    if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 20) {
-                        throw new Error('Water value must be a number between 0 and 20 liters');
+                    if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 50) {
+                        throw new Error('Water value must be a number between 0 and 50 glasses');
                     }
                     break;
                 case 'weight':
@@ -319,7 +354,8 @@ const validateBulkUpdate = [
     body('health_data.*.date')
         .notEmpty()
         .withMessage('Date is required for each health data entry')
-        .custom(isValidDateFormat),
+        .custom(isValidDateFormat)
+        .custom(isNotFutureDate),
     
     body('health_data.*.data')
         .notEmpty()
