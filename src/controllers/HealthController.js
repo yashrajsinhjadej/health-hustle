@@ -554,8 +554,19 @@ class HealthController {
 
             // Format response data (convert ml back to glasses for water)
             const responseData = { ...savedHealth.toObject() };
+            let waterResponse = null;
+            
             if (responseData.water && responseData.water.consumed !== undefined) {
-                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
+                const totalMl = responseData.water.consumed;
+                const totalGlasses = WaterConverter.mlToGlasses(totalMl);
+                
+                // Store both ml and glasses for water metric response
+                waterResponse = {
+                    totalConsumedMl: totalMl,
+                    totalConsumedGlasses: totalGlasses
+                };
+                
+                responseData.water.consumed = totalGlasses;
                 
                 // Also convert entries back to glasses for response
                 if (responseData.water.entries) {
@@ -566,7 +577,7 @@ class HealthController {
                 }
             }
 
-            res.json({
+            const responsePayload = {
                 success: true,
                 message: `${metric} updated successfully`,
                 data: {
@@ -576,7 +587,14 @@ class HealthController {
                     timestamp: currentTime,
                     updatedData: responseData
                 }
-            });
+            };
+
+            // Add water-specific data for water metric updates
+            if (metric === 'water' && waterResponse) {
+                responsePayload.data.waterSummary = waterResponse;
+            }
+
+            res.json(responsePayload);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Quick update error:`, error);
