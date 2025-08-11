@@ -473,14 +473,14 @@ const validateDailyHealthData = [
         .custom(isValidTimeFormat)
 ];
 
-// Validation for quick update
+// Validation for quick update  
 const validateQuickUpdate = [
     body('metric')
         .trim()
         .notEmpty()
         .withMessage('Metric is required')
-        .isIn(['steps', 'water', 'weight', 'heartRate'])
-        .withMessage('Metric must be steps, water, weight, or heartRate'),
+        .isIn(['steps', 'water', 'sleep'])
+        .withMessage('Metric must be steps, water, or sleep'),
     
     body('value')
         .notEmpty()
@@ -503,14 +503,9 @@ const validateQuickUpdate = [
                         throw new Error('Water value must be a number between 0 and 50 glasses');
                     }
                     break;
-                case 'weight':
-                    if (isNaN(Number(value)) || Number(value) < 10 || Number(value) > 500) {
-                        throw new Error('Weight value must be a number between 10kg and 500kg');
-                    }
-                    break;
-                case 'heartRate':
-                    if (!Number.isInteger(Number(value)) || Number(value) < 30 || Number(value) > 250) {
-                        throw new Error('Heart rate value must be an integer between 30 and 250 BPM');
+                case 'sleep':
+                    if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 24) {
+                        throw new Error('Sleep value must be a number between 0 and 24 hours');
                     }
                     break;
             }
