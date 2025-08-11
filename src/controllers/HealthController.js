@@ -648,7 +648,59 @@ class HealthController {
 
             console.log(`📊 Bulk processed ${results.length} health records for user ${userId}`);
 
-            // Return results with summary
+            // Get today's health data and goals for frontend
+            const todayDateString = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            
+            // Find today's health data
+            const todayHealth = await DailyHealthData.findOne({ 
+                userId: userId, 
+                date: todayDateString 
+            });
+
+            // Check if user has goals, if not create default goals
+            let userGoals = await Goals.findOne({ userId: userId });
+            
+            if (!userGoals) {
+                console.log(`🎯 Creating default goals for new user ${userId} during bulk update`);
+                
+                // Create default goals for the user
+                userGoals = new Goals({
+                    userId: userId,
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    activeMinutesGoal: 30,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
+                    sleepGoal: {
+                        hours: 8,
+                        bedtime: "22:00",
+                        wakeupTime: "06:00"
+                    }
+                });
+                
+                await userGoals.save();
+                console.log(`✅ Default goals created for user ${userId} during bulk update`);
+            }
+
+            // Prepare today's data for response
+            const todayData = {
+                healthData: todayHealth,
+                goals: userGoals
+            };
+
+            // Convert ml back to glasses for frontend if today's health data exists
+            if (todayHealth && todayHealth.water) {
+                const formattedHealthData = { ...todayHealth.toObject() };
+                if (formattedHealthData.water.consumed !== undefined) {
+                    formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                }
+                if (formattedHealthData.water.goal !== undefined) {
+                    formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
+                }
+                todayData.healthData = formattedHealthData;
+            }
+
+            // Return results with summary and today's data
             const responseData = {
                 summary: {
                     totalProcessed: health_data.length,
@@ -656,10 +708,13 @@ class HealthController {
                     errors: errors.length
                 },
                 results: results,
-                errors: errors.length > 0 ? errors : undefined
+                errors: errors.length > 0 ? errors : undefined,
+                todayData: todayData
             };
 
-            ResponseHandler.success(res, 'Bulk health data processed', responseData);
+            console.log(`📊 Bulk update complete with today's data for user ${userId}`);
+
+            ResponseHandler.success(res, 'Bulk health data processed with today\'s data', responseData);
 
         } catch (error) {
             console.error('Bulk update health data error:', error);
