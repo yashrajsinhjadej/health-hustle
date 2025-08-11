@@ -6,9 +6,15 @@ const ConnectionHelper = require('../utils/connectionHelper');
 
 class OTPService {
     
-    // Create or update OTP with rate limiting
-    async createOrUpdateOTP(phone, cooldownMinutes = 1) {
+    // Create or update OTP with rate limiting (now using environment variable)
+    async createOrUpdateOTP(phone, cooldownSeconds = null) {
         try {
+            // Get cooldown from environment or use default
+            const defaultCooldown = parseInt(process.env.OTP_COOLDOWN_SECONDS) || 25;
+            const actualCooldown = cooldownSeconds || defaultCooldown;
+            
+            console.log(`⏱️ Using OTP cooldown: ${actualCooldown} seconds`);
+            
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
             
@@ -19,15 +25,20 @@ class OTPService {
             const existingOTP = await OTP.findOne({ phone: phone });
             
             if (existingOTP) {
-                // Check rate limiting
-                const timeDiff = ((new Date() - existingOTP.updatedAt) / 1000 )*25; // minutes. for minutes divide with 60 
+                // Calculate time difference in seconds
+                const timeDiffSeconds = (new Date() - existingOTP.updatedAt) / 1000;
+                console.log(`⏱️ Time since last OTP: ${timeDiffSeconds.toFixed(2)} seconds`);
                 
-                if (timeDiff < cooldownMinutes) {
-                    const waitTime = Math.ceil(cooldownMinutes - timeDiff);
+                if (timeDiffSeconds < actualCooldown) {
+                    // Calculate remaining wait time
+                    const remainingSeconds = Math.ceil(actualCooldown - timeDiffSeconds);
+                    console.log(`🚫 Rate limit hit. User must wait ${remainingSeconds} more seconds`);
+                    
                     return { 
                         success: false,
-                        message: `Please wait ${waitTime} minute(s) before requesting new OTP`,
-                        waitTime: waitTime
+                        message: `Please wait ${remainingSeconds} seconds before trying again`,
+                        waitTime: remainingSeconds,
+                        waitTimeUnit: 'seconds'
                     };
                 }
                 
@@ -35,7 +46,10 @@ class OTPService {
                 existingOTP.otp = otp;
                 existingOTP.attempts = 0; // Reset attempts
                 existingOTP.isUsed = false; // Reset used status
-                existingOTP.expiresAt = new Date(Date.now() + 5 * 60 * 1000); // New expiry
+                
+                // Use environment variable for expiry time
+                const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
+                existingOTP.expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
                 await existingOTP.save();
                 
                 return { 
@@ -69,7 +83,7 @@ class OTPService {
     }
 
     // Complete OTP sending workflow (create + send SMS)
-    async sendOTP(phone, cooldownMinutes = 1) {
+    async sendOTP(phone, cooldownSeconds = null) {
         try {
             // Accept only string of 10 digits
             if (typeof phone !== 'string' || !/^[0-9]{10}$/.test(phone)) {
@@ -79,11 +93,11 @@ class OTPService {
                 };
             }
 
-            // Create or update OTP in database
-            const otpResult = await this.createOrUpdateOTP(phone, cooldownMinutes);
+            // Create or update OTP in database (uses environment variable)
+            const otpResult = await this.createOrUpdateOTP(phone, cooldownSeconds);
             
             if (!otpResult.success) {
-                return otpResult; // Return rate limit error
+                return otpResult; // Return rate limit error with dynamic wait time in seconds
             }
 
             // Send SMS using Twilio
