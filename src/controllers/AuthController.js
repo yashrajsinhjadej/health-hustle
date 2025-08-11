@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const OTPUtils = require('../utils/otpUtils');
 const OTPService = require('../services/otpService');
 const ConnectionHelper = require('../utils/connectionHelper');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 class AuthController {
     // Generate JWT token
@@ -38,30 +39,25 @@ class AuthController {
             console.log(`📱 [${requestId}] OTPService.sendOTP result:`, result);
             
             if (!result.success) {
-                const statusCode = result.waitTime ? 429 : 400;
-                console.log(`📱 [${requestId}] OTP sending failed - Status: ${statusCode}, Message: ${result.message}`);
-                return res.status(statusCode).json({
-                    success: false,
-                    error: result.message,
-                    waitTime: result.waitTime
-                });
+                console.log(`📱 [${requestId}] OTP sending failed - Message: ${result.message}`);
+                
+                if (result.waitTime) {
+                    return ResponseHandler.rateLimitError(res, result.waitTime);
+                }
+                
+                return ResponseHandler.error(res, "OTP sending failed", result.message);
             }
 
             console.log(`📱 [${requestId}] OTP sent successfully to ${phone}`);
-            res.json({
-                success: true,
-                message: result.message,
+            return ResponseHandler.success(res, "OTP sent successfully", {
                 expiresIn: result.expiresIn,
-                otp: result.otp // Only for testing; remove in production!
+                ...(process.env.NODE_ENV !== 'production' && { otp: result.otp }) // Only for testing
             });
 
         } catch (error) {
             console.error(`📱 [${requestId}] Send OTP error:`, error);
             console.error(`📱 [${requestId}] Error stack:`, error.stack);
-            res.status(500).json({
-                success: false,
-                error: 'Internal server error'
-            });
+            return ResponseHandler.serverError(res, "Failed to send OTP");
         }
     }
 
@@ -84,10 +80,7 @@ class AuthController {
 
             if (!verificationResult.success ) {
                 console.log(`🔐 [${requestId}] OTP verification failed: ${verificationResult.message}`);
-                return res.status(400).json({
-                    success: false,
-                    error: verificationResult.message
-                });
+                return ResponseHandler.error(res, "OTP verification failed", verificationResult.message);
             }
             
             // Clean phone for user lookup
@@ -136,9 +129,7 @@ class AuthController {
             // Set JWT token in Authorization header
             res.set('Authorization', `Bearer ${token}`);
 
-            res.json({
-                success: true,
-                message: 'OTP verified successfully',
+            return ResponseHandler.success(res, "Login successful", {
                 token: token, // Adding token to response body for testing
                 user: {
                     id: user._id,
@@ -152,10 +143,7 @@ class AuthController {
 
         } catch (error) {
             console.error('Verify OTP error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Internal server error'
-            });
+            return ResponseHandler.serverError(res, "Authentication failed");
         }
     }
 
@@ -163,9 +151,7 @@ class AuthController {
     async getProfile(req, res) {
         try {
             // req.user is populated by the authenticateToken middleware
-            res.json({
-                success: true,
-                message: 'Profile fetched successfully',
+            return ResponseHandler.success(res, "Profile fetched successfully", {
                 user: {
                     id: req.user._id,
                     name: req.user.name,
@@ -176,10 +162,7 @@ class AuthController {
             });
         } catch (error) {
             console.error('Get profile error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Internal server error'
-            });
+            return ResponseHandler.serverError(res, "Failed to fetch profile");
         }
     }
 
@@ -243,10 +226,7 @@ class AuthController {
 
             // Check if any updates were provided
             if (!hasUpdates) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'No valid fields provided for update'
-                });
+                return ResponseHandler.error(res, "Update failed", "No valid fields provided for update");
             }
 
             // Mark profile as completed if name is being updated
@@ -260,9 +240,7 @@ class AuthController {
 
             console.log(`👤 Profile updated for user: ${user.phone}`);
 
-            res.json({
-                success: true,
-                message: 'Profile updated successfully',
+            return ResponseHandler.success(res, "Profile updated successfully", {
                 user: {
                     id: user._id,
                     name: user.name,
@@ -281,10 +259,7 @@ class AuthController {
 
         } catch (error) {
             console.error('Update profile error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Internal server error'
-            });
+            return ResponseHandler.serverError(res, "Failed to update profile");
         }
     }
 
@@ -302,17 +277,10 @@ class AuthController {
             
             console.log(`🚪 User logged out: ${user.phone}`);
             
-            res.json({
-                success: true,
-                message: 'Logged out successfully',
-                action: 'redirect_to_login'
-            });
+            return ResponseHandler.success(res, "Logged out successfully");
         } catch (error) {
             console.error('Logout error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Internal server error'
-            });
+            return ResponseHandler.serverError(res, "Logout failed");
         }
     }
 }

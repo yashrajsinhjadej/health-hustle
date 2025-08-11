@@ -3,6 +3,7 @@ const DailyHealthData = require('../models/DailyHealthData');
 const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 /**
  * HEALTH CONTROLLER API DOCUMENTATION
@@ -152,11 +153,7 @@ class HealthController {
             
             if (inputDate > today) {
                 console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
-                return res.status(400).json({
-                    success: false,
-                    message: `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`,
-                    data: null
-                });
+                return ResponseHandler.error(res, `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`);
             }
             
             console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
@@ -214,18 +211,11 @@ class HealthController {
                 responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
             }
 
-            res.json({
-                success: true,
-                message: 'Daily health data updated successfully',
-                data: responseData
-            });
+            ResponseHandler.success(res, 'Daily health data updated successfully', responseData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Update daily health error:`, error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to update daily health data'
-            });
+            ResponseHandler.serverError(res, 'Failed to update daily health data');
         }
     }
 
@@ -254,11 +244,7 @@ class HealthController {
             
             if (inputDate > today) {
                 console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
-                return res.status(400).json({
-                    success: false,
-                    message: `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`,
-                    data: null
-                });
+                return ResponseHandler.error(res, `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`);
             }
 
             console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
@@ -272,11 +258,7 @@ class HealthController {
 
             if (!dailyHealth) {
                 console.log(`📊 [${requestId}] No health data found for ${date}`);
-                return res.status(404).json({
-                    success: false,
-                    message: 'No health data found for this date',
-                    data: null
-                });
+                return ResponseHandler.notFound(res, 'No health data found for this date');
             }
 
             console.log(`📊 [${requestId}] Found health record:`, dailyHealth.toObject());
@@ -296,18 +278,11 @@ class HealthController {
 
             console.log(`📊 [${requestId}] Retrieved health data for user ${userId} on ${date}`);
 
-            res.json({
-                success: true,
-                message: 'Daily health data retrieved successfully',
-                data: responseData
-            });
+            ResponseHandler.success(res, 'Daily health data retrieved successfully', responseData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Get daily health error:`, error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve daily health data'
-            });
+            ResponseHandler.serverError(res, 'Failed to retrieve daily health data');
         }
     }
 
@@ -372,29 +347,16 @@ class HealthController {
             }
 
             if (!dailyHealth) {
-                return res.json({
-                    success: true,
-                    message: 'No health data found for today, but goals are ready',
-                    data: responseData,
-                    date: today
-                });
+                return ResponseHandler.success(res, 'No health data found for today, but goals are ready', responseData);
             } 
 
             console.log(`📊 Retrieved today's health data and goals for user ${userId}`);
 
-            res.json({
-                success: true,
-                message: 'Today\'s health data and goals retrieved successfully',
-                data: responseData,
-                date: today
-            });
+            ResponseHandler.success(res, 'Today\'s health data and goals retrieved successfully', responseData);
 
         } catch (error) {
             console.error('Get today health error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to retrieve today\'s health data and goals'
-            });
+            ResponseHandler.serverError(res, 'Failed to retrieve today\'s health data and goals');
         }
     }
 
@@ -543,10 +505,7 @@ class HealthController {
                     
                 default:
                     console.log(`❌ [${requestId}] Unknown metric: ${metric}`);
-                    return res.status(400).json({
-                        success: false,
-                        error: `Unknown metric: ${metric}. Supported metrics: steps, water, calories, sleep, weight, heartRate`
-                    });
+                    return ResponseHandler.error(res, `Unknown metric: ${metric}. Supported metrics: steps, water, calories, sleep, weight, heartRate`);
             }
 
             const savedHealth = await dailyHealth.save();
@@ -578,30 +537,23 @@ class HealthController {
             }
 
             const responsePayload = {
-                success: true,
-                message: `${metric} updated successfully`,
-                data: {
-                    date: today,
-                    metric: metric,
-                    value: value,
-                    timestamp: currentTime,
-                    updatedData: responseData
-                }
+                date: today,
+                metric: metric,
+                value: value,
+                timestamp: currentTime,
+                updatedData: responseData
             };
 
             // Add water-specific data for water metric updates
             if (metric === 'water' && waterResponse) {
-                responsePayload.data.waterSummary = waterResponse;
+                responsePayload.waterSummary = waterResponse;
             }
 
-            res.json(responsePayload);
+            ResponseHandler.success(res, `${metric} updated successfully`, responsePayload);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Quick update error:`, error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to update health metric'
-            });
+            ResponseHandler.serverError(res, 'Failed to update health metric');
         }
     }
 
@@ -697,9 +649,7 @@ class HealthController {
             console.log(`📊 Bulk processed ${results.length} health records for user ${userId}`);
 
             // Return results with summary
-            res.json({
-                success: true,
-                message: 'Bulk health data processed',
+            const responseData = {
                 summary: {
                     totalProcessed: health_data.length,
                     successful: results.length,
@@ -707,14 +657,13 @@ class HealthController {
                 },
                 results: results,
                 errors: errors.length > 0 ? errors : undefined
-            });
+            };
+
+            ResponseHandler.success(res, 'Bulk health data processed', responseData);
 
         } catch (error) {
             console.error('Bulk update health data error:', error);
-            res.status(500).json({
-                success: false,
-                error: 'Failed to process bulk health data'
-            });
+            ResponseHandler.serverError(res, 'Failed to process bulk health data');
         }
     }
 }

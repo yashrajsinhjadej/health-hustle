@@ -7,15 +7,14 @@ const {
     validateUserProfileUpdate, 
     handleValidationErrors 
 } = require('../validators/userValidators');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
 router.use(userOnly);// for checking user authorization 
 
 router.get('/', (req, res) => {
-    res.json({
-        success: true,
-        message: 'User API endpoints',
+    return ResponseHandler.success(res, "User API endpoints", {
         user: {
             id: req.user._id,
             name: req.user.name,

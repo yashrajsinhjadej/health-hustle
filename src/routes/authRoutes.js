@@ -8,10 +8,11 @@ const {
     validateOTP, 
     handleValidationErrors 
 } = require('../validators/userValidators');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 
 router.get('/',(req,res)=>{
-    res.send('Auth API');
+    return ResponseHandler.success(res, "Auth API ready");
 })
 
 // POST /auth/send-otp - Send OTP to phone number
