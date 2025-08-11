@@ -99,13 +99,13 @@ class ResponseHandler {
      * @param {Object} validationResult - Result from express-validator
      */
     static validationError(res, validationResult) {
-        const errors = {};
-        validationResult.array().forEach(error => {
-            const fieldPath = error.path || error.param;
-            errors[fieldPath] = error.msg;
-        });
+        const errors = validationResult.array();
+        
+        // Get the first error message to show to user
+        const firstError = errors[0];
+        const errorMessage = firstError ? firstError.msg : "Validation failed";
 
-        return this.error(res, "Validation failed", "Please check your input data", 400);
+        return this.error(res, "Validation failed", errorMessage, 400);
     }
 
     /**

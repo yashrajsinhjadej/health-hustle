@@ -96,11 +96,12 @@ const validateUserProfileUpdate = [
         .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'])
         .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, athletic_performance, weight_gain, or fit_body'),
 
-    // Sports ambitions validation (optional)
+    // Sports ambitions validation (required - at least one)
     body('sportsAmbitions')
-        .optional()
-        .isArray()
-        .withMessage('Sports ambitions must be an array')
+        .notEmpty()
+        .withMessage('Sports ambitions are required')
+        .isArray({ min: 1 })
+        .withMessage('At least one sport ambition must be selected')
         .custom((value) => {
             if (value && value.length > 0) {
                 const allowedSports = ['swimming', 'badminton', 'table_tennis', 'boxing', 'running', 'cycling'];
