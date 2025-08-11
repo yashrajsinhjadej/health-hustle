@@ -549,23 +549,13 @@ const validateBulkUpdate = [
 ];
 
 // Validation result handler middleware
+const ResponseHandler = require('../utils/ResponseHandler');
+
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     
     if (!errors.isEmpty()) {
-        const validationErrors = {};
-        
-        errors.array().forEach(error => {
-            // Handle nested field errors (e.g., 'health_data.0.date')
-            const fieldPath = error.path || error.param;
-            validationErrors[fieldPath] = error.msg;
-        });
-        
-        return res.status(400).json({
-            success: false,
-            error: 'Validation failed',
-            validationErrors: validationErrors
-        });
+        return ResponseHandler.validationError(res, errors);
     }
     
     next();

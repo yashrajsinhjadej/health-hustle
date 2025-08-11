@@ -5,6 +5,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
+const ResponseHandler = require('./src/utils/ResponseHandler');
 
 // Routes
 const authRoutes = require('./src/routes/authRoutes');
@@ -363,16 +364,7 @@ app.get('/test-connection', async (req, res) => {
         console.error('   - Error code:', error.code);
         console.error('   - Error stack:', error.stack);
         
-        res.status(500).json({
-            success: false,
-            message: 'Test connection failed',
-            error: {
-                message: error.message,
-                name: error.name,
-                code: error.code
-            },
-            connectionState: mongoose.connection.readyState
-        });
+        ResponseHandler.serverError(res, 'Test connection failed');
     }
 });
 
@@ -405,12 +397,7 @@ const ensureMongoDBConnection = async (req, res, next) => {
     } catch (error) {
         console.error('❌ MongoDB connection failed for API request:', error.message);
         console.error('❌ Request path:', req.path);
-        res.status(503).json({
-            success: false,
-            error: 'Database connection failed',
-            message: 'Service temporarily unavailable. Please try again.',
-            path: req.path
-        });
+        ResponseHandler.serverError(res, 'Service temporarily unavailable. Please try again.');
     }
 };
 
@@ -475,11 +462,7 @@ app.get('/health', async (req, res) => {
     } catch (error) {
         console.error('❌ Health check error:', error);
         console.error('❌ Error stack:', error.stack);
-        res.status(500).json({
-            status: 'error',
-            message: 'Health check failed',
-            error: error.message
-        });
+        ResponseHandler.serverError(res, 'Health check failed');
     }
 });
 
@@ -496,20 +479,14 @@ app.use('/api/health', healthRoutes);
 // 404 handler
 app.use('*', (req, res) => {
     console.log('❌ 404 - Route not found:', req.originalUrl);
-    res.status(404).json({
-        success: false,
-        message: 'API route not found'
-    });
+    ResponseHandler.notFound(res, 'API route not found');
 });
 
 // Error handling middleware
 app.use((error, req, res, next) => {
     console.error('❌ Server error:', error);
     console.error('❌ Error stack:', error.stack);
-    res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-    });
+    ResponseHandler.serverError(res, 'Internal server error');
 });
 
 // For local development

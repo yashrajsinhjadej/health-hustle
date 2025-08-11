@@ -10,6 +10,7 @@ const {
     getDisplayWeight
 } = require('../utils/unitConverter');
 const ConnectionHelper = require('../utils/connectionHelper');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 
 async function getUserProfile(req, res) {
@@ -66,14 +67,11 @@ async function getUserProfile(req, res) {
         };
         
         console.log(`👤 [${requestId}] Sending response for user: ${user._id}`);
-        res.json(responseData);
+        return ResponseHandler.success(res, "Profile retrieved successfully", responseData.user);
     } catch (error) {
         console.error(`👤 [${requestId}] Get user profile error:`, error);
         console.error(`👤 [${requestId}] Error stack:`, error.stack);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error'
-        });
+        return ResponseHandler.serverError(res, "Failed to retrieve profile");
     }
 }
 
@@ -93,11 +91,7 @@ async function updateUserProfile(req, res) {
         // Check if profile is already completed
         if (user.profileCompleted === true) {
             console.log(`👤 [${requestId}] Profile already completed for user: ${user._id}`);
-            return res.status(400).json({
-                success: false,
-                error: 'Profile already completed. Profile can only be updated once during initial setup.',
-                message: 'Your profile has already been set up. Contact support if you need to make changes.'
-            });
+            return ResponseHandler.error(res, "Profile update failed", "Profile already completed. Profile can only be updated once during initial setup.");
         }
 
         const {
@@ -130,34 +124,18 @@ async function updateUserProfile(req, res) {
             console.log(`👤 [${requestId}] Converted - Height: ${heightInCm}cm, Weight: ${weightInKg}kg`);
         } catch (conversionError) {
             console.error(`👤 [${requestId}] Unit conversion error:`, conversionError);
-            return res.status(400).json({
-                success: false,
-                error: 'Unit conversion failed',
-                message: conversionError.message
-            });
+            return ResponseHandler.error(res, 'Unit conversion failed');
         }
 
         // Validate converted values are within acceptable ranges
         if (!isValidHeight(heightInCm)) {
             console.log(`👤 [${requestId}] Invalid height: ${heightInCm}cm`);
-            return res.status(400).json({
-                success: false,
-                error: `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`,
-                validationErrors: {
-                    height: `Height must be between ${getHeightRangeMessage(heightUnit)}`
-                }
-            });
+            return ResponseHandler.error(res, "Invalid height", `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`);
         }
 
         if (!isValidWeight(weightInKg)) {
             console.log(`👤 [${requestId}] Invalid weight: ${weightInKg}kg`);
-            return res.status(400).json({
-                success: false,
-                error: `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`,
-                validationErrors: {
-                    weight: `Weight must be between ${getWeightRangeMessage(weightUnit)}`
-                }
-            });
+            return ResponseHandler.error(res, "Invalid weight", `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`);
         }
         
         // Ensure MongoDB connection is ready
@@ -194,10 +172,7 @@ async function updateUserProfile(req, res) {
         );
 
         if (!userUpdated) {
-            return res.status(404).json({
-                success: false,
-                error: 'User not found'
-            });
+            return ResponseHandler.notFound(res, "User not found");
         }
 
         console.log(`👤 Profile completed for user ${userUpdated._id} - ${userUpdated.name}`);
@@ -211,9 +186,7 @@ async function updateUserProfile(req, res) {
         console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
         console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
 
-        res.json({
-            success: true,
-            message: 'User profile updated successfully',
+        return ResponseHandler.success(res, "Profile updated successfully", {
             user: {
                 id: userUpdated._id,
                 name: userUpdated.name,
@@ -237,22 +210,10 @@ async function updateUserProfile(req, res) {
         
         // Handle mongoose validation errors
         if (error.name === 'ValidationError') {
-            const validationErrors = {};
-            Object.keys(error.errors).forEach(key => {
-                validationErrors[key] = error.errors[key].message;
-            });
-            
-            return res.status(400).json({
-                success: false,
-                error: 'Validation failed',
-                validationErrors: validationErrors
-            });
+            return ResponseHandler.mongooseError(res, error);
         }
 
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error'
-        });
+        return ResponseHandler.serverError(res, "Failed to update profile");
     }
 }
 

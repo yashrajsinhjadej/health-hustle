@@ -116,38 +116,14 @@ const validateUserProfileUpdate = [
 ];
 
 // Validation result handler middleware
+const ResponseHandler = require('../utils/ResponseHandler');
+
 const handleValidationErrors = (req, res, next) => {
-    const requestId = req.requestId || `val_${Date.now()}`;
     const errors = validationResult(req);
     
     if (!errors.isEmpty()) {
-        const validationErrors = {};
-        
-        errors.array().forEach(error => {
-            validationErrors[error.path] = error.msg;
-        });
-        
-        Logger.warn('UserValidators', 'handleValidationErrors', 'Validation errors found', {
-            requestId,
-            method: req.method,
-            url: req.url,
-            errors: errors.array(),
-            errorCount: errors.array().length,
-            validationErrors
-        });
-        
-        return res.status(400).json({
-            success: false,
-            error: 'Validation failed',
-            validationErrors: validationErrors
-        });
+        return ResponseHandler.validationError(res, errors);
     }
-    
-    Logger.success('UserValidators', 'Validation passed', {
-        requestId,
-        method: req.method,
-        url: req.url
-    });
     
     next();
 };

@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const ConnectionHelper = require('../utils/connectionHelper');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 // Verify JWT token
 const authenticateToken = async (req, res, next) => {
@@ -18,10 +19,7 @@ const authenticateToken = async (req, res, next) => {
 
         if (!token) {
             console.log(`🔐 [${requestId}] No token provided`);
-            return res.status(401).json({
-                success: false,
-                error: 'Access token required'
-            });
+            return ResponseHandler.unauthorized(res, 'Access token required');
         }
 
         console.log(`🔐 [${requestId}] Token found, verifying...`);
@@ -37,10 +35,7 @@ const authenticateToken = async (req, res, next) => {
 
         if (!user || !user.isActive) {
             console.log(`🔐 [${requestId}] User not found or inactive - ID: ${decoded.userId}`);
-            return res.status(401).json({
-                success: false,
-                error: 'Invalid token or user not found'
-            });
+            return ResponseHandler.unauthorized(res, 'Invalid token or user not found');
         }
 
         console.log(`🔐 [${requestId}] User found: ${user.name} (${user._id})`);
@@ -49,21 +44,13 @@ const authenticateToken = async (req, res, next) => {
         const tokenIssuedAt = new Date(decoded.iat * 1000); // JWT iat is in seconds
         
         if (user.lastLoginAt > tokenIssuedAt) {
-            return res.status(401).json({
-                success: false,
-                error: 'Session expired due to login from another device',
-                action: 'redirect_to_login'
-            });
+            return ResponseHandler.unauthorized(res, 'Session expired due to login from another device');
         }
 
         req.user = user;
         next();
     } catch (error) {
-        return res.status(403).json({
-            success: false,
-            error: 'Invalid or expired token',
-            action: 'redirect_to_login'
-        });
+        return ResponseHandler.forbidden(res, 'Invalid or expired token');
     }
 };
 
@@ -71,17 +58,11 @@ const authenticateToken = async (req, res, next) => {
 const authorizeRole = (...allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {
-            return res.status(401).json({
-                success: false,
-                error: 'Authentication required'
-            });
+            return ResponseHandler.unauthorized(res, 'Authentication required');
         }
 
         if (!allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                error: `Access denied. Required role: ${allowedRoles.join(' or ')}`
-            });
+            return ResponseHandler.forbidden(res, `Access denied. Required role: ${allowedRoles.join(' or ')}`);
         }
 
         next();
