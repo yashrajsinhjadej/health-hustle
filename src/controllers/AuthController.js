@@ -49,9 +49,11 @@ class AuthController {
             }
 
             console.log(`📱 [${requestId}] OTP sent successfully to ${phone}`);
+            
+            // Always include OTP for testing purposes
             return ResponseHandler.success(res, "OTP sent successfully", {
                 expiresIn: result.expiresIn,
-                ...(process.env.NODE_ENV !== 'production' && { otp: result.otp }) // Only for testing
+                otp: result.otp // Always include OTP for testing
             });
 
         } catch (error) {
