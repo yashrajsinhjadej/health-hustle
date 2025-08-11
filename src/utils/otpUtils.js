@@ -7,7 +7,7 @@ class OTPUtils {
     // Generate random 6-digit OTP
     static generateOTP() {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        Logger.info('OTPUtils', 'generateOTP', 'Generated new OTP', { otpLength: otp.length });
+        Logger.info('OTPUtils', ' generateOTP', 'Generated new OTP', { otpLength: otp.length });
         return otp;
     }
 
