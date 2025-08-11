@@ -20,7 +20,7 @@ class OTPService {
             
             if (existingOTP) {
                 // Check rate limiting
-                const timeDiff = (new Date() - existingOTP.updatedAt) / 1000 ; // minutes. for minutes divide with 60 
+                const timeDiff = ((new Date() - existingOTP.updatedAt) / 1000 )*25; // minutes. for minutes divide with 60 
                 
                 if (timeDiff < cooldownMinutes) {
                     const waitTime = Math.ceil(cooldownMinutes - timeDiff);
