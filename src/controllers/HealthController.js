@@ -582,8 +582,36 @@ class HealthController {
                     });
 
                     if (dailyHealth) {
-                        // Update existing record
-                        Object.assign(dailyHealth, data);
+                        // Update existing record - Selective update to preserve manual data
+                        console.log(`🔄 Bulk update: Selectively updating existing record for ${date}`);
+                        
+                        // Update watch-related fields only
+                        if (data.sleep !== undefined) {
+                            dailyHealth.sleep = data.sleep;
+                            console.log(`😴 Bulk update: Updated sleep for ${date}`);
+                        }
+                        
+                        if (data.heartRate !== undefined) {
+                            dailyHealth.heartRate = data.heartRate;
+                            console.log(`❤️ Bulk update: Updated heart rate for ${date}`);
+                        }
+                        
+                        if (data.steps !== undefined) {
+                            dailyHealth.steps = data.steps;
+                            console.log(`👟 Bulk update: Updated steps for ${date}`);
+                        }
+                        
+                        if (data.calories && data.calories.burned !== undefined) {
+                            if (!dailyHealth.calories) {
+                                dailyHealth.calories = { consumed: 0, burned: 0, entries: [] };
+                            }
+                            dailyHealth.calories.burned = data.calories.burned;
+                            console.log(`🔥 Bulk update: Updated calories burned for ${date}`);
+                        }
+                        
+                        // Preserve existing: water, calories.intake, calories.consumed, meals
+                        console.log(`💧 Bulk update: Preserving existing water (${dailyHealth.water?.consumed || 0}ml) and manual data for ${date}`);
+                        
                         await dailyHealth.save();
                         
                         results.push({
