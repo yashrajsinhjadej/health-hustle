@@ -473,39 +473,9 @@ class HealthController {
                     dailyHealth.sleep.duration = value;
                     break;
                     
-                case 'weight':
-                    // WEIGHT: Update whole field (replace current value)
-                    console.log(`⚖️ [${requestId}] Updating weight: ${dailyHealth.bodyMetrics?.weight || 0} → ${value}kg`);
-                    
-                    if (!dailyHealth.bodyMetrics) {
-                        dailyHealth.bodyMetrics = {};
-                    }
-                    dailyHealth.bodyMetrics.weight = value;
-                    break;
-                    
-                case 'heartRate':
-                    // HEART RATE: Add entry to readings array
-                    console.log(`❤️ [${requestId}] Adding heart rate reading: ${value} bpm at ${currentTime}`);
-                    
-                    if (!dailyHealth.heartRate) {
-                        dailyHealth.heartRate = { readings: [] };
-                    }
-                    if (!dailyHealth.heartRate.readings) {
-                        dailyHealth.heartRate.readings = [];
-                    }
-                    
-                    dailyHealth.heartRate.readings.push({
-                        time: currentTime,
-                        bpm: value,
-                        activity: 'manual'
-                    });
-                    
-                    console.log(`❤️ [${requestId}] Added heart rate reading: ${value} bpm at ${currentTime}`);
-                    break;
-                    
                 default:
                     console.log(`❌ [${requestId}] Unknown metric: ${metric}`);
-                    return ResponseHandler.error(res, `Unknown metric: ${metric}. Supported metrics: steps, water, calories, sleep, weight, heartRate`);
+                    return ResponseHandler.error(res, `Unknown metric: ${metric}. Supported metrics: steps, water, sleep`);
             }
 
             const savedHealth = await dailyHealth.save();
