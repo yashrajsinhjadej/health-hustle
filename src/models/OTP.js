@@ -17,7 +17,10 @@ const otpSchema = new mongoose.Schema({
     expiresAt: {
         type: Date,
         required: true,
-        default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from creation
+        default: () => {
+            const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
+            return new Date(Date.now() + expiryMinutes * 60 * 1000);
+        },
         index: { expireAfterSeconds: 0 } // MongoDB TTL - auto delete expired documents
     },
     isUsed: {
@@ -27,7 +30,7 @@ const otpSchema = new mongoose.Schema({
     attempts: {
         type: Number,
         default: 0,
-        max: 3
+        max: parseInt(process.env.OTP_MAX_ATTEMPTS) || 3
     }
 }, {
     timestamps: true
