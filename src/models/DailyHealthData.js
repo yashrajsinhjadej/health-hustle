@@ -122,6 +122,16 @@ const dailyHealthDataSchema = new mongoose.Schema({
         notes: String           // Optional notes about the meal
     }],
     
+    streak: {
+        type: Number,
+        default: 0
+    },
+
+    goalcompletions: {
+        type: Boolean,
+        default: false
+    },
+
     // Notes & Additional Data
     notes: String,
     
