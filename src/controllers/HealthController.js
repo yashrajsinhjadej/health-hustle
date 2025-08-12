@@ -4,7 +4,7 @@ const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
-
+const goalcounter = require('../utils/goalcounter');
 /**
  * HEALTH CONTROLLER API DOCUMENTATION
  * 
@@ -608,10 +608,48 @@ class HealthController {
                             dailyHealth.calories.burned = data.calories.burned;
                             console.log(`🔥 Bulk update: Updated calories burned for ${date}`);
                         }
+
+                        await dailyHealth.save();
+
+                        // Get previous date from current date
+                        const previousDate = new Date(date);
+                        previousDate.setDate(previousDate.getDate() - 1);
+                        const previousDateString = previousDate.toISOString().split('T')[0];
+                        const previousHealth = await DailyHealthData.findOne({userId:userId,date:previousDateString});
+                        let streak = 0;
+                        if(!previousHealth){
+                            console.log('no previous day found')
+                            streak=0;
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            console.log(a,"huiehgwuirhgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg")
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.goalcompletions = true;
+                            }
+                        }
+                        else{
+                            if(previousHealth.goalcompletions){
+                                streak=previousHealth.streak;
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.goalcompletions = true;
+                            }   
+                            }
+                            else{
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.completedGoals = true;
+                                console.log('here')
+                            }
+                            }
+                        }
+                        console.log(streak,"here is the streak 👽👽👽👽👽👽👽👽👽👽👽👽👽👽👽👽👽👽👽");
                         
-                        // Preserve existing: water, calories.intake, calories.consumed, meals
-                        console.log(`💧 Bulk update: Preserving existing water (${dailyHealth.water?.consumed || 0}ml) and manual data for ${date}`);
-                        
+
+                        dailyHealth.streak = streak;
+
                         await dailyHealth.save();
                         
                         results.push({
@@ -627,6 +665,43 @@ class HealthController {
                             ...data
                         });
                         await dailyHealth.save();
+
+                        const previousDate = new Date(date);
+                        previousDate.setDate(previousDate.getDate() - 1);
+                        const previousDateString = previousDate.toISOString().split('T')[0];
+                        const previousHealth = await DailyHealthData.findOne({userId:userId,date:previousDateString});
+                        let streak = 0;
+                        if(!previousHealth){
+                            console.log('no previous day found')
+                            streak=0;
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            console.log(a,"huiehgwuirhgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg")
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.goalcompletions = true;
+                            }
+                        }
+                        else{
+                            if(previousHealth.goalcompletions){
+                                streak=previousHealth.streak;
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.goalcompletions = true;
+                            }   
+                            }
+                            else{
+                            const a = await goalcounter.checkGoalsCompleted(date,userId);
+                            if(a.goalsCompleted.steps.completed){
+                                streak++;
+                                dailyHealth.goalcompletions = true;
+                            }
+                            }
+                        }
+                        
+                        dailyHealth.streak=streak;
+                        await dailyHealth.save()
+
                         
                         results.push({
                             date: date,
