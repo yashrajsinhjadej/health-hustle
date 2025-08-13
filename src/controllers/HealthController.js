@@ -648,7 +648,23 @@ class HealthController {
                     await DailyHealthData.bulkWrite(bulkOps);
                 }
 
-                // Response for streak mode
+                // Always include today's health data and goals (or null)
+                const todayDateString = new Date().toISOString().split('T')[0];
+                let todayHealth = await DailyHealthData.findOne({ userId, date: todayDateString });
+                let todayGoals = goals || null;
+                let todayData;
+                if (todayHealth) {
+                    let formattedHealthData = { ...todayHealth.toObject() };
+                    if (formattedHealthData.water && formattedHealthData.water.consumed !== undefined) {
+                        formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                    }
+                    if (formattedHealthData.water && formattedHealthData.water.goal !== undefined) {
+                        formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
+                    }
+                    todayData = { healthData: formattedHealthData, goals: todayGoals };
+                } else {
+                    todayData = { healthData: null, goals: todayGoals };
+                }
                 const responseData = {
                     summary: {
                         totalProcessed: sortedData.length,
@@ -657,9 +673,8 @@ class HealthController {
                         batchSize: bulkOps.length
                     },
                     results,
-                    todayData: { goals }
+                    todayData: todayData
                 };
-
                 console.log(`✅ [${requestId}] STREAK MODE complete: ${results.length} records processed with streak calculation`);
                 ResponseHandler.success(res, 'Health data processed with streak calculation', responseData);
 
@@ -719,7 +734,26 @@ class HealthController {
                     await DailyHealthData.bulkWrite(bulkOps);
                 }
 
-                // Response for bulk mode
+                // Always include today's health data and goals (or null)
+                const todayDateString = new Date().toISOString().split('T')[0];
+                let todayHealth = await DailyHealthData.findOne({ userId, date: todayDateString });
+                let todayGoals = null;
+                let todayData;
+                try {
+                    todayGoals = await Goals.findOne({ userId });
+                } catch {}
+                if (todayHealth) {
+                    let formattedHealthData = { ...todayHealth.toObject() };
+                    if (formattedHealthData.water && formattedHealthData.water.consumed !== undefined) {
+                        formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                    }
+                    if (formattedHealthData.water && formattedHealthData.water.goal !== undefined) {
+                        formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
+                    }
+                    todayData = { healthData: formattedHealthData, goals: todayGoals };
+                } else {
+                    todayData = { healthData: null, goals: todayGoals };
+                }
                 const responseData = {
                     summary: {
                         totalProcessed: sortedData.length,
@@ -727,9 +761,9 @@ class HealthController {
                         mode: 'bulk',
                         batchSize: bulkOps.length
                     },
-                    results
+                    results,
+                    todayData: todayData
                 };
-
                 console.log(`✅ [${requestId}] BULK MODE complete: ${results.length} records processed (streaks skipped for performance)`);
                 ResponseHandler.success(res, 'Bulk health data processed (streaks skipped for performance)', responseData);
             }
