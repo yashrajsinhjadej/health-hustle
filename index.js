@@ -368,6 +368,62 @@ app.get('/test-connection', async (req, res) => {
     }
 });
 
+// Quick MongoDB diagnostic route
+app.get('/mongo-diagnostic', async (req, res) => {
+    console.log('🔍 MongoDB diagnostic route accessed');
+    
+    const diagnostic = {
+        timestamp: new Date().toISOString(),
+        environment: {
+            NODE_ENV: process.env.NODE_ENV || 'not set',
+            VERCEL: process.env.VERCEL || 'not set',
+            hasMongoUri: !!process.env.MONGODB_URI
+        },
+        mongoUri: {
+            exists: !!process.env.MONGODB_URI,
+            length: process.env.MONGODB_URI ? process.env.MONGODB_URI.length : 0,
+            startsWithMongo: process.env.MONGODB_URI ? process.env.MONGODB_URI.startsWith('mongodb') : false,
+            preview: process.env.MONGODB_URI ? process.env.MONGODB_URI.substring(0, 50) + '...' : 'NOT_SET'
+        },
+        mongoose: {
+            readyState: mongoose.connection.readyState,
+            readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown',
+            host: mongoose.connection.host,
+            port: mongoose.connection.port,
+            name: mongoose.connection.name,
+            error: mongoose.connection.error ? mongoose.connection.error.message : null
+        }
+    };
+    
+    // Try to connect if not connected
+    if (mongoose.connection.readyState !== 1) {
+        try {
+            console.log('🔄 Attempting connection for diagnostic...');
+            const ConnectionHelper = require('./src/utils/connectionHelper');
+            await ConnectionHelper.ensureConnection();
+            diagnostic.connectionTest = {
+                success: true,
+                message: 'Connection successful'
+            };
+        } catch (error) {
+            diagnostic.connectionTest = {
+                success: false,
+                error: error.message,
+                errorName: error.name,
+                errorCode: error.code
+            };
+        }
+    } else {
+        diagnostic.connectionTest = {
+            success: true,
+            message: 'Already connected'
+        };
+    }
+    
+    console.log('🔍 Diagnostic result:', JSON.stringify(diagnostic, null, 2));
+    res.json(diagnostic);
+});
+
 // Global MongoDB connection middleware - ensures DB is connected for all API requests
 const ensureMongoDBConnection = async (req, res, next) => {
     // Skip for health check and debug routes (not API routes)
