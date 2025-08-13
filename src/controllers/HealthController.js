@@ -558,105 +558,181 @@ class HealthController {
 
             console.log(`📊 [${requestId}] Processing ${sortedData.length} records`);
 
-            // ULTRA OPTIMIZATION 2: Single parallel query for all data
-            const [existingRecords, userGoals, prevRecord] = await Promise.all([
-                DailyHealthData.find({ userId, date: { $in: allDates } }).lean(),
-                Goals.findOne({ userId }).lean(),
-                DailyHealthData.findOne({ 
-                    userId, 
-                    date: new Date(new Date(firstDate).getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-                }).lean()
-            ]);
+            // CONDITIONAL STREAK STRATEGY: Only calculate streaks for ≤2 days
+            const isStreakMode = sortedData.length <= 2;
+            const isBulkMode = sortedData.length > 2;
 
-            // ULTRA OPTIMIZATION 3: Fast lookup map
-            const recordMap = {};
-            existingRecords.forEach(rec => recordMap[rec.date] = rec);
+            console.log(`📊 [${requestId}] Mode: ${isStreakMode ? 'STREAK (≤2 days)' : 'BULK (>2 days)'}`);
 
-            // ULTRA OPTIMIZATION 4: Simple goals setup
-            const goals = userGoals || { stepsGoal: 10000 };
+            if (isStreakMode) {
+                // STREAK MODE: Calculate streaks for 1-2 days
+                console.log(`📊 [${requestId}] STREAK MODE: Processing ${sortedData.length} records with streak calculation`);
+                
+                // Get all data needed for streak calculation
+                const [existingRecords, userGoals, prevRecord] = await Promise.all([
+                    DailyHealthData.find({ userId, date: { $in: allDates } }).lean(),
+                    Goals.findOne({ userId }).lean(),
+                    DailyHealthData.findOne({ 
+                        userId, 
+                        date: new Date(new Date(firstDate).getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                    }).lean()
+                ]);
 
-            // ULTRA OPTIMIZATION 5: Initialize streak tracking
-            let prevStreak = prevRecord ? prevRecord.streak : 0;
-            let prevGoalCompleted = prevRecord ? prevRecord.goalcompletions : false;
+                // Fast lookup map
+                const recordMap = {};
+                existingRecords.forEach(rec => recordMap[rec.date] = rec);
 
-            // ULTRA OPTIMIZATION 6: Minimal bulk operations
-            const bulkOps = [];
-            const results = [];
+                // Goals and streak tracking
+                const goals = userGoals || { stepsGoal: 10000 };
+                let prevStreak = prevRecord ? prevRecord.streak : 0;
+                let prevGoalCompleted = prevRecord ? prevRecord.goalcompletions : false;
 
-            for (const { date, data } of sortedData) {
-                try {
-                    // ULTRA OPTIMIZATION 7: Minimal data preparation
-                    const existing = recordMap[date];
-                    const stepsGoal = goals.stepsGoal || 10000;
-                    const stepsCompleted = data.steps && data.steps.count >= stepsGoal;
-                    const goalcompletions = !!stepsCompleted;
+                const bulkOps = [];
+                const results = [];
 
-                    // ULTRA OPTIMIZATION 8: Your streak algorithm (minimal)
-                    let streak;
-                    if (!prevGoalCompleted) {
-                        streak = stepsCompleted ? 1 : 0;
-                    } else {
-                        streak = stepsCompleted ? prevStreak + 1 : prevStreak;
+                for (const { date, data } of sortedData) {
+                    try {
+                        // Streak calculation
+                        const existing = recordMap[date];
+                        const stepsGoal = goals.stepsGoal || 10000;
+                        const stepsCompleted = data.steps && data.steps.count >= stepsGoal;
+                        const goalcompletions = !!stepsCompleted;
+
+                        // Streak algorithm
+                        let streak;
+                        if (!prevGoalCompleted) {
+                            streak = stepsCompleted ? 1 : 0;
+                        } else {
+                            streak = stepsCompleted ? prevStreak + 1 : prevStreak;
+                        }
+
+                        // Prepare update data with streak
+                        const updateData = {
+                            userId,
+                            date,
+                            streak,
+                            goalcompletions,
+                            ...data
+                        };
+
+                        // Water conversion
+                        if (data.water) {
+                            if (data.water.consumed !== undefined) {
+                                updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
+                            }
+                            if (data.water.goal !== undefined) {
+                                updateData.water.goal = WaterConverter.glassesToMl(data.water.goal);
+                            }
+                        }
+
+                        bulkOps.push({
+                            updateOne: {
+                                filter: { userId, date },
+                                update: { $set: updateData },
+                                upsert: true
+                            }
+                        });
+
+                        // Update tracking
+                        prevStreak = streak;
+                        prevGoalCompleted = goalcompletions;
+                        results.push({ date, status: existing ? 'updated' : 'created', streak, mode: 'streak' });
+
+                    } catch (err) {
+                        console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
                     }
-
-                    // ULTRA OPTIMIZATION 9: Prepare minimal update
-                    const updateData = {
-                        userId,
-                        date,
-                        streak,
-                        goalcompletions,
-                        ...data
-                    };
-
-                    // ULTRA OPTIMIZATION 10: Water conversion only if needed
-                    if (data.water) {
-                        if (data.water.consumed !== undefined) {
-                            updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
-                        }
-                        if (data.water.goal !== undefined) {
-                            updateData.water.goal = WaterConverter.glassesToMl(data.water.goal);
-                        }
-                    }
-
-                    bulkOps.push({
-                        updateOne: {
-                            filter: { userId, date },
-                            update: { $set: updateData },
-                            upsert: true
-                        }
-                    });
-
-                    // Update tracking
-                    prevStreak = streak;
-                    prevGoalCompleted = goalcompletions;
-                    results.push({ date, status: existing ? 'updated' : 'created' });
-
-                } catch (err) {
-                    console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
                 }
+
+                // Execute bulk write
+                if (bulkOps.length > 0) {
+                    await DailyHealthData.bulkWrite(bulkOps);
+                }
+
+                // Response for streak mode
+                const responseData = {
+                    summary: {
+                        totalProcessed: sortedData.length,
+                        successful: results.length,
+                        mode: 'streak',
+                        batchSize: bulkOps.length
+                    },
+                    results,
+                    todayData: { goals }
+                };
+
+                console.log(`✅ [${requestId}] STREAK MODE complete: ${results.length} records processed with streak calculation`);
+                ResponseHandler.success(res, 'Health data processed with streak calculation', responseData);
+
+            } else {
+                // BULK MODE: Skip streak calculation for maximum speed
+                console.log(`📊 [${requestId}] BULK MODE: Processing ${sortedData.length} records without streak calculation`);
+                
+                // Only get existing records (no goals, no previous streak data)
+                const existingRecords = await DailyHealthData.find({ userId, date: { $in: allDates } }).lean();
+                
+                // Fast lookup map
+                const recordMap = {};
+                existingRecords.forEach(rec => recordMap[rec.date] = rec);
+
+                const bulkOps = [];
+                const results = [];
+
+                for (const { date, data } of sortedData) {
+                    try {
+                        // Simple update/create without streak calculation
+                        const existing = recordMap[date];
+                        
+                        // Prepare update data (no streak fields)
+                        const updateData = {
+                            userId,
+                            date,
+                            ...data
+                        };
+
+                        // Water conversion only
+                        if (data.water) {
+                            if (data.water.consumed !== undefined) {
+                                updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
+                            }
+                            if (data.water.goal !== undefined) {
+                                updateData.water.goal = WaterConverter.glassesToMl(data.water.goal);
+                            }
+                        }
+
+                        bulkOps.push({
+                            updateOne: {
+                                filter: { userId, date },
+                                update: { $set: updateData },
+                                upsert: true
+                            }
+                        });
+
+                        results.push({ date, status: existing ? 'updated' : 'created', mode: 'bulk' });
+
+                    } catch (err) {
+                        console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
+                    }
+                }
+
+                // Execute bulk write
+                if (bulkOps.length > 0) {
+                    await DailyHealthData.bulkWrite(bulkOps);
+                }
+
+                // Response for bulk mode
+                const responseData = {
+                    summary: {
+                        totalProcessed: sortedData.length,
+                        successful: results.length,
+                        mode: 'bulk',
+                        batchSize: bulkOps.length
+                    },
+                    results
+                };
+
+                console.log(`✅ [${requestId}] BULK MODE complete: ${results.length} records processed (streaks skipped for performance)`);
+                ResponseHandler.success(res, 'Bulk health data processed (streaks skipped for performance)', responseData);
             }
-
-            // ULTRA OPTIMIZATION 11: Single bulk write
-            if (bulkOps.length > 0) {
-                await DailyHealthData.bulkWrite(bulkOps);
-            }
-
-            // ULTRA OPTIMIZATION 12: Minimal response
-            const todayDateString = new Date().toISOString().split('T')[0];
-            const todayHealth = await DailyHealthData.findOne({ userId, date: todayDateString }).lean();
-
-            const responseData = {
-                summary: {
-                    totalProcessed: sortedData.length,
-                    successful: results.length,
-                    batchSize: bulkOps.length
-                },
-                results,
-                todayData: { healthData: todayHealth, goals }
-            };
-
-            console.log(`✅ [${requestId}] ULTRA OPTIMIZED bulk update complete: ${results.length} processed`);
-            ResponseHandler.success(res, 'Bulk health data processed ultra efficiently', responseData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Bulk update error:`, error);
