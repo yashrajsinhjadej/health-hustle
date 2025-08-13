@@ -40,7 +40,7 @@ router.get('/', (req, res) => {
 router.get('/today', HealthController.getTodayHealth); // verified by yash
 
 // PUT /health/bulk - Bulk update health data for multiple dates
-router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yash
+router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yashraj 
 
 // PUT /health/quick-update - Quick updates for water counter, calories tracker etc.
 router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, HealthController.quickUpdate); // Quick update for water, calories, etc.
