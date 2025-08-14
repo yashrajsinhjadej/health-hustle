@@ -110,6 +110,13 @@ const goalcounter = require('../utils/goalcounter');
  *   ]
  * }
  * 
+ * STREAK SYSTEM: Multi-goal streak calculation based on:
+ * - Steps goal completion (steps.count >= stepsGoal)
+ * - Sleep goal completion (sleep.duration >= sleepGoal.hours)  
+ * - Calories burn goal completion (calories.burned >= caloriesBurnGoal)
+ * - ALL 3 goals must be completed for streak to continue
+ * - Streak resets to 0 if any goal is missed (simple boolean logic)
+ * 
  * DATE FORMAT: All dates should be in YYYY-MM-DD format (e.g., "2025-07-21")
  * TIME FORMAT: Times should be in HH:MM format (e.g., "10:30")
  * UNITS: Weight in kg, Height in cm, Water in glasses (frontend) → ml (backend), Duration in minutes/hours
@@ -172,6 +179,20 @@ class HealthController {
                 console.log(`💧 [${requestId}] Converted water goal: ${originalGoalGlasses} glasses → ${healthData.water.goal}ml`);
             }
 
+            // Get user goals for streak calculation
+            console.log(`📊 [${requestId}] Getting user goals for streak calculation...`);
+            let userGoals = await Goals.findOne({ userId: userId });
+            if (!userGoals) {
+                console.log(`📊 [${requestId}] No goals found, creating default goals...`);
+                userGoals = new Goals({
+                    userId: userId,
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    sleepGoal: { hours: 8 }
+                });
+                await userGoals.save();
+            }
+
             // Find existing record or create new one
             console.log(`📊 [${requestId}] Looking for existing health record...`);
             let dailyHealth = await DailyHealthData.findOne({ 
@@ -179,6 +200,73 @@ class HealthController {
                 date: date 
             });
 
+            // Calculate multi-goal streak before saving
+            console.log(`📊 [${requestId}] Calculating multi-goal streak...`);
+            
+            // Get previous day's streak data
+            const previousDate = new Date(date);
+            previousDate.setDate(previousDate.getDate() - 1);
+            const previousDateString = previousDate.toISOString().split('T')[0];
+            
+            const previousRecord = await DailyHealthData.findOne({ 
+                userId: userId, 
+                date: previousDateString 
+            });
+            
+            const prevStreak = previousRecord ? previousRecord.streak : 0;
+            const prevGoalCompleted = previousRecord ? previousRecord.goalcompletions : false;
+            
+            // Check if each goal is completed
+            const stepsGoal = userGoals.stepsGoal || 10000;
+            const sleepGoal = userGoals.sleepGoal?.hours || 8;
+            const caloriesBurnGoal = userGoals.caloriesBurnGoal || 2000;
+            
+            const stepsCompleted = healthData.steps && healthData.steps.count >= stepsGoal;
+            const sleepCompleted = healthData.sleep && healthData.sleep.duration >= sleepGoal;
+            const caloriesBurnCompleted = healthData.calories && healthData.calories.burned >= caloriesBurnGoal;
+            
+            // Calculate total goals completed (0-3)
+            const totalGoalsCompleted = [stepsCompleted, sleepCompleted, caloriesBurnCompleted]
+                .filter(Boolean).length;
+            
+            // Consider it a "goal completion day" if ALL 3 main goals are met
+            const goalcompletions = totalGoalsCompleted === 3;
+            
+            // Clear streak algorithm based on yesterday's goal completion status
+            let streak;
+            // Note: goalcompletions boolean already reflects today's actual goal completion status
+            if (!prevGoalCompleted) {
+                // Yesterday goalcompletion was false
+                // Check today's goal completion
+                if (goalcompletions) {
+                    // Today goals completed - start new streak
+                    streak = 1;
+                    // goalcompletions = true (already set above)
+                } else {
+                    // Today goals not completed - no streak
+                    streak = 0;
+                    // goalcompletions = false (already set above)
+                }
+            } else {
+                // Yesterday goalcompletion was true
+                if (goalcompletions) {
+                    // Today goals completed - continue streak
+                    streak = prevStreak + 1;
+                    // goalcompletions = true (already set above)
+                } else {
+                    // Today goals not completed - maintain yesterday's streak
+                    streak = prevStreak;
+                    // goalcompletions = false (already set above)
+                }
+            }
+            
+            const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
+            console.log(`📊 [${requestId}] Streak calculation: ${prevStreak} → ${streak} (goals: ${totalGoalsCompleted}/3, ALL goals required: ${goalcompletions}, status: ${streakStatus})`);
+            
+            // Add streak data to health data
+            healthData.streak = streak;
+            healthData.goalcompletions = goalcompletions;
+            
             if (dailyHealth) {
                 // Update existing record
                 console.log(`📊 [${requestId}] Found existing record, updating...`);
@@ -211,7 +299,24 @@ class HealthController {
                 responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
             }
 
-            ResponseHandler.success(res, 'Daily health data updated successfully', responseData);
+            // Add streak summary to response
+            const streakSummary = {
+                currentStreak: streak,
+                previousStreak: prevStreak,
+                goalsCompleted: {
+                    steps: stepsCompleted,
+                    sleep: sleepCompleted,
+                    caloriesBurn: caloriesBurnCompleted,
+                    total: totalGoalsCompleted,
+                    allCompleted: totalGoalsCompleted === 3
+                },
+                goalcompletions: goalcompletions
+            };
+
+            ResponseHandler.success(res, 'Daily health data updated successfully', {
+                ...responseData,
+                streakSummary
+            });
 
         } catch (error) {
             console.error(`❌ [${requestId}] Update daily health error:`, error);
@@ -592,19 +697,75 @@ class HealthController {
 
                 for (const { date, data } of sortedData) {
                     try {
-                        // Streak calculation
-                        const existing = recordMap[date];
-                        const stepsGoal = goals.stepsGoal || 10000;
-                        const stepsCompleted = data.steps && data.steps.count >= stepsGoal;
-                        const goalcompletions = !!stepsCompleted;
-
-                        // Streak algorithm
-                        let streak;
-                        if (!prevGoalCompleted) {
-                            streak = stepsCompleted ? 1 : 0;
-                        } else {
-                            streak = stepsCompleted ? prevStreak + 1 : prevStreak;
-                        }
+                                        // Complex multi-goal streak calculation
+                const existing = recordMap[date];
+                
+                // Check if each goal is completed
+                const stepsGoal = goals.stepsGoal || 10000;
+                const sleepGoal = goals.sleepGoal?.hours || 8;
+                const caloriesBurnGoal = goals.caloriesBurnGoal || 2000;
+                
+                const stepsCompleted = data.steps && data.steps.count >= stepsGoal;
+                const sleepCompleted = data.sleep && data.sleep.duration >= sleepGoal;
+                const caloriesBurnCompleted = data.calories && data.calories.burned >= caloriesBurnGoal;
+                
+                // Calculate total goals completed (0-3)
+                const totalGoalsCompleted = [stepsCompleted, sleepCompleted, caloriesBurnCompleted]
+                    .filter(Boolean).length;
+                
+                // Consider it a "goal completion day" if ALL 3 main goals are met
+                const goalcompletions = totalGoalsCompleted === 3;
+                
+                // Clear streak algorithm based on yesterday's goal completion status
+                let streak;
+                // Note: goalcompletions boolean already reflects today's actual goal completion status
+                if (!prevGoalCompleted) {
+                    // Yesterday goalcompletion was false
+                    // Check today's goal completion
+                    if (goalcompletions) {
+                        // Today goals completed - start new streak
+                        streak = 1;
+                        // goalcompletions = true (already set above)
+                    } else {
+                        // Today goals not completed - no streak
+                        streak = 0;
+                        // goalcompletions = false (already set above)
+                    }
+                } else {
+                    // Yesterday goalcompletion was true
+                    if (goalcompletions) {
+                        // Today goals completed - continue streak
+                        streak = prevStreak + 1;
+                        // goalcompletions = true (already set above)
+                    } else {
+                        // Today goals not completed - maintain yesterday's streak
+                        streak = prevStreak;
+                        // goalcompletions = false (already set above)
+                    }
+                }
+                
+                // Validation: Ensure streak logic is correct based on new algorithm
+                if (goalcompletions && prevGoalCompleted) {
+                    // If today completes goals and yesterday also completed goals, streak should increment
+                    if (streak !== prevStreak + 1) {
+                        console.error(`❌ [${requestId}] Streak increment error for ${date}: expected ${prevStreak + 1}, got ${streak}`);
+                    }
+                } else if (!goalcompletions && prevGoalCompleted) {
+                    // If today doesn't complete goals but yesterday did, streak should maintain yesterday's value
+                    if (streak !== prevStreak) {
+                        console.error(`❌ [${requestId}] Streak maintenance error for ${date}: expected ${prevStreak}, got ${streak}`);
+                    }
+                } else if (goalcompletions && !prevGoalCompleted) {
+                    // If today completes goals but yesterday didn't, streak should start at 1
+                    if (streak !== 1) {
+                        console.error(`❌ [${requestId}] New streak start error for ${date}: expected 1, got ${streak}`);
+                    }
+                } else if (!goalcompletions && !prevGoalCompleted) {
+                    // If today doesn't complete goals and yesterday didn't, streak should be 0
+                    if (streak !== 0) {
+                        console.error(`❌ [${requestId}] No streak error for ${date}: expected 0, got ${streak}`);
+                    }
+                }
 
                         // Prepare update data with streak
                         const updateData = {
@@ -633,10 +794,25 @@ class HealthController {
                             }
                         });
 
-                        // Update tracking
-                        prevStreak = streak;
-                        prevGoalCompleted = goalcompletions;
-                        results.push({ date, status: existing ? 'updated' : 'created', streak, mode: 'streak' });
+                                        // Update tracking
+                prevStreak = streak;
+                prevGoalCompleted = goalcompletions;
+                
+                const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
+                console.log(`📊 [${requestId}] Day ${date}: goals ${totalGoalsCompleted}/3, completed: ${goalcompletions}, streak: ${prevStreak} → ${streak} (${streakStatus})`);
+                        results.push({ 
+                            date, 
+                            status: existing ? 'updated' : 'created', 
+                            streak, 
+                            mode: 'streak',
+                            goalsCompleted: {
+                                steps: stepsCompleted,
+                                sleep: sleepCompleted,
+                                caloriesBurn: caloriesBurnCompleted,
+                                total: totalGoalsCompleted,
+                                allCompleted: totalGoalsCompleted === 3
+                            }
+                        });
 
                     } catch (err) {
                         console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
@@ -670,7 +846,10 @@ class HealthController {
                         totalProcessed: sortedData.length,
                         successful: results.length,
                         mode: 'streak',
-                        batchSize: bulkOps.length
+                        batchSize: bulkOps.length,
+                        streakSystem: 'multi-goal',
+                        goalsTracked: ['steps', 'sleep', 'caloriesBurn'],
+                        completionThreshold: 'ALL 3 goals required'
                     },
                     results,
                     todayData: todayData
@@ -759,7 +938,10 @@ class HealthController {
                         totalProcessed: sortedData.length,
                         successful: results.length,
                         mode: 'bulk',
-                        batchSize: bulkOps.length
+                        batchSize: bulkOps.length,
+                        streakSystem: 'multi-goal (streaks skipped)',
+                        goalsTracked: ['steps', 'sleep', 'caloriesBurn'],
+                        completionThreshold: 'ALL 3 goals required'
                     },
                     results,
                     todayData: todayData
