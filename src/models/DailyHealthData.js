@@ -18,14 +18,7 @@ const dailyHealthDataSchema = new mongoose.Schema({
     
     // Heart Rate Tracking
     heartRate: {
-        readings: [{
-            time: String,        // "09:30", "14:15"
-            bpm: Number,         // Beats per minute
-            activity: String     // "resting", "walking", "exercise"
-        }],
-        avgBpm: Number,          // Average for the day
-        maxBpm: Number,          // Maximum reading
-        minBpm: Number           // Minimum reading
+        avgBpm: Number          // Average BPM for the day
     },
     
     // Step Counter
@@ -67,32 +60,16 @@ const dailyHealthDataSchema = new mongoose.Schema({
             description: String, // "Breakfast - Oatmeal", "Apple snack"
             notes: String        // Optional notes
         }],
-        bmr: Number              // Basal Metabolic Rate
+             // Basal Metabolic Rate
     },
     
     // Sleep Tracking
     sleep: {
         duration: Number,        // Hours slept (from watch)
-        count: Number,           // Sleep count/sessions (from watch)
-        quality: {
-            type: String,
-            enum: ['poor', 'fair', 'good', 'excellent']
-        },
-        bedTime: String,         // "23:30"
-        wakeTime: String,        // "07:00"
-        deepSleep: Number,       // Hours of deep sleep
-        lightSleep: Number       // Hours of light sleep
+        
     },
     
-    // Body Measurements
-    bodyMetrics: {
-        weight: Number,          // kg
-        bodyFat: Number,         // percentage
-        muscleMass: Number,      // kg
-        bmi: Number,             // Calculated BMI
-        bodyTemperature: Number  // Celsius
-    },
-    
+   
     // Workout Sessions
     workouts: [{
         type: String,            // "cardio", "strength", "yoga"
@@ -127,11 +104,10 @@ const dailyHealthDataSchema = new mongoose.Schema({
         default: 0
     },
 
-    goalcompletions: {
-        type: Boolean,
-        default: false
+    goalcomplete:{
+        type:Boolean,
+        default:true
     },
-
     // Notes & Additional Data
     notes: String,
     
@@ -140,7 +116,6 @@ const dailyHealthDataSchema = new mongoose.Schema({
 
 }, {
     timestamps: true,
-    // Allow dynamic fields for easy expansion
     strict: false
 });
 

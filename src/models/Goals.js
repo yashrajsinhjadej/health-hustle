@@ -21,12 +21,6 @@ const goalsSchema = new mongoose.Schema({
         min: 0,
         max: 10000
     },
-    activeMinutesGoal: {
-        type: Number,
-        default: 30,
-        min: 0,
-        max: 1440 // max minutes in a day
-    },
     
     // Nutrition Goals
     waterIntakeGoal: {
@@ -49,50 +43,7 @@ const goalsSchema = new mongoose.Schema({
             default: 8,
             min: 4,
             max: 12
-        },
-        bedtime: {
-            type: String, // Format: "22:00"
-            default: "22:00"
-        },
-        wakeupTime: {
-            type: String, // Format: "06:00"
-            default: "06:00"
         }
-    },
-    
-    // Body Metrics Goals
-    weightGoal: {
-        target: {
-            type: Number,
-            min: 20,
-            max: 500
-        },
-        unit: {
-            type: String,
-            enum: ['kg', 'lbs'],
-            default: 'kg'
-        }
-    },
-    
-    // Health Monitoring Goals
-    heartRateTargets: {
-        restingHR: {
-            type: Number,
-            min: 30,
-            max: 120
-        },
-        maxHR: {
-            type: Number,
-            min: 100,
-            max: 220
-        }
-    },
-    
-    // Goal Settings
-    goalPeriod: {
-        type: String,
-        enum: ['daily', 'weekly', 'monthly'],
-        default: 'daily'
     },
     
     isActive: {

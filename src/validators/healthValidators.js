@@ -195,39 +195,10 @@ const validateDailyHealthDataBody = [
         .withMessage('Blood pressure timestamp must be a valid ISO 8601 date'),
 
     // Heart rate validation (optional)
-    body('heartRate.readings')
-        .optional()
-        .isArray()
-        .withMessage('Heart rate readings must be an array'),
-    
-    body('heartRate.readings.*.time')
-        .optional()
-        .custom(isValidTimeFormat),
-    
-    body('heartRate.readings.*.bpm')
+    body('heartRate.avgBpm')
         .optional()
         .isInt({ min: 30, max: 250 })
-        .withMessage('Heart rate BPM must be between 30 and 250'),
-    
-    body('heartRate.readings.*.activity')
-        .optional()
-        .isIn(['resting', 'active', 'exercise', 'manual'])
-        .withMessage('Heart rate activity must be resting, active, exercise, or manual'),
-    
-    body('heartRate.average')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Average heart rate must be between 30 and 250'),
-    
-    body('heartRate.max')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Max heart rate must be between 30 and 250'),
-    
-    body('heartRate.min')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Min heart rate must be between 30 and 250'),
+        .withMessage('Average heart rate BPM must be between 30 and 250'),
 
     // Sleep validation (optional)
     body('sleep.duration')
@@ -369,39 +340,10 @@ const validateDailyHealthData = [
         .withMessage('Blood pressure timestamp must be a valid ISO 8601 date'),
 
     // Heart rate validation (optional)
-    body('heartRate.readings')
-        .optional()
-        .isArray()
-        .withMessage('Heart rate readings must be an array'),
-    
-    body('heartRate.readings.*.time')
-        .optional()
-        .custom(isValidTimeFormat),
-    
-    body('heartRate.readings.*.bpm')
+    body('heartRate.avgBpm')
         .optional()
         .isInt({ min: 30, max: 250 })
-        .withMessage('Heart rate BPM must be between 30 and 250'),
-    
-    body('heartRate.readings.*.activity')
-        .optional()
-        .isIn(['resting', 'active', 'exercise', 'manual'])
-        .withMessage('Heart rate activity must be resting, active, exercise, or manual'),
-    
-    body('heartRate.average')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Average heart rate must be between 30 and 250'),
-    
-    body('heartRate.max')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Max heart rate must be between 30 and 250'),
-    
-    body('heartRate.min')
-        .optional()
-        .isInt({ min: 30, max: 250 })
-        .withMessage('Min heart rate must be between 30 and 250'),
+        .withMessage('Average heart rate BPM must be between 30 and 250'),
 
     // Sleep validation (optional)
     body('sleep.duration')
@@ -479,8 +421,8 @@ const validateQuickUpdate = [
         .trim()
         .notEmpty()
         .withMessage('Metric is required')
-        .isIn(['steps', 'water', 'sleep'])
-        .withMessage('Metric must be steps, water, or sleep'),
+        .isIn(['steps', 'water', 'sleep', 'heartRate'])
+        .withMessage('Metric must be steps, water, sleep, or heartRate'),
     
     body('value')
         .notEmpty()
@@ -506,6 +448,11 @@ const validateQuickUpdate = [
                 case 'sleep':
                     if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 24) {
                         throw new Error('Sleep value must be a number between 0 and 24 hours');
+                    }
+                    break;
+                case 'heartRate':
+                    if (isNaN(Number(value)) || Number(value) < 30 || Number(value) > 250) {
+                        throw new Error('Heart rate value must be a number between 30 and 250 BPM');
                     }
                     break;
             }
