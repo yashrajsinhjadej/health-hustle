@@ -48,6 +48,7 @@ async function getUserProfile(req, res) {
                 email: user.email,
                 role: user.role,
                 profileCompleted: user.profileCompleted,
+                lastLoginAt:user.lastLoginAt,
                 // Include profile data if available
                 ...(user.profileCompleted && {
                     age: user.age,
@@ -61,7 +62,8 @@ async function getUserProfile(req, res) {
                     mainGoal: user.mainGoal,
                     sportsAmbitions: user.sportsAmbitions,
                     activityLevel: user.activityLevel,
-                    userPreferences: user.userPreferences
+                    userPreferences: user.userPreferences,
+                   
                 })
             }
         };
