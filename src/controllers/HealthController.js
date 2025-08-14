@@ -32,22 +32,11 @@ const goalcounter = require('../utils/goalcounter');
  *     "timestamp": "2025-07-21T10:30:00Z"
  *   },
  *   "heartRate": {
- *     "readings": [
- *       {
- *         "time": "10:30",
- *         "bpm": 72,
- *         "activity": "resting"
- *       }
- *     ],
- *     "average": 75,
- *     "max": 85,
- *     "min": 65
+ *     "avgBpm": 75
  *   },
  *   "sleep": {
  *     "duration": 7.5,
- *     "quality": "good",
- *     "bedtime": "23:00",
- *     "wakeup": "06:30"
+ *     "quality": "good"
  *   },
  *   "meals": [
  *     {
@@ -188,6 +177,8 @@ class HealthController {
                     userId: userId,
                     stepsGoal: 10000,
                     caloriesBurnGoal: 2000,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
@@ -290,33 +281,32 @@ class HealthController {
                 console.log(`📊 [${requestId}] Created new health data for user ${userId} on ${date}`);
             }
 
-            // Format water data for response (ml back to glasses)
+            // Format and clean response data
             const responseData = { ...dailyHealth.toObject() };
-            if (responseData.water && responseData.water.consumed !== undefined) {
-                responseData.water.consumed = WaterConverter.mlToGlasses(responseData.water.consumed);
-            }
-            if (responseData.water && responseData.water.goal !== undefined) {
-                responseData.water.goal = WaterConverter.mlToGlasses(responseData.water.goal);
-            }
-
-            // Add streak summary to response
-            const streakSummary = {
-                currentStreak: streak,
-                previousStreak: prevStreak,
-                goalsCompleted: {
-                    steps: stepsCompleted,
-                    sleep: sleepCompleted,
-                    caloriesBurn: caloriesBurnCompleted,
-                    total: totalGoalsCompleted,
-                    allCompleted: totalGoalsCompleted === 3
-                },
-                goalcompletions: goalcompletions
+            
+            // Filter out unwanted fields and keep only essential data
+            const cleanHealthData = {
+                heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
+                steps: responseData.steps ? { count: responseData.steps.count } : undefined,
+                water: responseData.water ? { consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0) } : undefined,
+                calories: responseData.calories ? { 
+                    consumed: responseData.calories.consumed || 0, 
+                    burned: responseData.calories.burned || 0 
+                } : undefined,
+                sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                date: responseData.date,
+                goalcompletions: responseData.goalcompletions,
+                streak: responseData.streak
             };
-
-            ResponseHandler.success(res, 'Daily health data updated successfully', {
-                ...responseData,
-                streakSummary
+            
+            // Remove undefined fields
+            Object.keys(cleanHealthData).forEach(key => {
+                if (cleanHealthData[key] === undefined) {
+                    delete cleanHealthData[key];
+                }
             });
+
+            ResponseHandler.success(res, 'Daily health data updated successfully', cleanHealthData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Update daily health error:`, error);
@@ -368,22 +358,34 @@ class HealthController {
 
             console.log(`📊 [${requestId}] Found health record:`, dailyHealth.toObject());
 
-            // Convert ml back to glasses for frontend
+            // Convert ml back to glasses for frontend and clean response data
             const responseData = { ...dailyHealth.toObject() };
-            if (responseData.water && responseData.water.consumed !== undefined) {
-                const originalMl = responseData.water.consumed;
-                responseData.water.consumed = WaterConverter.mlToGlasses(originalMl);
-                console.log(`💧 [${requestId}] Converted water: ${originalMl}ml → ${responseData.water.consumed} glasses`);
-            }
-            if (responseData.water && responseData.water.goal !== undefined) {
-                const originalGoalMl = responseData.water.goal;
-                responseData.water.goal = WaterConverter.mlToGlasses(originalGoalMl);
-                console.log(`💧 [${requestId}] Converted water goal: ${originalGoalMl}ml → ${responseData.water.goal} glasses`);
-            }
+            
+            // Filter out unwanted fields and keep only essential data
+            const cleanHealthData = {
+                heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
+                steps: responseData.steps ? { count: responseData.steps.count } : undefined,
+                water: responseData.water ? { consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0) } : undefined,
+                calories: responseData.calories ? { 
+                    consumed: responseData.calories.consumed || 0, 
+                    burned: responseData.calories.burned || 0 
+                } : undefined,
+                sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                date: responseData.date,
+                goalcompletions: responseData.goalcompletions,
+                streak: responseData.streak
+            };
+            
+            // Remove undefined fields
+            Object.keys(cleanHealthData).forEach(key => {
+                if (cleanHealthData[key] === undefined) {
+                    delete cleanHealthData[key];
+                }
+            });
 
             console.log(`📊 [${requestId}] Retrieved health data for user ${userId} on ${date}`);
 
-            ResponseHandler.success(res, 'Daily health data retrieved successfully', responseData);
+            ResponseHandler.success(res, 'Daily health data retrieved successfully', cleanHealthData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Get daily health error:`, error);
@@ -419,13 +421,10 @@ class HealthController {
                     // Default values are already set in the schema
                     stepsGoal: 10000,
                     caloriesBurnGoal: 2000,
-                    activeMinutesGoal: 30,
                     waterIntakeGoal: 8,
                     caloriesIntakeGoal: 2000,
                     sleepGoal: {
-                        hours: 8,
-                        bedtime: "22:00",
-                        wakeupTime: "06:00"
+                        hours: 8
                     }
                 });
                 
@@ -433,22 +432,53 @@ class HealthController {
                 console.log(`✅ Default goals created for user ${userId}`);
             }
 
+            // Clean goals data to only include essential fields
+            let cleanGoals = null;
+            if (userGoals) {
+                cleanGoals = {
+                    stepsGoal: userGoals.stepsGoal,
+                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                    waterIntakeGoal: userGoals.waterIntakeGoal,
+                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                    sleepGoal: {
+                        hours: userGoals.sleepGoal?.hours
+                    }
+                };
+            }
+            
             // Prepare response data
             const responseData = {
                 healthData: dailyHealth,
-                goals: userGoals
+                goals: cleanGoals
             };
 
             // Convert ml back to glasses for frontend if health data exists
-            if (dailyHealth && dailyHealth.water) {
+            if (dailyHealth) {
                 const formattedHealthData = { ...dailyHealth.toObject() };
-                if (formattedHealthData.water.consumed !== undefined) {
-                    formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
-                }
-                if (formattedHealthData.water.goal !== undefined) {
-                    formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
-                }
-                responseData.healthData = formattedHealthData;
+                
+                // Filter out unwanted fields and keep only essential data
+                const cleanHealthData = {
+                    heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
+                    steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
+                    water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                    calories: formattedHealthData.calories ? { 
+                        consumed: formattedHealthData.calories.consumed || 0, 
+                        burned: formattedHealthData.calories.burned || 0 
+                    } : undefined,
+                    sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                    date: formattedHealthData.date,
+                    goalcompletions: formattedHealthData.goalcompletions,
+                    streak: formattedHealthData.streak
+                };
+                
+                // Remove undefined fields
+                Object.keys(cleanHealthData).forEach(key => {
+                    if (cleanHealthData[key] === undefined) {
+                        delete cleanHealthData[key];
+                    }
+                });
+                
+                responseData.healthData = cleanHealthData;
             }
 
             if (!dailyHealth) {
@@ -578,9 +608,19 @@ class HealthController {
                     dailyHealth.sleep.duration = value;
                     break;
                     
+                case 'heartRate':
+                    // HEART RATE: Update average BPM
+                    console.log(`❤️ [${requestId}] Updating heart rate: ${dailyHealth.heartRate?.avgBpm || 0} → ${value} bpm`);
+                    
+                    if (!dailyHealth.heartRate) {
+                        dailyHealth.heartRate = {};
+                    }
+                    dailyHealth.heartRate.avgBpm = value;
+                    break;
+                    
                 default:
                     console.log(`❌ [${requestId}] Unknown metric: ${metric}`);
-                    return ResponseHandler.error(res, `Unknown metric: ${metric}. Supported metrics: steps, water, sleep`);
+                    return ResponseHandler.error(res, `Unknown metric: ${metric}. Supported metrics: steps, water, sleep, heartRate`);
             }
 
             const savedHealth = await dailyHealth.save();
@@ -720,8 +760,6 @@ class HealthController {
                 let streak;
                 // Note: goalcompletions boolean already reflects today's actual goal completion status
                 if (!prevGoalCompleted) {
-                    // Yesterday goalcompletion was false
-                    // Check today's goal completion
                     if (goalcompletions) {
                         // Today goals completed - start new streak
                         streak = 1;
@@ -773,18 +811,12 @@ class HealthController {
                             date,
                             streak,
                             goalcompletions,
+                            goalcomplete: goalcompletions,
                             ...data
                         };
 
-                        // Water conversion
-                        if (data.water) {
-                            if (data.water.consumed !== undefined) {
-                                updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
-                            }
-                            if (data.water.goal !== undefined) {
-                                updateData.water.goal = WaterConverter.glassesToMl(data.water.goal);
-                            }
-                        }
+                      
+                        
 
                         bulkOps.push({
                             updateOne: {
@@ -831,27 +863,61 @@ class HealthController {
                 let todayData;
                 if (todayHealth) {
                     let formattedHealthData = { ...todayHealth.toObject() };
-                    if (formattedHealthData.water && formattedHealthData.water.consumed !== undefined) {
-                        formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                    
+                    // Filter out unwanted fields and keep only essential data
+                    const cleanHealthData = {
+                        heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
+                        steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
+                        water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                        calories: formattedHealthData.calories ? { 
+                            consumed: formattedHealthData.calories.consumed || 0, 
+                            burned: formattedHealthData.calories.burned || 0 
+                        } : undefined,
+                        sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                        date: formattedHealthData.date,
+                        goalcompletions: formattedHealthData.goalcompletions,
+                        streak: formattedHealthData.streak
+                    };
+                    
+                    // Remove undefined fields
+                    Object.keys(cleanHealthData).forEach(key => {
+                        if (cleanHealthData[key] === undefined) {
+                            delete cleanHealthData[key];
+                        }
+                    });
+                    
+                    // Clean goals data to only include essential fields
+                    let cleanGoals = null;
+                    if (todayGoals) {
+                        cleanGoals = {
+                            stepsGoal: todayGoals.stepsGoal,
+                            caloriesBurnGoal: todayGoals.caloriesBurnGoal,
+                            waterIntakeGoal: todayGoals.waterIntakeGoal,
+                            caloriesIntakeGoal: todayGoals.caloriesIntakeGoal,
+                            sleepGoal: {
+                                hours: todayGoals.sleepGoal?.hours
+                            }
+                        };
                     }
-                    if (formattedHealthData.water && formattedHealthData.water.goal !== undefined) {
-                        formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
-                    }
-                    todayData = { healthData: formattedHealthData, goals: todayGoals };
+                    
+                    todayData = { healthData: cleanHealthData, goals: cleanGoals };
                 } else {
-                    todayData = { healthData: null, goals: todayGoals };
+                    // Clean goals data to only include essential fields
+                    let cleanGoals = null;
+                    if (todayGoals) {
+                        cleanGoals = {
+                            stepsGoal: todayGoals.stepsGoal,
+                            caloriesBurnGoal: todayGoals.caloriesBurnGoal,
+                            waterIntakeGoal: todayGoals.waterIntakeGoal,
+                            caloriesIntakeGoal: todayGoals.caloriesIntakeGoal,
+                            sleepGoal: {
+                                hours: todayGoals.sleepGoal?.hours
+                            }
+                        };
+                    }
+                    todayData = { healthData: null, goals: cleanGoals };
                 }
                 const responseData = {
-                    summary: {
-                        totalProcessed: sortedData.length,
-                        successful: results.length,
-                        mode: 'streak',
-                        batchSize: bulkOps.length,
-                        streakSystem: 'multi-goal',
-                        goalsTracked: ['steps', 'sleep', 'caloriesBurn'],
-                        completionThreshold: 'ALL 3 goals required'
-                    },
-                    results,
                     todayData: todayData
                 };
                 console.log(`✅ [${requestId}] STREAK MODE complete: ${results.length} records processed with streak calculation`);
@@ -885,12 +951,18 @@ class HealthController {
 
                         // Water conversion only
                         if (data.water) {
+                            if (!updateData.water) {
+                                updateData.water = {};
+                            }
                             if (data.water.consumed !== undefined) {
                                 updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
                             }
-                            if (data.water.goal !== undefined) {
-                                updateData.water.goal = WaterConverter.glassesToMl(data.water.goal);
-                            }
+                        }
+
+                        // Also persist goal completion compatibility flag if present in input (optional)
+                        if (data.goalcompletions !== undefined) {
+                            updateData.goalcompletions = data.goalcompletions;
+                            updateData.goalcomplete = data.goalcompletions;
                         }
 
                         bulkOps.push({
@@ -923,27 +995,61 @@ class HealthController {
                 } catch {}
                 if (todayHealth) {
                     let formattedHealthData = { ...todayHealth.toObject() };
-                    if (formattedHealthData.water && formattedHealthData.water.consumed !== undefined) {
-                        formattedHealthData.water.consumed = WaterConverter.mlToGlasses(formattedHealthData.water.consumed);
+                    
+                    // Filter out unwanted fields and keep only essential data
+                    const cleanHealthData = {
+                        heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
+                        steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
+                        water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                        calories: formattedHealthData.calories ? { 
+                            consumed: formattedHealthData.calories.consumed || 0, 
+                            burned: formattedHealthData.calories.burned || 0 
+                        } : undefined,
+                        sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                        date: formattedHealthData.date,
+                        goalcompletions: formattedHealthData.goalcompletions,
+                        streak: formattedHealthData.streak
+                    };
+                    
+                    // Remove undefined fields
+                    Object.keys(cleanHealthData).forEach(key => {
+                        if (cleanHealthData[key] === undefined) {
+                            delete cleanHealthData[key];
+                        }
+                    });
+                    
+                    // Clean goals data to only include essential fields
+                    let cleanGoals = null;
+                    if (todayGoals) {
+                        cleanGoals = {
+                            stepsGoal: todayGoals.stepsGoal,
+                            caloriesBurnGoal: todayGoals.caloriesBurnGoal,
+                            waterIntakeGoal: todayGoals.waterIntakeGoal,
+                            caloriesIntakeGoal: todayGoals.caloriesIntakeGoal,
+                            sleepGoal: {
+                                hours: todayGoals.sleepGoal?.hours
+                            }
+                        };
                     }
-                    if (formattedHealthData.water && formattedHealthData.water.goal !== undefined) {
-                        formattedHealthData.water.goal = WaterConverter.mlToGlasses(formattedHealthData.water.goal);
-                    }
-                    todayData = { healthData: formattedHealthData, goals: todayGoals };
+                    
+                    todayData = { healthData: cleanHealthData, goals: cleanGoals };
                 } else {
-                    todayData = { healthData: null, goals: todayGoals };
+                    // Clean goals data to only include essential fields
+                    let cleanGoals = null;
+                    if (todayGoals) {
+                        cleanGoals = {
+                            stepsGoal: todayGoals.stepsGoal,
+                            caloriesBurnGoal: todayGoals.caloriesBurnGoal,
+                            waterIntakeGoal: todayGoals.waterIntakeGoal,
+                            caloriesIntakeGoal: todayGoals.caloriesIntakeGoal,
+                            sleepGoal: {
+                                hours: todayGoals.sleepGoal?.hours
+                            }
+                        };
+                    }
+                    todayData = { healthData: null, goals: cleanGoals };
                 }
                 const responseData = {
-                    summary: {
-                        totalProcessed: sortedData.length,
-                        successful: results.length,
-                        mode: 'bulk',
-                        batchSize: bulkOps.length,
-                        streakSystem: 'multi-goal (streaks skipped)',
-                        goalsTracked: ['steps', 'sleep', 'caloriesBurn'],
-                        completionThreshold: 'ALL 3 goals required'
-                    },
-                    results,
                     todayData: todayData
                 };
                 console.log(`✅ [${requestId}] BULK MODE complete: ${results.length} records processed (streaks skipped for performance)`);
