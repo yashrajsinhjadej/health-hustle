@@ -40,9 +40,6 @@ router.get('/today', HealthController.getTodayHealth); // verified by yash
 // PUT /health/bulk - Bulk update health data for multiple dates
 router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yashraj 
 
-// PUT /health/quick-update - Quick updates for water counter, calories tracker etc.
-router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, HealthController.quickUpdate); // Quick update for water, calories, etc.
-
 // GET /health/date - Get daily health data for specific date (date in body)
 router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
  // verified by yash
