@@ -125,50 +125,6 @@ const validateWaterBody=[
 ];
 
 
-// Validation for quick update  
-const validateQuickUpdate = [
-    body('metric')
-        .trim()
-        .notEmpty()
-        .withMessage('Metric is required')
-        .isIn(['steps', 'water', 'sleep', 'heartRate'])
-        .withMessage('Metric must be steps, water, sleep, or heartRate'),
-    
-    body('value')
-        .notEmpty()
-        .withMessage('Value is required')
-        .custom((value, { req }) => {
-            const metric = req.body.metric;
-            
-            if (!metric) {
-                return true; // Let the metric validation handle this
-            }
-            
-            switch (metric) {
-                case 'steps':
-                    if (!Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > 100000) {
-                        throw new Error('Steps value must be an integer between 0 and 100,000');
-                    }
-                    break;
-                case 'water':
-                    if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 50) {
-                        throw new Error('Water value must be a number between 0 and 50 glasses');
-                    }
-                    break;
-                case 'sleep':
-                    if (isNaN(Number(value)) || Number(value) < 0 || Number(value) > 24) {
-                        throw new Error('Sleep value must be a number between 0 and 24 hours');
-                    }
-                    break;
-                case 'heartRate':
-                    if (isNaN(Number(value)) || Number(value) < 30 || Number(value) > 250) {
-                        throw new Error('Heart rate value must be a number between 30 and 250 BPM');
-                    }
-                    break;
-            }
-            return true;
-        })
-];
 
 // Validation for bulk update
 const validateBulkUpdate = [
