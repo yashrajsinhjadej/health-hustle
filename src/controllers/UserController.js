@@ -49,6 +49,7 @@ async function getUserProfile(req, res) {
                 role: user.role,
                 profileCompleted: user.profileCompleted,
                 lastLoginAt:user.lastLoginAt,
+                signupAt:user.signupAt,
                 // Include profile data if available
                 ...(user.profileCompleted && {
                     age: user.age,

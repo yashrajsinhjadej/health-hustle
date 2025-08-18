@@ -104,7 +104,8 @@ class AuthController {
                     name: 'New User', // Temporary name
                     phone: cleanPhone,
                     role: 'user', // Default role for new registrations
-                    profileCompleted: false // Mark as incomplete
+                    profileCompleted: false, // Mark as incomplete
+                    signupAt: new Date()
                 });
                 const savedUser = await user.save();
                 console.log(`🔐 [${requestId}] New user created with ID: ${savedUser._id}`);
@@ -125,7 +126,7 @@ class AuthController {
             
             user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 30000); // 30 seconds before
             await user.save();
-            
+          
             console.log(`🔐 [${requestId}] JWT token generated: ${token.substring(0, 50)}...`);
 
             // Set JWT token in Authorization header
