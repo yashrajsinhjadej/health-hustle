@@ -124,7 +124,13 @@ const validateWaterBody=[
         .withMessage('Water consumed must be between 0 and 50 glasses'),
 ];
 
-
+const validatecalories =[
+    body('calories.consumed')
+        .notEmpty()
+        .isFloat({ min: 0, max: 5000 })
+        .withMessage('Calories consumed must be between 0 and 5000'),
+    
+]
 
 // Validation for bulk update
 const validateBulkUpdate = [
@@ -172,7 +178,6 @@ const handleValidationErrors = (req, res, next) => {
 
 module.exports = {
     validateDateBody,
-    validateQuickUpdate,
     validateBulkUpdate,
     handleValidationErrors,
     validateWaterBody
