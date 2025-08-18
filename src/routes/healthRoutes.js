@@ -46,7 +46,7 @@ router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthCon
 router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, HealthController.quickUpdate); // Quick update for water, calories, etc.
 
 // GET /health/date - Get daily health data for specific date (date in body)
-router.get('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
+router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
 
 // PUT /health/date - Update daily health data for specific date (date in body)
 router.put('/date', validateDailyHealthDataBody, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash

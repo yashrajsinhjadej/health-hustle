@@ -315,7 +315,7 @@ class HealthController {
     }
 
     // Get specific day health data
-    async getDailyHealth(req, res) {
+    async   getDailyHealth(req, res) {
         const requestId = `get_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         try {
