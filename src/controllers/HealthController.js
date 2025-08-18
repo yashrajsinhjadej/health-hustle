@@ -672,7 +672,107 @@ class HealthController {
         }
     }
 
+    async addCalories(req, res) {
+        try {
+            const caloriesConsumed = req.body.calories.consumed;
+            const userId = req.user._id;
+            const todayDate = new Date().toISOString().split('T')[0];
 
+            let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
+
+            if (healthdatatoday) {
+                if (!healthdatatoday.calories) {
+                    healthdatatoday.calories = { consumed: 0, burned: 0, entries: [] };
+                }
+                healthdatatoday.calories.consumed += caloriesConsumed;
+                if (!Array.isArray(healthdatatoday.calories.entries)) {
+                    healthdatatoday.calories.entries = [];
+                }
+                healthdatatoday.calories.entries.push({ consumed: caloriesConsumed, at: new Date() });
+                await healthdatatoday.save();
+            } else {
+                // If no health data for today, create a new record
+                healthdatatoday = new DailyHealthData({
+                    userId,
+                    date: todayDate,
+                    calories: {
+                        consumed: caloriesConsumed,
+                        burned: 0,
+                        entries: [{ consumed: caloriesConsumed, at: new Date() }]
+                    }
+                });
+                await healthdatatoday.save();
+            }
+
+            // Fetch user goals
+            let userGoals = await Goals.findOne({ userId });
+            if (!userGoals) {
+                userGoals = new Goals({
+                    userId,
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
+                    sleepGoal: { hours: 8 }
+                });
+                await userGoals.save();
+            }
+
+            // Clean/format health data for response
+            const responseData = { ...healthdatatoday.toObject() };
+            const cleanHealthData = {
+                heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
+                steps: responseData.steps ? { count: responseData.steps.count } : undefined,
+                water: responseData.water
+                    ? {
+                    consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0),
+                    entries: (responseData.water.entries || []).map(entry => ({
+                        ...entry,
+                        glasses: entry.glasses ?? WaterConverter.mlToGlasses(entry.ml ?? entry.amount ?? 0),
+                        ml: entry.ml ?? entry.amount ?? 0
+                    }))
+                }
+                : undefined,
+                calories: responseData.calories
+                    ? {
+                    consumed: responseData.calories.consumed || 0,
+                    burned: responseData.calories.burned || 0,
+                    entries: responseData.calories.entries || []
+                }
+                : undefined,
+                sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                date: responseData.date,
+                goalcompletions: responseData.goalcompletions,
+                streak: responseData.streak
+            };
+            Object.keys(cleanHealthData).forEach(key => {
+                if (cleanHealthData[key] === undefined) {
+                    delete cleanHealthData[key];
+                }
+            });
+
+            // Clean/format goals for response
+            const cleanGoals = {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: { hours: userGoals.sleepGoal?.hours }
+            };
+
+            // Build todayData response
+            const todayData = {
+                healthData: cleanHealthData,
+                goals: cleanGoals
+            };
+
+            return ResponseHandler.success(res, 'Calories consumed updated successfully', { todayData });
+
+        } catch (error) {
+            console.error('Add calories error:', error);
+            return ResponseHandler.serverError(res, 'Failed to update calories consumed');
+        }
+    }
 }
 
 module.exports = new HealthController();
