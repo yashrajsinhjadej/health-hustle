@@ -5,176 +5,41 @@ const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
 const goalcounter = require('../utils/goalcounter');
-/**
- * HEALTH CONTROLLER API DOCUMENTATION
- * 
- * 1. DAILY UPDATE - PUT /api/health/date
- * Expected Body Format:
- * {
- *   "date": "2025-08-07",  // REQUIRED - Date is always required in request body
- *   "steps": {
- *     "count": 8500,
- *     "goal": 10000,
- *     "calories": 340
- *   },
- *   "water": {
- *     "consumed": 6,  // Frontend sends glasses, backend stores as ml
- *     "goal": 8
- *   },
- *   "bodyMetrics": {
- *     "weight": 70,
- *     "height": 175,
- *     "bmi": 24.6
- *   },
- *   "bloodPressure": {
- *     "systolic": 120,
- *     "diastolic": 80,
- *     "timestamp": "2025-07-21T10:30:00Z"
- *   },
- *   "heartRate": {
- *     "avgBpm": 75
- *   },
- *   "sleep": {
- *     "duration": 7.5,
- *     "quality": "good"
- *   },
- *   "meals": [
- *     {
- *       "type": "breakfast",
- *       "time": "08:00",
- *       "calories": 450,
- *       "description": "Oatmeal with fruits"
- *     }
- *   ],
- *   "exercise": [
- *     {
- *       "type": "running",
- *       "duration": 30,
- *       "calories": 300,
- *       "time": "07:00"
- *     }
- *   ]
- * }
- * 
- * 2. GET SPECIFIC DATE - GET /api/health/date
- * Expected Body Format:
- * {
- *   "date": "2025-08-06"  // REQUIRED - Date is always required in request body
- * }
- * 
- * 3. QUICK UPDATE - PUT /api/health/quick-update (TODAY ONLY)
- * Expected Body Format:
- * {
- *   "metric": "steps|water|calories|sleep|weight|heartRate",
- *   "value": 8500
- * }
- * 
- * BEHAVIOR BY METRIC:
- * - WATER & CALORIES: Adds entry to array + updates total (additive)
- *   Example: water=2 glasses → adds 2 glasses to today's water entries
- * - STEPS & SLEEP & WEIGHT: Updates whole field (replacement)
- *   Example: steps=8500 → sets today's step count to 8500
- * - HEART RATE: Adds reading to array with current time
- * 
- * Note for WATER: Frontend sends in glasses, backend stores ml + creates entries
- * - 1 glass = 200ml
- * - Example: value: 2 (glasses) → adds entry + increases total by 400ml
- * 
- * 4. BULK UPDATE - POST /api/health/bulk
- * Expected Body Format:
- * {
- *   "health_data": [
- *     {
- *       "date": "2025-07-21",
- *       "data": {
- *         // Same format as daily health data above
- *       }
- *     },
- *     {
- *       "date": "2025-07-20",
- *       "data": {
- *         // Same format as daily health data above
- *       }
- *     }
- *   ]
- * }
- * 
- * STREAK SYSTEM: Multi-goal streak calculation based on:
- * - Steps goal completion (steps.count >= stepsGoal)
- * - Sleep goal completion (sleep.duration >= sleepGoal.hours)  
- * - Calories burn goal completion (calories.burned >= caloriesBurnGoal)
- * - ALL 3 goals must be completed for streak to continue
- * - Streak resets to 0 if any goal is missed (simple boolean logic)
- * 
- * DATE FORMAT: All dates should be in YYYY-MM-DD format (e.g., "2025-07-21")
- * TIME FORMAT: Times should be in HH:MM format (e.g., "10:30")
- * UNITS: Weight in kg, Height in cm, Water in glasses (frontend) → ml (backend), Duration in minutes/hours
- * 
- * WATER CONVERSION (Simple):
- * - Frontend always sends: glasses (e.g., 4 glasses)
- * - Backend stores: ml (glasses × 200ml)
- * - Frontend receives: glasses (ml ÷ 200ml)
- * - No unit tracking needed - always glasses in/out, ml stored internally
- * 
- * IMPORTANT: Date is ALWAYS required in request body for all date-specific operations
- * No automatic fallback to "today" - user must explicitly specify the date they want
- */
 
 class HealthController {
-    
-    // Update or create daily health data
-    async updateDailyHealth(req, res) {
-        const requestId = `update_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
+    // Get specific day health data
+
+    async addwater(req, res) {
         try {
-            console.log(`📊 [${requestId}] HealthController.updateDailyHealth START`);
-            console.log(`📊 [${requestId}] Request params:`, req.params);
-            console.log(`📊 [${requestId}] Request body:`, req.body);
-            console.log(`📊 [${requestId}] Request headers:`, req.headers);
-            console.log(`📊 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
-            
-            // Ensure MongoDB connection for serverless
-            console.log(`📊 [${requestId}] Ensuring MongoDB connection...`);
-            await ConnectionHelper.ensureConnection();
-            
+            const waterconsumedinglasses = req.body.water.consumed;
             const userId = req.user._id;
-            const date = req.body.date; // Date is required in body, no fallback to today
-            const healthData = req.body;
+            const todayDate = new Date().toISOString().split('T')[0];
 
-            // Additional controller-level validation for future dates
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const inputDate = new Date(date);
-            inputDate.setHours(0, 0, 0, 0);
-            
-            if (inputDate > today) {
-                console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
-                return ResponseHandler.error(res, `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`);
-            }
-            
-            console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
-            console.log(`📊 [${requestId}] Health data received:`, healthData);
+            const waterInMl = WaterConverter.glassesToMl(waterconsumedinglasses);
+            let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
 
-            // Simple water conversion: glasses to ml for storage
-            if (healthData.water && healthData.water.consumed !== undefined) {
-                const originalGlasses = healthData.water.consumed;
-                healthData.water.consumed = WaterConverter.glassesToMl(originalGlasses);
-                console.log(`💧 [${requestId}] Converted water: ${originalGlasses} glasses → ${healthData.water.consumed}ml`);
-            }
-            
-            if (healthData.water && healthData.water.goal !== undefined) {
-                const originalGoalGlasses = healthData.water.goal;
-                healthData.water.goal = WaterConverter.glassesToMl(originalGoalGlasses);
-                console.log(`💧 [${requestId}] Converted water goal: ${originalGoalGlasses} glasses → ${healthData.water.goal}ml`);
+            if (healthdatatoday) {
+                healthdatatoday.water.consumed += waterInMl;
+                healthdatatoday.water.entries.push({ glasses: waterconsumedinglasses, ml: waterInMl });
+                await healthdatatoday.save();
+            } else {
+                // If no health data for today, create a new record
+                healthdatatoday = new DailyHealthData({
+                    userId,
+                    date: todayDate,
+                    water: {
+                        consumed: waterInMl,
+                        entries: [{ glasses: waterconsumedinglasses, ml: waterInMl }]
+                    }
+                });
+                await healthdatatoday.save();
             }
 
-            // Get user goals for streak calculation
-            console.log(`📊 [${requestId}] Getting user goals for streak calculation...`);
-            let userGoals = await Goals.findOne({ userId: userId });
+            // Fetch user goals
+            let userGoals = await Goals.findOne({ userId });
             if (!userGoals) {
-                console.log(`📊 [${requestId}] No goals found, creating default goals...`);
                 userGoals = new Goals({
-                    userId: userId,
+                    userId,
                     stepsGoal: 10000,
                     caloriesBurnGoal: 2000,
                     waterIntakeGoal: 8,
@@ -184,137 +49,59 @@ class HealthController {
                 await userGoals.save();
             }
 
-            // Find existing record or create new one
-            console.log(`📊 [${requestId}] Looking for existing health record...`);
-            let dailyHealth = await DailyHealthData.findOne({ 
-                userId: userId, 
-                date: date 
-            });
-
-            // Calculate multi-goal streak before saving
-            console.log(`📊 [${requestId}] Calculating multi-goal streak...`);
-            
-            // Get previous day's streak data
-            const previousDate = new Date(date);
-            previousDate.setDate(previousDate.getDate() - 1);
-            const previousDateString = previousDate.toISOString().split('T')[0];
-            
-            const previousRecord = await DailyHealthData.findOne({ 
-                userId: userId, 
-                date: previousDateString 
-            });
-            
-            const prevStreak = previousRecord ? previousRecord.streak : 0;
-            const prevGoalCompleted = previousRecord ? previousRecord.goalcompletions : false;
-            
-            // Check if each goal is completed
-            const stepsGoal = userGoals.stepsGoal || 10000;
-            const sleepGoal = userGoals.sleepGoal?.hours || 8;
-            const caloriesBurnGoal = userGoals.caloriesBurnGoal || 2000;
-            
-            const stepsCompleted = healthData.steps && healthData.steps.count >= stepsGoal;
-            const sleepCompleted = healthData.sleep && healthData.sleep.duration >= sleepGoal;
-            const caloriesBurnCompleted = healthData.calories && healthData.calories.burned >= caloriesBurnGoal;
-            
-            // Calculate total goals completed (0-3)
-            const totalGoalsCompleted = [stepsCompleted, sleepCompleted, caloriesBurnCompleted]
-                .filter(Boolean).length;
-            
-            // Consider it a "goal completion day" if ALL 3 main goals are met
-            const goalcompletions = totalGoalsCompleted === 3;
-            
-            // Clear streak algorithm based on yesterday's goal completion status
-            let streak;
-            // Note: goalcompletions boolean already reflects today's actual goal completion status
-            if (!prevGoalCompleted) {
-                // Yesterday goalcompletion was false
-                // Check today's goal completion
-                if (goalcompletions) {
-                    // Today goals completed - start new streak
-                    streak = 1;
-                    // goalcompletions = true (already set above)
-                } else {
-                    // Today goals not completed - no streak
-                    streak = 0;
-                    // goalcompletions = false (already set above)
-                }
-            } else {
-                // Yesterday goalcompletion was true
-                if (goalcompletions) {
-                    // Today goals completed - continue streak
-                    streak = prevStreak + 1;
-                    // goalcompletions = true (already set above)
-                } else {
-                    // Today goals not completed - maintain yesterday's streak
-                    streak = prevStreak;
-                    // goalcompletions = false (already set above)
-                }
-            }
-            
-            const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
-            console.log(`📊 [${requestId}] Streak calculation: ${prevStreak} → ${streak} (goals: ${totalGoalsCompleted}/3, ALL goals required: ${goalcompletions}, status: ${streakStatus})`);
-            
-            // Add streak data to health data
-            healthData.streak = streak;
-            healthData.goalcompletions = goalcompletions;
-            
-            if (dailyHealth) {
-                // Update existing record
-                console.log(`📊 [${requestId}] Found existing record, updating...`);
-                console.log(`📊 [${requestId}] Before update:`, dailyHealth.toObject());
-                Object.assign(dailyHealth, healthData);
-                const savedHealth = await dailyHealth.save();
-                console.log(`📊 [${requestId}] After update:`, savedHealth.toObject());
-                
-                console.log(`📊 [${requestId}] Updated health data for user ${userId} on ${date}`);
-            } else {
-                // Create new record
-                console.log(`📊 [${requestId}] No existing record, creating new one...`);
-                dailyHealth = new DailyHealthData({
-                    userId: userId,
-                    date: date,
-                    ...healthData
-                });
-                const savedHealth = await dailyHealth.save();
-                console.log(`📊 [${requestId}] Created new health record:`, savedHealth.toObject());
-                
-                console.log(`📊 [${requestId}] Created new health data for user ${userId} on ${date}`);
-            }
-
-            // Format and clean response data
-            const responseData = { ...dailyHealth.toObject() };
-            
-            // Filter out unwanted fields and keep only essential data
+            // Clean/format health data for response
+            const responseData = { ...healthdatatoday.toObject() };
             const cleanHealthData = {
                 heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
                 steps: responseData.steps ? { count: responseData.steps.count } : undefined,
-                water: responseData.water ? { consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0) } : undefined,
-                calories: responseData.calories ? { 
-                    consumed: responseData.calories.consumed || 0, 
-                    burned: responseData.calories.burned || 0 
+                water: responseData.water
+                    ? {
+                        consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0),
+                        entries: (responseData.water.entries || []).map(entry => ({
+                            ...entry,
+                            glasses: entry.glasses ?? WaterConverter.mlToGlasses(entry.ml ?? entry.amount ?? 0),
+                            ml: entry.ml ?? entry.amount ?? 0
+                        }))
+                    }
+                    : undefined,
+                calories: responseData.calories ? {
+                    consumed: responseData.calories.consumed || 0,
+                    burned: responseData.calories.burned || 0
                 } : undefined,
                 sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
                 date: responseData.date,
                 goalcompletions: responseData.goalcompletions,
                 streak: responseData.streak
             };
-            
-            // Remove undefined fields
             Object.keys(cleanHealthData).forEach(key => {
                 if (cleanHealthData[key] === undefined) {
                     delete cleanHealthData[key];
                 }
             });
 
-            ResponseHandler.success(res, 'Daily health data updated successfully', cleanHealthData);
+            // Clean/format goals for response
+            const cleanGoals = {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: { hours: userGoals.sleepGoal?.hours }
+            };
+
+            // Build todayData response
+            const todayData = {
+                healthData: cleanHealthData,
+                goals: cleanGoals
+            };
+
+            return ResponseHandler.success(res, 'Water consumption updated successfully', { todayData });
 
         } catch (error) {
-            console.error(`❌ [${requestId}] Update daily health error:`, error);
-            ResponseHandler.serverError(res, 'Failed to update daily health data');
+            console.error('Add water error:', error);
+            return ResponseHandler.serverError(res, 'Failed to update water consumption');
         }
     }
-
-    // Get specific day health data
+    
     async getDailyHealth(req, res) {
         const requestId = `get_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
@@ -351,64 +138,41 @@ class HealthController {
                 date: date 
             });
 
-            // Always fetch user goals
-            let userGoals = await Goals.findOne({ userId: userId });
-            if (!userGoals) {
-                userGoals = new Goals({
-                    userId: userId,
-                    stepsGoal: 10000,
-                    caloriesBurnGoal: 2000,
-                    waterIntakeGoal: 8,
-                    caloriesIntakeGoal: 2000,
-                    sleepGoal: { hours: 8 }
-                });
-                await userGoals.save();
+            if (!dailyHealth) {
+                console.log(`📊 [${requestId}] No health data found for ${date}`);
+                return ResponseHandler.notFound(res, 'No health data found for this date');
             }
 
-            // Clean/format goals
-            const cleanGoals = {
-                stepsGoal: userGoals.stepsGoal,
-                caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                waterIntakeGoal: userGoals.waterIntakeGoal,
-                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                sleepGoal: { hours: userGoals.sleepGoal?.hours }
+            console.log(`📊 [${requestId}] Found health record:`, dailyHealth.toObject());
+
+            // Convert ml back to glasses for frontend and clean response data
+            const responseData = { ...dailyHealth.toObject() };
+
+            // Filter out unwanted fields and keep only essential data
+            const cleanHealthData = {
+                heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
+                steps: responseData.steps ? { count: responseData.steps.count } : undefined,
+                water: responseData.water ? { consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0) } : undefined,
+                calories: responseData.calories ? { 
+                    consumed: responseData.calories.consumed || 0, 
+                    burned: responseData.calories.burned || 0 
+                } : undefined,
+                sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                date: responseData.date,
+                goalcompletions: responseData.goalcompletions,
+                streak: responseData.streak
             };
-
-            let cleanHealthData = null;
-            if (dailyHealth) {
-                const responseData = { ...dailyHealth.toObject() };
-                cleanHealthData = {
-                    heartRate: responseData.heartRate ? { avgBpm: responseData.heartRate.avgBpm } : undefined,
-                    steps: responseData.steps ? { count: responseData.steps.count } : undefined,
-                    water: responseData.water ? { consumed: WaterConverter.mlToGlasses(responseData.water.consumed || 0) } : undefined,
-                    calories: responseData.calories ? { 
-                        consumed: responseData.calories.consumed || 0, 
-                        burned: responseData.calories.burned || 0 
-                    } : undefined,
-                    sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
-                    date: responseData.date,
-                    goalcompletions: responseData.goalcompletions,
-                    streak: responseData.streak
-                };
-                // Remove undefined fields
-                Object.keys(cleanHealthData).forEach(key => {
-                    if (cleanHealthData[key] === undefined) {
-                        delete cleanHealthData[key];
-                    }
-                });
-            }
-
-            // Always return both healthData and goals in todayData
-            const responseData = {
-                todayData: {
-                    healthData: cleanHealthData,
-                    goals: cleanGoals
+            
+            // Remove undefined fields
+            Object.keys(cleanHealthData).forEach(key => {
+                if (cleanHealthData[key] === undefined) {
+                    delete cleanHealthData[key];
                 }
-            };
+            });
 
-            console.log(`📊 [${requestId}] Retrieved health data and goals for user ${userId} on ${date}`);
+            console.log(`📊 [${requestId}] Retrieved health data for user ${userId} on ${date}`);
 
-            ResponseHandler.success(res, 'Daily health data and goals retrieved successfully', responseData);
+            ResponseHandler.success(res, 'Daily health data retrieved successfully', cleanHealthData);
 
         } catch (error) {
             console.error(`❌ [${requestId}] Get daily health error:`, error);

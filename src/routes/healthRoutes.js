@@ -4,10 +4,8 @@ const router = express.Router();
 const { authenticateToken, userOnly } = require('../middleware/auth');
 const HealthController = require('../controllers/HealthController');
 const {
-    validateDateParam,
+    validateWaterBody,
     validateDateBody,
-    validateDailyHealthData,
-    validateDailyHealthDataBody,
     validateQuickUpdate,
     validateBulkUpdate,
     handleValidationErrors: handleHealthValidationErrors
@@ -29,9 +27,9 @@ router.get('/', (req, res) => {
         availableEndpoints: [
             'GET /api/health/today - Get today\'s health data',
             'GET /api/health/date - Get health data by specific date (date in body)',
-            'PUT /api/health/date - Update health data for specific date (date in body)',
             'POST /api/health/bulk - Bulk update health data for multiple dates',
-            'PUT /api/health/quick-update - Quick health updates for TODAY only (water=additive, steps/sleep=replace)'
+            'PUT /api/health/quick-update - Quick health updates for TODAY only (water=additive, steps/sleep=replace)',
+            'POST /api/health/water - Update water consumption for TODAY (water=additive)'
         ]
     });
 });
@@ -47,8 +45,8 @@ router.put('/quick-update', validateQuickUpdate, handleHealthValidationErrors, H
 
 // GET /health/date - Get daily health data for specific date (date in body)
 router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
+ // verified by yash
 
-// PUT /health/date - Update daily health data for specific date (date in body)
-router.put('/date', validateDailyHealthDataBody, handleHealthValidationErrors, HealthController.updateDailyHealth); // verified by yash
+router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
 
 module.exports = router;
