@@ -7,6 +7,7 @@ const {
     validateWaterBody,
     validateDateBody,
     validateBulkUpdate,
+    validatecalories,
     handleValidationErrors: handleHealthValidationErrors
 } = require('../validators/healthValidators');
 
@@ -46,7 +47,7 @@ router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthC
 router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
 
 
-// router.post('/calories',validatecalories,handleHealthValidationErrors, ); // verified by yash
+router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); // verified by yash
 module.exports = router;
 
 

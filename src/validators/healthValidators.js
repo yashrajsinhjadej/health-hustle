@@ -129,7 +129,6 @@ const validatecalories =[
         .notEmpty()
         .isFloat({ min: 0, max: 5000 })
         .withMessage('Calories consumed must be between 0 and 5000'),
-    
 ]
 
 // Validation for bulk update
@@ -180,5 +179,6 @@ module.exports = {
     validateDateBody,
     validateBulkUpdate,
     handleValidationErrors,
-    validateWaterBody
+    validateWaterBody,
+    validatecalories
 }; 

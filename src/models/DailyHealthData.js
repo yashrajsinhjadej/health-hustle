@@ -53,14 +53,12 @@ const dailyHealthDataSchema = new mongoose.Schema({
             type: Number,        // Total calories burned (from watch)
             default: 0
         },
-        entries: [{
-            time: String,        // "08:00", "12:30", "18:00"
-            amount: Number,      // Calories consumed at this time
-            type: String,        // "meal", "snack", "drink"
-            description: String, // "Breakfast - Oatmeal", "Apple snack"
-            notes: String        // Optional notes
-        }],
-             // Basal Metabolic Rate
+        entries: [
+            {
+                consumed: Number,
+                at: { type: Date, default: Date.now }
+            }
+        ]
     },
     
     // Sleep Tracking
