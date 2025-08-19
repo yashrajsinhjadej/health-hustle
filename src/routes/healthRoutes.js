@@ -29,7 +29,8 @@ router.get('/', (req, res) => {
             'GET /api/health/date - Get health data by specific date (date in body)',
             'POST /api/health/bulk - Bulk update health data for multiple dates',
             'PUT /api/health/quick-update - Quick health updates for TODAY only (water=additive, steps/sleep=replace)',
-            'POST /api/health/water - Update water consumption for TODAY (water=additive)'
+            'POST /api/health/water - Update water consumption for TODAY (water=additive)',
+            'POST /api/health/calories - Update calorie intake for TODAY (calories=additive)',
         ]
     });
 });
@@ -42,7 +43,7 @@ router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthCon
 
 // GET /health/date - Get daily health data for specific date (date in body)
 router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
- // verified by yash
+
 
 router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
 
