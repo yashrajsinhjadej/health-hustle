@@ -31,6 +31,6 @@ router.get('/', (req, res) => {
 router.get('/profile', UserController.getUserProfile); // verified by yash
 
 // PUT /user/firsttime - Complete profile setup during first registration
-router.put('/firsttime', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile);
+router.post('/firsttime', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile);
 
 module.exports = router;
