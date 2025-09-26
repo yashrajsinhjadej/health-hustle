@@ -2,6 +2,58 @@
 const { body, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
 
+// Admin signup validation
+const validateAdminSignup = [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage('Name is required')
+        .isLength({ min: 2, max: 50 })
+        .withMessage('Name must be between 2 and 50 characters')
+        .matches(/^[a-zA-Z\s]+$/)
+        .withMessage('Name can only contain letters and spaces'),
+
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please enter a valid email address')
+        .normalizeEmail(),
+
+    body('password')
+        .isLength({ min: 6 })
+        .withMessage('Password must be at least 6 characters long')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+        .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
+];
+
+// Admin login validation
+const validateAdminLogin = [
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please enter a valid email address')
+        .normalizeEmail(),
+
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+];
+
+// Admin email validation for password reset
+const validateAdminEmail = [
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please enter a valid email address')
+        .normalizeEmail()
+];
+
 // Validation rules for user profile update
 const validateUserProfileUpdate = [
     // Name validation
@@ -149,9 +201,29 @@ const validateOTP = [
         .withMessage('OTP must be exactly 6 digits')
 ];
 
+// Admin password reset validation
+const validateAdminPasswordReset = [
+    body('token')
+        .trim()
+        .notEmpty()
+        .withMessage('Reset token is required')
+        .isLength({ min: 10 })
+        .withMessage('Invalid reset token format'),
+
+    body('password')
+        .isLength({ min: 6 })
+        .withMessage('Password must be at least 6 characters long')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+        .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
+];
+
 module.exports = {
     validateUserProfileUpdate,
     validatePhoneNumber,
     validateOTP,
+    validateAdminSignup,
+    validateAdminLogin,
+    validateAdminEmail,
+    validateAdminPasswordReset,
     handleValidationErrors
 }; 

@@ -5,7 +5,6 @@ const goalsSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        index: true
     },
     
     // Activity Goals

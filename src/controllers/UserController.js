@@ -62,7 +62,6 @@ async function getUserProfile(req, res) {
                     bodyProfile: user.bodyProfile,
                     mainGoal: user.mainGoal,
                     sportsAmbitions: user.sportsAmbitions,
-                    activityLevel: user.activityLevel,
                     userPreferences: user.userPreferences,
                    
                 })
@@ -202,8 +201,10 @@ async function updateUserProfile(req, res) {
                 weight: userUpdated.weight, // Raw weight in kg
                 displayHeight: displayHeight, // Height in user's preferred unit
                 displayWeight: displayWeight, // Weight in user's preferred unit
+                loyaltyPercentage: userUpdated.loyaltyPercentage,
                 bodyProfile: userUpdated.bodyProfile,
                 mainGoal: userUpdated.mainGoal,
+                sportsAmbitions: userUpdated.sportsAmbitions,
                 userPreferences: userUpdated.userPreferences
             }
         });

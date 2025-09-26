@@ -50,11 +50,8 @@ class AuthController {
 
             console.log(`📱 [${requestId}] OTP sent successfully to ${phone}`);
             
-            // Always include OTP for testing purposes
-            return ResponseHandler.success(res, "OTP sent successfully", {
-                expiresIn: result.expiresIn,
-                otp: result.otp // Always include OTP for testing
-            });
+            // Include OTP in response for testing
+            return ResponseHandler.success(res, "OTP sent successfully", { otp: result.otp });
 
         } catch (error) {
             console.error(`📱 [${requestId}] Send OTP error:`, error);
@@ -122,9 +119,9 @@ class AuthController {
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
             console.log(`🔐 [${requestId}] Token issued at: ${tokenIssuedAt}`);
-            console.log(`🔐 [${requestId}] Setting lastLoginAt to: ${new Date(tokenIssuedAt.getTime() - 30000)}`);
+            console.log(`🔐 [${requestId}] Setting lastLoginAt to: ${new Date(tokenIssuedAt.getTime() - 1000)}`);
             
-            user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 30000); // 30 seconds before
+            user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 1000); // 1 second before
             await user.save();
           
             console.log(`🔐 [${requestId}] JWT token generated: ${token.substring(0, 50)}...`);
@@ -177,11 +174,49 @@ class AuthController {
             let hasUpdates = false;
 
             // Extract and validate fields from request body
-            const { name, email, dateOfBirth, gender, height, weight, fitnessGoal, activityLevel } = req.body;
+            const { name, email, dateOfBirth, gender, height, weight, fitnessGoal } = req.body;
 
             // Update name if provided
             if (name && name.trim() !== '' && name !== 'New User') {
-                updateData.name = name.trim();
+                const trimmedName = name.trim();
+                
+                // Validate name format - should contain at least one letter
+                const nameRegex = /^[a-zA-Z\s\-\.\']+$/; // Allow letters, spaces, hyphens, dots, apostrophes
+                const hasLetter = /[a-zA-Z]/.test(trimmedName); // Must contain at least one letter
+                
+                if (!nameRegex.test(trimmedName)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Validation failed",
+                        details: "Name can only contain letters, spaces, hyphens, dots, and apostrophes"
+                    });
+                }
+                
+                if (!hasLetter) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Validation failed",
+                        details: "Name must contain at least one letter"
+                    });
+                }
+                
+                if (trimmedName.length < 2) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Validation failed",
+                        details: "Name must be at least 2 characters long"
+                    });
+                }
+                
+                if (trimmedName.length > 50) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Validation failed",
+                        details: "Name must be less than 50 characters"
+                    });
+                }
+                
+                updateData.name = trimmedName;
                 hasUpdates = true;
             }
 
@@ -221,12 +256,6 @@ class AuthController {
                 hasUpdates = true;
             }
 
-            // Update activity level if provided
-            if (activityLevel && ['sedentary', 'light', 'moderate', 'active', 'very_active'].includes(activityLevel.toLowerCase())) {
-                updateData.activityLevel = activityLevel.toLowerCase();
-                hasUpdates = true;
-            }
-
             // Check if any updates were provided
             if (!hasUpdates) {
                 return ResponseHandler.error(res, "Update failed", "No valid fields provided for update");
@@ -254,7 +283,6 @@ class AuthController {
                     height: user.height,
                     weight: user.weight,
                     fitnessGoal: user.fitnessGoal,
-                    activityLevel: user.activityLevel,
                     role: user.role,
                     profileCompleted: user.profileCompleted
                 }

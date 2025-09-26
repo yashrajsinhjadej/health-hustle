@@ -6,6 +6,41 @@ const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
 const goalcounter = require('../utils/goalcounter');
 
+// CONFIGURABLE GOAL SYSTEM - Easy to modify which goals count for streaks
+const STREAK_GOALS = [
+    'steps',
+    // 'sleep', 
+    // 'caloriesBurn',
+    'water',           // Include water in streak calculation
+    // 'caloriesIntake'   // Uncomment to include calorie intake in streaks
+];
+
+// Goal calculation helper functions
+function calculateAllGoals(data, existingHealthData, goals) {
+    const goalResults = {
+        steps: data.steps && data.steps.count >= (goals.stepsGoal || 10000),
+        sleep: data.sleep && data.sleep.duration >= (goals.sleepGoal?.hours || 8),
+        caloriesBurn: data.calories && data.calories.burned >= (goals.caloriesBurnGoal || 2000),
+        water: (existingHealthData?.water?.consumed || 0) >= ((goals.waterIntakeGoal || 8) * 200), // Convert glasses to ml
+        caloriesIntake: (existingHealthData?.calories?.consumed || 0) >= (goals.caloriesIntakeGoal || 2000)
+    };
+    
+    return goalResults;
+}
+
+function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
+    const completedGoals = streakGoals.filter(goal => goalResults[goal]);
+    const totalStreakGoals = streakGoals.length;
+    const allStreakGoalsCompleted = completedGoals.length === totalStreakGoals;
+    
+    return {
+        completedGoals: completedGoals,
+        totalStreakGoals: totalStreakGoals,
+        allCompleted: allStreakGoalsCompleted,
+        goalResults: goalResults
+    };
+}
+
 class HealthController {
     // Get specific day health data
 
@@ -70,7 +105,7 @@ class HealthController {
                 } : undefined,
                 sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
                 date: responseData.date,
-                goalcompletions: responseData.goalcompletions,
+                goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
                 streak: responseData.streak
             };
             Object.keys(cleanHealthData).forEach(key => {
@@ -186,7 +221,7 @@ class HealthController {
                         : undefined,
                     sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
                     date: responseData.date,
-                    goalcompletions: responseData.goalcompletions,
+                    goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
                     streak: responseData.streak
                 };
                 // Remove undefined fields
@@ -289,7 +324,7 @@ class HealthController {
                     } : undefined,
                     sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
                     date: formattedHealthData.date,
-                    goalcompletions: formattedHealthData.goalcompletions,
+                    goalcompletions: formattedHealthData.goalcomplete,  // Map DB field to API response for frontend UI logic
                     streak: formattedHealthData.streak
                 };
                 
@@ -375,31 +410,34 @@ class HealthController {
                 // Goals and streak tracking
                 const goals = userGoals || { stepsGoal: 10000 };
                 let prevStreak = prevRecord ? prevRecord.streak : 0;
-                let prevGoalCompleted = prevRecord ? prevRecord.goalcompletions : false;
+                let prevGoalCompleted = prevRecord ? prevRecord.goalcomplete : false;
 
                 const bulkOps = [];
                 const results = [];
 
                 for (const { date, data } of sortedData) {
                     try {
-                                        // Complex multi-goal streak calculation
-                const existing = recordMap[date];
-                
-                // Check if each goal is completed
-                const stepsGoal = goals.stepsGoal || 10000;
-                const sleepGoal = goals.sleepGoal?.hours || 8;
-                const caloriesBurnGoal = goals.caloriesBurnGoal || 2000;
-                
-                const stepsCompleted = data.steps && data.steps.count >= stepsGoal;
-                const sleepCompleted = data.sleep && data.sleep.duration >= sleepGoal;
-                const caloriesBurnCompleted = data.calories && data.calories.burned >= caloriesBurnGoal;
-                
-                // Calculate total goals completed (0-3)
-                const totalGoalsCompleted = [stepsCompleted, sleepCompleted, caloriesBurnCompleted]
-                    .filter(Boolean).length;
-                
-                // Consider it a "goal completion day" if ALL 3 main goals are met
-                const goalcompletions = totalGoalsCompleted === 3;
+                        // Get existing health data for this date (for water/calories consumed)
+                        const existing = recordMap[date];
+                        
+                        // Calculate all possible goals using the configurable system
+                        const allGoalResults = calculateAllGoals(data, existing, goals);
+                        const streakResults = calculateStreakCompletion(allGoalResults, STREAK_GOALS);
+                        
+                        // Extract individual goal completion status for logging
+                        const { goalResults } = streakResults;
+                        const totalGoalsCompleted = streakResults.completedGoals.length;
+                        const goalcompletions = streakResults.allCompleted;
+                        
+                        console.log(`🎯 [${requestId}] Goals for ${date}:`, {
+                            steps: goalResults.steps ? '✅' : '❌',
+                            sleep: goalResults.sleep ? '✅' : '❌', 
+                            caloriesBurn: goalResults.caloriesBurn ? '✅' : '❌',
+                            water: goalResults.water ? '✅' : '❌',
+                            caloriesIntake: goalResults.caloriesIntake ? '✅' : '❌',
+                            streakGoals: STREAK_GOALS,
+                            completedCount: `${totalGoalsCompleted}/${streakResults.totalStreakGoals}`
+                        });
                 
                 // Clear streak algorithm based on yesterday's goal completion status
                 let streak;
@@ -451,22 +489,115 @@ class HealthController {
                 }
 
                         // Prepare update data with streak
-                        const updateData = {
+                        let updateData = {
                             userId,
                             date,
                             streak,
-                            goalcompletions,
-                            goalcomplete: goalcompletions,
-                            ...data
+                            goalcomplete: goalcompletions  // Use consistent database field name
                         };
+
+                        console.log(`🔍 [${requestId}] Processing date ${date} - Input data:`, JSON.stringify(data, null, 2));
+
+                        // Process each field individually, excluding additive fields
+                        if (data.steps) {
+                            updateData.steps = data.steps;
+                            console.log(`📊 [${requestId}] Including steps:`, data.steps);
+                        }
+                        if (data.sleep) {
+                            updateData.sleep = data.sleep;
+                            console.log(`😴 [${requestId}] Including sleep:`, data.sleep);
+                        }
+                        if (data.heartRate) {
+                            updateData.heartRate = data.heartRate;
+                            console.log(`❤️ [${requestId}] Including heartRate:`, data.heartRate);
+                        }
+                        
+                        // Handle calories - ONLY calories.burned, NOT calories.consumed
+                        if (data.calories) {
+                            console.log(`🍔 [${requestId}] Input calories data:`, data.calories);
+                            updateData.calories = {};
+                            if (data.calories.burned !== undefined) {
+                                updateData.calories.burned = data.calories.burned;
+                                console.log(`🔥 [${requestId}] Including calories.burned:`, data.calories.burned);
+                            }
+                            if (data.calories.consumed !== undefined) {
+                                console.log(`🚫 [${requestId}] EXCLUDING calories.consumed from bulk update:`, data.calories.consumed);
+                            }
+                            // If no valid calories fields, don't include calories
+                            if (Object.keys(updateData.calories).length === 0) {
+                                delete updateData.calories;
+                                console.log(`❌ [${requestId}] No valid calories fields, removing calories object`);
+                            }
+                        }
+                        
+                        // Handle water - exclude consumed, allow other fields if any
+                        if (data.water) {
+                            console.log(`💧 [${requestId}] Input water data:`, data.water);
+                            updateData.water = {};
+                            // Only include non-consumed water fields if they exist
+                            Object.keys(data.water).forEach(key => {
+                                if (key !== 'consumed') {
+                                    updateData.water[key] = data.water[key];
+                                    console.log(`💧 [${requestId}] Including water.${key}:`, data.water[key]);
+                                }
+                            });
+                            if (data.water.consumed !== undefined) {
+                                console.log(`🚫 [${requestId}] EXCLUDING water.consumed from bulk update:`, data.water.consumed);
+                            }
+                            // If no non-consumed fields, don't include water at all
+                            if (Object.keys(updateData.water).length === 0) {
+                                delete updateData.water;
+                                console.log(`❌ [${requestId}] No valid water fields, removing water object`);
+                            }
+                        }
+
+                        console.log(`📝 [${requestId}] Final updateData for ${date}:`, JSON.stringify(updateData, null, 2));
 
                       
                         
 
+                        // Build granular $set update so we don't overwrite additive fields like calories.consumed or water.consumed
+                        const setDoc = {
+                            userId,
+                            date,
+                            streak: updateData.streak,
+                            goalcomplete: updateData.goalcomplete
+                        };
+
+                        if (updateData.steps) {
+                            if (updateData.steps.count !== undefined) setDoc['steps.count'] = updateData.steps.count;
+                        }
+                        if (updateData.sleep) {
+                            if (updateData.sleep.duration !== undefined) setDoc['sleep.duration'] = updateData.sleep.duration;
+                        }
+                        if (updateData.heartRate) {
+                            if (updateData.heartRate.avgBpm !== undefined) setDoc['heartRate.avgBpm'] = updateData.heartRate.avgBpm;
+                        }
+                        // Only set burned calories; preserve existing consumed
+                        if (updateData.calories && updateData.calories.burned !== undefined) {
+                            setDoc['calories.burned'] = updateData.calories.burned;
+                        }
+
+                        // (We intentionally skip water & calories consumed here)
+
+                        // Build $setOnInsert ensuring we do NOT duplicate a field already in $set (Mongo conflict code 40)
+                        const setOnInsertDoc = {
+                            'calories.consumed': 0,
+                            'calories.entries': [],
+                            'water.consumed': 0,
+                            'water.entries': []
+                        };
+                        // Only seed burned on insert if we did NOT already include it in $set
+                        if (setDoc['calories.burned'] === undefined) {
+                            setOnInsertDoc['calories.burned'] = 0;
+                        }
+
+                        console.log(`🧪 [${requestId}] (STREAK MODE) Upsert setDoc for ${date}:`, setDoc);
+                        console.log(`🧪 [${requestId}] (STREAK MODE) Upsert setOnInsertDoc for ${date}:`, setOnInsertDoc);
                         bulkOps.push({
                             updateOne: {
                                 filter: { userId, date },
-                                update: { $set: updateData },
+                                update: { $set: setDoc, $setOnInsert: setOnInsertDoc },
                                 upsert: true
                             }
                         });
@@ -476,18 +607,22 @@ class HealthController {
                 prevGoalCompleted = goalcompletions;
                 
                 const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
-                console.log(`📊 [${requestId}] Day ${date}: goals ${totalGoalsCompleted}/3, completed: ${goalcompletions}, streak: ${prevStreak} → ${streak} (${streakStatus})`);
+                console.log(`📊 [${requestId}] Day ${date}: goals ${totalGoalsCompleted}/${streakResults.totalStreakGoals}, completed: ${goalcompletions}, streak: ${prevStreak} → ${streak} (${streakStatus})`);
                         results.push({ 
                             date, 
                             status: existing ? 'updated' : 'created', 
                             streak, 
                             mode: 'streak',
                             goalsCompleted: {
-                                steps: stepsCompleted,
-                                sleep: sleepCompleted,
-                                caloriesBurn: caloriesBurnCompleted,
-                                total: totalGoalsCompleted,
-                                allCompleted: totalGoalsCompleted === 3
+                                steps: goalResults.steps,
+                                sleep: goalResults.sleep,
+                                caloriesBurn: goalResults.caloriesBurn,
+                                water: goalResults.water,
+                                caloriesIntake: goalResults.caloriesIntake,
+                                streakGoals: STREAK_GOALS,
+                                completedCount: totalGoalsCompleted,
+                                totalStreakGoals: streakResults.totalStreakGoals,
+                                allCompleted: goalcompletions
                             }
                         });
 
@@ -520,7 +655,7 @@ class HealthController {
                         } : undefined,
                         sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
                         date: formattedHealthData.date,
-                        goalcompletions: formattedHealthData.goalcompletions,
+                        goalcompletions: formattedHealthData.goalcomplete  ,  // Map DB field to API response
                         streak: formattedHealthData.streak
                     };
                     
@@ -587,20 +722,48 @@ class HealthController {
                         // Simple update/create without streak calculation
                         const existing = recordMap[date];
                         
-                        // Prepare update data (no streak fields)
-                        const updateData = {
+                        // Prepare update data - exclude additive fields completely
+                        let updateData = {
                             userId,
-                            date,
-                            ...data
+                            date
                         };
 
-                        // Water conversion only
-                        if (data.water) {
-                            if (!updateData.water) {
-                                updateData.water = {};
+                        // Process each field individually, excluding additive fields
+                        if (data.steps) {
+                            updateData.steps = data.steps;
+                        }
+                        if (data.sleep) {
+                            updateData.sleep = data.sleep;
+                        }
+                        if (data.heartRate) {
+                            updateData.heartRate = data.heartRate;
+                        }
+                        
+                        // Handle calories - ONLY calories.burned, NOT calories.consumed
+                        if (data.calories) {
+                            updateData.calories = {};
+                            if (data.calories.burned !== undefined) {
+                                updateData.calories.burned = data.calories.burned;
                             }
-                            if (data.water.consumed !== undefined) {
-                                updateData.water.consumed = WaterConverter.glassesToMl(data.water.consumed);
+                            // Explicitly exclude calories.consumed from bulk update
+                            // If no valid calories fields, don't include calories
+                            if (Object.keys(updateData.calories).length === 0) {
+                                delete updateData.calories;
+                            }
+                        }
+                        
+                        // Handle water - exclude consumed, allow other fields if any
+                        if (data.water) {
+                            updateData.water = {};
+                            // Only include non-consumed water fields if they exist
+                            Object.keys(data.water).forEach(key => {
+                                if (key !== 'consumed') {
+                                    updateData.water[key] = data.water[key];
+                                }
+                            });
+                            // If no non-consumed fields, don't include water at all
+                            if (Object.keys(updateData.water).length === 0) {
+                                delete updateData.water;
                             }
                         }
 
@@ -610,10 +773,33 @@ class HealthController {
                             updateData.goalcomplete = data.goalcompletions;
                         }
 
+                        // Build granular $set update so we don't overwrite additive fields like calories.consumed or water.consumed
+                        const setDoc = { userId, date };
+                        if (updateData.steps && updateData.steps.count !== undefined) setDoc['steps.count'] = updateData.steps.count;
+                        if (updateData.sleep && updateData.sleep.duration !== undefined) setDoc['sleep.duration'] = updateData.sleep.duration;
+                        if (updateData.heartRate && updateData.heartRate.avgBpm !== undefined) setDoc['heartRate.avgBpm'] = updateData.heartRate.avgBpm;
+                        if (updateData.calories && updateData.calories.burned !== undefined) setDoc['calories.burned'] = updateData.calories.burned;
+                        if (updateData.goalcompletions !== undefined) {
+                            setDoc['goalcompletions'] = updateData.goalcompletions;
+                            setDoc['goalcomplete'] = updateData.goalcompletions;
+                        }
+
+                        const setOnInsertDoc = {
+                            'calories.consumed': 0,
+                            'calories.entries': [],
+                            'water.consumed': 0,
+                            'water.entries': []
+                        };
+                        if (setDoc['calories.burned'] === undefined) {
+                            setOnInsertDoc['calories.burned'] = 0; // seed only if not being set
+                        }
+
+                        console.log(`🧪 [${requestId}] (BULK MODE) Upsert setDoc for ${date}:`, setDoc);
+                        console.log(`🧪 [${requestId}] (BULK MODE) Upsert setOnInsertDoc for ${date}:`, setOnInsertDoc);
                         bulkOps.push({
                             updateOne: {
                                 filter: { userId, date },
-                                update: { $set: updateData },
+                                update: { $set: setDoc, $setOnInsert: setOnInsertDoc },
                                 upsert: true
                             }
                         });
@@ -652,7 +838,7 @@ class HealthController {
                         } : undefined,
                         sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
                         date: formattedHealthData.date,
-                        goalcompletions: formattedHealthData.goalcompletions,
+                        goalcompletions: formattedHealthData.goalcomplete  ,  // Map DB field to API response
                         streak: formattedHealthData.streak
                     };
                     
@@ -777,7 +963,7 @@ class HealthController {
                 : undefined,
                 sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
                 date: responseData.date,
-                goalcompletions: responseData.goalcompletions,
+                goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
                 streak: responseData.streak
             };
             Object.keys(cleanHealthData).forEach(key => {

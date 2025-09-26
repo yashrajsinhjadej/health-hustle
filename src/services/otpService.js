@@ -6,57 +6,34 @@ const ConnectionHelper = require('../utils/connectionHelper');
 
 class OTPService {
     
-    // Create or update OTP with rate limiting (now using environment variable)
-    async createOrUpdateOTP(phone, cooldownSeconds = null) {
+    // Create or update OTP (no cooldown/rate limit, handled by custom rate limiter)
+    async createOrUpdateOTP(phone) {
         try {
-            // Get cooldown from environment or use default
-            const defaultCooldown = parseInt(process.env.OTP_COOLDOWN_SECONDS) || 25;
-            const actualCooldown = cooldownSeconds || defaultCooldown;
-            
-            console.log(`⏱️ Using OTP cooldown: ${actualCooldown} seconds`);
-            
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
-            
+
             // Generate new OTP using utils
             const otp = OTPUtils.generateOTP();
-            
+
             // Find existing OTP for this phone
             const existingOTP = await OTP.findOne({ phone: phone });
-            
+
             if (existingOTP) {
-                // Calculate time difference in seconds
-                const timeDiffSeconds = (new Date() - existingOTP.updatedAt) / 1000;
-                console.log(`⏱️ Time since last OTP: ${timeDiffSeconds.toFixed(2)} seconds`);
-                
-                if (timeDiffSeconds < actualCooldown) {
-                    // Calculate remaining wait time
-                    const remainingSeconds = Math.ceil(actualCooldown - timeDiffSeconds);
-                    console.log(`🚫 Rate limit hit. User must wait ${remainingSeconds} more seconds`);
-                    
-                    return { 
-                        success: false,
-                        message: `Please wait ${remainingSeconds} seconds before trying again`,
-                        waitTime: remainingSeconds,
-                        waitTimeUnit: 'seconds'
-                    };
-                }
-                
                 // Update existing OTP with new values
                 existingOTP.otp = otp;
                 existingOTP.attempts = 0; // Reset attempts
                 existingOTP.isUsed = false; // Reset used status
-                
+
                 // Use environment variable for expiry time
                 const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
                 existingOTP.expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
                 await existingOTP.save();
-                
-                return { 
-                    success: true, 
+
+                return {
+                    success: true,
                     message: 'OTP updated successfully',
                     otp: otp,
-                    otpRecord: existingOTP 
+                    otpRecord: existingOTP
                 };
             } else {
                 // Create new OTP record
@@ -64,12 +41,12 @@ class OTPService {
                     phone: phone,
                     otp: otp
                 });
-                
-                return { 
-                    success: true, 
+
+                return {
+                    success: true,
                     message: 'New OTP created successfully',
                     otp: otp,
-                    otpRecord: newOTP 
+                    otpRecord: newOTP
                 };
             }
         } catch (error) {
@@ -93,16 +70,16 @@ class OTPService {
                 };
             }
 
-            // Create or update OTP in database (uses environment variable)
-            const otpResult = await this.createOrUpdateOTP(phone, cooldownSeconds);
-            
+            // Create or update OTP in database
+            const otpResult = await this.createOrUpdateOTP(phone);
+
             if (!otpResult.success) {
-                return otpResult; // Return rate limit error with dynamic wait time in seconds
+                return otpResult;
             }
 
             // Send SMS using Twilio
             const smsResult = await TwilioSMSService.sendOTP(phone, otpResult.otp);
-            
+
             if (!smsResult.success) {
                 return {
                     success: false,
@@ -110,11 +87,11 @@ class OTPService {
                 };
             }
 
+            // Always include OTP in response for now (testing)
             return {
                 success: true,
                 message: 'OTP sent successfully',
-                expiresIn: '5 minutes',
-                otp: otpResult.otp // Only for testing; remove in production!
+                otp: otpResult.otp
             };
 
         } catch (error) {

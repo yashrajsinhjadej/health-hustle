@@ -120,7 +120,5 @@ const dailyHealthDataSchema = new mongoose.Schema({
 // Create compound index for efficient querying
 dailyHealthDataSchema.index({ userId: 1, date: 1 }, { unique: true });
 
-// Index for date range queries (7 days, monthly)
-dailyHealthDataSchema.index({ userId: 1, date: -1 });
 
 module.exports = mongoose.model('DailyHealthData', dailyHealthDataSchema);

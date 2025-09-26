@@ -12,18 +12,30 @@ const userSchema = new mongoose.Schema({
     },
     phone: {
         type: String,
-        required: [true, 'Phone number is required'],
+        required: function() {
+            return this.role !== 'admin'; // Phone not required for admin users
+        },
         unique: true,
+        sparse: true, // Allow multiple null values but unique non-null values
         match: [/^\+?[\d\s-()]+$/, 'Please enter a valid phone number']
     },
     email: {
         type: String,
         required: function() {
-            return this.profileCompleted === true;
+            return this.profileCompleted === true || this.role === 'admin';
         },
         trim: true,
         lowercase: true,
+        unique: true,
+        sparse: true, // Allow multiple null values but unique non-null values
         match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    },
+    password: {
+        type: String,
+        required: function() {
+            return this.role === 'admin';
+        },
+        minlength: [6, 'Password must be at least 6 characters long']
     },
     gender: {
         type: String,
@@ -53,11 +65,6 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true,
         maxlength: [100, 'Fitness goal cannot exceed 100 characters']
-    },
-    activityLevel: {
-        type: String,
-        enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
-        lowercase: true
     },
     age: {
         type: Number,

@@ -15,6 +15,9 @@ const healthRoutes = require('./src/routes/healthRoutes');
 
 const app = express();
 
+// Custom in-memory rate limiting is now used instead of Redis
+
+
 // Add request logging middleware
 app.use((req, res, next) => {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -460,6 +463,9 @@ const ensureMongoDBConnection = async (req, res, next) => {
 // Enhanced Health check route with MongoDB connection wait
 app.get('/health', async (req, res) => {
     console.log('🏥 Health check route accessed');
+    const ip = req.ip
+    console.log('📥 Request IP:', ip);
+
     try {
         const memUsage = process.memoryUsage();
         const uptime = process.uptime();
@@ -529,6 +535,7 @@ app.use('/api', ensureMongoDBConnection);
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/users', adminRoutes); // Alias for frontend compatibility
 app.use('/api/user', userRoutes);
 app.use('/api/health', healthRoutes);
 

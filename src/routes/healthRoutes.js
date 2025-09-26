@@ -10,10 +10,18 @@ const {
     validatecalories,
     handleValidationErrors: handleHealthValidationErrors
 } = require('../validators/healthValidators');
+const createCustomRateLimit = require('../middleware/customRateLimit');
+
+// Create rate limiter for health routes using environment variables
+const healthRateLimit = createCustomRateLimit(
+    parseInt(process.env.HEALTH_ROUTES_LIMIT) || 50, 
+    parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
+); // Health routes rate limit from env
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); // for checking user authentication and giving user obj in req.user
-router.use(userOnly); // for checking user authorization 
+router.use(userOnly); // for checking user authorization
+router.use(healthRateLimit); // Rate limit to 50 requests per minute per user
 
 router.get('/', (req, res) => {
     res.json({
