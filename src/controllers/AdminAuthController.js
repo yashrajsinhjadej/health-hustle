@@ -28,7 +28,15 @@ class AdminAuthController {
     async signup(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🔐 [${requestId}] AdminAuthController.signup START`);
+            console.log(`� [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: SIGNUP`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] ================================`);
+            console.log(`�🔐 [${requestId}] AdminAuthController.signup START`);
             console.log(`🔐 [${requestId}] Request body:`, req.body);
             
             const { name, email, password } = req.body;
@@ -121,7 +129,15 @@ class AdminAuthController {
     async login(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🔐 [${requestId}] AdminAuthController.login START`);
+            console.log(`� [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: LOGIN`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] ================================`);
+            console.log(`�🔐 [${requestId}] AdminAuthController.login START`);
             console.log(`🔐 [${requestId}] Request body:`, { 
                 email: req.body.email, 
                 password: '***HIDDEN***' 
@@ -298,7 +314,16 @@ class AdminAuthController {
     async forgotPassword(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🔑 [${requestId}] AdminAuthController.forgotPassword START`);
+            console.log(`� [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: FORGOT PASSWORD`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+            console.log(`🚀 [ADMIN API] ================================`);
+            console.log(`�🔑 [${requestId}] AdminAuthController.forgotPassword START`);
             console.log(`🔑 [${requestId}] Request body:`, req.body);
 
             const { email } = req.body;
@@ -396,7 +421,15 @@ class AdminAuthController {
     async resetPassword(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🔑 [${requestId}] AdminAuthController.resetPassword START`);
+            console.log(`� [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: RESET PASSWORD`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] ================================`);
+            console.log(`�🔑 [${requestId}] AdminAuthController.resetPassword START`);
             console.log(`🔑 [${requestId}] Request body:`, { token: req.body.token ? 'PROVIDED' : 'MISSING', password: req.body.password ? 'PROVIDED' : 'MISSING' });
 
             const { token, password } = req.body;
@@ -701,7 +734,15 @@ class AdminAuthController {
     async dashboard(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`📊 [${requestId}] AdminAuthController.dashboard START`);
+            console.log(`� [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: DASHBOARD`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] ================================`);
+            console.log(`�📊 [${requestId}] AdminAuthController.dashboard START`);
             console.log(`📊 [${requestId}] Query params:`, req.query);
 
             // Extract pagination parameters
@@ -959,6 +1000,14 @@ class AdminAuthController {
     async updateUser(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
+            console.log(`🚀 [ADMIN API CALLED] ================================`);
+            console.log(`🚀 [ADMIN API] Method: UPDATE USER`);
+            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
+            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
+            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] ================================`);
             console.log(`✏️ [${requestId}] AdminAuthController.updateUser START`);
             console.log(`✏️ [${requestId}] Admin: ${req.user._id} (${req.user.email})`);
             console.log(`✏️ [${requestId}] Target user ID: ${req.params.userId}`);

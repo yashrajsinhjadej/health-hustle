@@ -15,6 +15,18 @@ const {
     handleValidationErrors 
 } = require('../validators/userValidators');
 
+// Global admin route logging middleware
+router.use((req, res, next) => {
+    console.log(`🎯 [ADMIN ROUTE] ================================`);
+    console.log(`🎯 [ADMIN ROUTE] ${req.method} ${req.originalUrl}`);
+    console.log(`🎯 [ADMIN ROUTE] Timestamp: ${new Date().toISOString()}`);
+    console.log(`🎯 [ADMIN ROUTE] IP: ${req.ip || req.connection.remoteAddress}`);
+    console.log(`🎯 [ADMIN ROUTE] User-Agent: ${req.get('User-Agent')}`);
+    console.log(`🎯 [ADMIN ROUTE] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
+    console.log(`🎯 [ADMIN ROUTE] ================================`);
+    next();
+});
+
 // Create rate limiter for admin routes using environment variables
 const adminRateLimit = createCustomRateLimit(
     parseInt(process.env.ADMIN_ROUTES_LIMIT) || 100, 
