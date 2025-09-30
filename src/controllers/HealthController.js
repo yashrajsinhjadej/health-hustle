@@ -54,7 +54,7 @@ class HealthController {
 
             if(healthdatatoday){
                 if(healthdatatoday.sleep.duration+sleepDuration > 12){
-                    return ResponseHandler.error(res, 'Sleep duration cannot be greater than 12 hours');
+                    return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
                 }
                 healthdatatoday.sleep.duration += sleepDuration;
                 await healthdatatoday.save();

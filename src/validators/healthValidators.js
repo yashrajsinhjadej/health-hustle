@@ -128,7 +128,7 @@ const validateSleepBody=[
     body('sleep.duration')
         .notEmpty()
         .isFloat({ min: 0, max: 12 })
-        .withMessage('Sleep duration must be between 0 and 24 hours'),
+        .withMessage('Sleep duration must be between 0 and 12 hours'),
 ]
 
 const validatecalories =[
