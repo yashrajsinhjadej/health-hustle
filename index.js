@@ -231,6 +231,17 @@ const connectDB = async () => {
 
 // Connect to MongoDB on startup
 console.log('🚀 Starting Health Hustle server...');
+console.log('🔍 ===== ENVIRONMENT VARIABLES DEBUG =====');
+console.log('🔍 Environment check for URL configuration:');
+console.log('🔍 - NODE_ENV:', process.env.NODE_ENV);
+console.log('🔍 - VERCEL:', process.env.VERCEL);
+console.log('🔍 - VERCEL_URL:', process.env.VERCEL_URL);
+console.log('🔍 - VERCEL_ENV:', process.env.VERCEL_ENV);
+console.log('🔍 - FRONTEND_URL exists:', !!process.env.FRONTEND_URL);
+console.log('🔍 - FRONTEND_URL value:', `"${process.env.FRONTEND_URL}"`);
+console.log('🔍 - FRONTEND_URL type:', typeof process.env.FRONTEND_URL);
+console.log('🔍 - All env keys containing "URL":', Object.keys(process.env).filter(key => key.includes('URL')));
+console.log('🔍 ===== END ENVIRONMENT DEBUG =====');
 connectDB();
 
 // Home route
@@ -307,10 +318,48 @@ app.get('/env-debug', (req, res) => {
             value: mongoUri || 'NOT_SET',
             preview: mongoUri ? mongoUri.substring(0, 50) + '...' : 'NOT_SET'
         },
+        frontendUrl: {
+            exists: !!process.env.FRONTEND_URL,
+            value: process.env.FRONTEND_URL || 'NOT_SET',
+            type: typeof process.env.FRONTEND_URL,
+            isLocalhost: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.includes('localhost') : false,
+            isHttps: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.startsWith('https') : false
+        },
         environment: {
             NODE_ENV: process.env.NODE_ENV,
             VERCEL: process.env.VERCEL,
-            hasMongoUri: !!process.env.MONGODB_URI
+            VERCEL_URL: process.env.VERCEL_URL,
+            VERCEL_ENV: process.env.VERCEL_ENV,
+            hasMongoUri: !!process.env.MONGODB_URI,
+            hasFrontendUrl: !!process.env.FRONTEND_URL
+        },
+        allUrlKeys: Object.keys(process.env).filter(key => key.includes('URL'))
+    });
+});
+
+// Frontend URL debug route - Quick check for FRONTEND_URL
+app.get('/frontend-url-debug', (req, res) => {
+    console.log('🔍 Frontend URL debug route accessed');
+    
+    res.json({
+        success: true,
+        message: 'Frontend URL Configuration Check',
+        timestamp: new Date().toISOString(),
+        frontendUrl: {
+            configured: !!process.env.FRONTEND_URL,
+            value: process.env.FRONTEND_URL || 'NOT_CONFIGURED',
+            fallbackUsed: !process.env.FRONTEND_URL,
+            fallbackValue: 'http://localhost:3001',
+            finalUrl: process.env.FRONTEND_URL || 'http://localhost:3001'
+        },
+        deployment: {
+            isVercel: process.env.VERCEL === '1',
+            vercelUrl: process.env.VERCEL_URL || 'NOT_VERCEL',
+            environment: process.env.NODE_ENV || 'development'
+        },
+        sampleResetLink: {
+            exampleToken: 'abc123-def456-ghi789',
+            generatedLink: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/admin/reset-password?token=abc123-def456-ghi789`
         }
     });
 });
