@@ -8,6 +8,7 @@ const {
     validateDateBody,
     validateBulkUpdate,
     validatecalories,
+    validateSleepBody,
     handleValidationErrors: handleHealthValidationErrors
 } = require('../validators/healthValidators');
 const createCustomRateLimit = require('../middleware/customRateLimit');
@@ -55,6 +56,7 @@ router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthC
 
 router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
 
+router.post('/sleep', validateSleepBody, handleHealthValidationErrors, HealthController.addsleep);
 
 router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); // verified by yash
 module.exports = router;

@@ -11,7 +11,7 @@ const STREAK_GOALS = [
     'steps',
     // 'sleep', 
     // 'caloriesBurn',
-    'water',           // Include water in streak calculation
+    // 'water',           // Include water in streak calculation
     // 'caloriesIntake'   // Uncomment to include calorie intake in streaks
 ];
 
@@ -43,6 +43,40 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 
 class HealthController {
     // Get specific day health data
+
+    async addsleep(req,res){
+        try{
+            const sleepDuration = req.body.sleep.duration;
+            const userId = req.user._id;
+            const todayDate = new Date().toISOString().split('T')[0];
+
+            let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
+
+            if(healthdatatoday){
+                if(healthdatatoday.sleep.duration+sleepDuration > 12){
+                    return ResponseHandler.error(res, 'Sleep duration cannot be greater than 12 hours');
+                }
+                healthdatatoday.sleep.duration += sleepDuration;
+                await healthdatatoday.save();
+            }
+            else{
+                healthdatatoday = new DailyHealthData({
+                    userId,
+                    date: todayDate,
+                    sleep: {
+                        duration: sleepDuration
+                    }
+                });
+                await healthdatatoday.save();
+            }
+            
+            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { healthdatatoday });
+        }
+        catch(error){
+            console.error('Add sleep error:', error);
+            return ResponseHandler.serverError(res, 'Failed to update sleep consumption');
+        }
+    }
 
     async addwater(req, res) {
         try {
@@ -417,11 +451,18 @@ class HealthController {
 
                 for (const { date, data } of sortedData) {
                     try {
-                        // Get existing health data for this date (for water/calories consumed)
+                        // Get existing health data for this date (for additive fields reference)
                         const existing = recordMap[date];
                         
+                        // IMPORTANT: Make sleep additive (do not overwrite via bulk)
+                        // If incoming payload contains sleep, ignore it for persistence and goal calc input here.
+                        const sanitizedData = { ...data };
+                        if (sanitizedData.sleep !== undefined) {
+                            delete sanitizedData.sleep;
+                        }
+                        
                         // Calculate all possible goals using the configurable system
-                        const allGoalResults = calculateAllGoals(data, existing, goals);
+                        const allGoalResults = calculateAllGoals(sanitizedData, existing, goals);
                         const streakResults = calculateStreakCompletion(allGoalResults, STREAK_GOALS);
                         
                         // Extract individual goal completion status for logging
@@ -732,9 +773,8 @@ class HealthController {
                         if (data.steps) {
                             updateData.steps = data.steps;
                         }
-                        if (data.sleep) {
-                            updateData.sleep = data.sleep;
-                        }
+                        // Sleep is additive and managed outside bulk. Ignore any incoming sleep in bulk.
+                        // if (data.sleep) { /* intentionally ignored */ }
                         if (data.heartRate) {
                             updateData.heartRate = data.heartRate;
                         }

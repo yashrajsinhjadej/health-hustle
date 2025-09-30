@@ -124,6 +124,13 @@ const validateWaterBody=[
         .withMessage('Water consumed must be between 0 and 50 glasses'),
 ];
 
+const validateSleepBody=[
+    body('sleep.duration')
+        .notEmpty()
+        .isFloat({ min: 0, max: 12 })
+        .withMessage('Sleep duration must be between 0 and 24 hours'),
+]
+
 const validatecalories =[
     body('calories.consumed')
         .notEmpty()
@@ -180,5 +187,6 @@ module.exports = {
     validateBulkUpdate,
     handleValidationErrors,
     validateWaterBody,
-    validatecalories
+    validatecalories,
+    validateSleepBody
 }; 
