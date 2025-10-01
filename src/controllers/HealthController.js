@@ -5,6 +5,8 @@ const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
 const goalcounter = require('../utils/goalcounter');
+const { response } = require('../..');
+const { EsimProfilePage } = require('twilio/lib/rest/supersim/v1/esimProfile');
 
 // CONFIGURABLE GOAL SYSTEM - Easy to modify which goals count for streaks
 const STREAK_GOALS = [
@@ -92,14 +94,26 @@ class HealthController {
                 await healthdatatoday.save();
             }
 
-            // Format sleep data as array response
-            const sleepData = {
-                totalDuration: healthdatatoday.sleep.duration,
-                entries: healthdatatoday.sleep.entries || [],
-                date: todayDate
-            };
+            // Get last 7 days of sleep data
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
+            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
             
-            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { sleepData });
+            const last7DaysData = await DailyHealthData.find({
+                userId,
+                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+            }).sort({ date: 1 }).select('date sleep').lean(); // Added .lean() for better performance
+            
+            // Format last 7 days sleep data
+            const sleepHistory = last7DaysData.map(dayData => ({
+                date: dayData.date,
+                totalDuration: dayData.sleep?.duration || 0,
+                entries: dayData.sleep?.entries || []
+            }));
+            
+            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { 
+                last7Days: sleepHistory
+            });
         }
         catch(error){
             console.error('Add sleep error:', error);
@@ -107,6 +121,37 @@ class HealthController {
         }
     }
 
+
+    async getwater(req,res){
+        try{
+            const userId=req.user._id;
+            const date = req.body.date;
+            const waterdata=await DailyHealthData.findOne({userId,date:date}).select('water date -_id');
+            if(waterdata){
+                waterdata.water.consumed=WaterConverter.mlToGlasses(waterdata.water.consumed || 0);
+                return ResponseHandler.success(res, 'Water data retrieved successfully', waterdata);
+            }
+            return ResponseHandler.success(res,'No water data found for the specified date',{});
+        }
+        catch(error){return ResponseHandler.serverError(res,'Failed to get water data');}
+    }
+
+
+    async getcalories(req,res){
+        try{
+            console.log('caloreis method caled')
+            const userId=req.user._id;
+            const date = req.body.date;
+            const caloriesdata=await DailyHealthData.findOne({userId,date:date}).select('calories date -_id');
+            if(caloriesdata){
+                return ResponseHandler.success(res, 'Calories data retrieved successfully', caloriesdata);
+            }
+            return ResponseHandler.success(res,'No calories data found for the specified date',{});
+        }
+        catch(error){
+            console.log(error)
+            return ResponseHandler.serverError(res,'Failed to get calories data');}   
+    }
     async addwater(req, res) {
         try {
             const waterconsumedinglasses = req.body.water.consumed;

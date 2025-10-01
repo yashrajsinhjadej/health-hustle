@@ -55,10 +55,13 @@ router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthC
 
 
 router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
+router.post('/getwater',validateDateBody,handleHealthValidationErrors,HealthController.getwater);
+
 
 router.post('/sleep', validateSleepBody, handleHealthValidationErrors, HealthController.addsleep);
 
 router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); // verified by yash
+router.post('/getcalories',validateDateBody,handleHealthValidationErrors,HealthController.getcalories);
 module.exports = router;
 
 
