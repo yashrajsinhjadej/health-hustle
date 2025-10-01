@@ -122,6 +122,8 @@ class HealthController {
     }
 
 
+   
+
     async getwater(req,res){
         try{
             const userId=req.user._id;
@@ -136,6 +138,64 @@ class HealthController {
         catch(error){return ResponseHandler.serverError(res,'Failed to get water data');}
     }
 
+     async getsleep(req,res){
+        try{
+            console.log('get sleep method called')
+            const userId=req.user._id;
+            const todayDate = new Date().toISOString().split('T')[0];
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
+            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            const last7DaysData = await DailyHealthData.find({
+                userId,
+                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+            }).sort({ date: 1 }).select('date sleep').lean();
+
+            // Format last 7 days sleep data
+            const sleepHistory = last7DaysData.map(dayData => ({
+                date: dayData.date,
+                totalDuration: dayData.sleep?.duration || 0,
+                entries: dayData.sleep?.entries || []
+            }));
+
+            return ResponseHandler.success(res, 'Sleep data retrieved successfully', {
+                last7Days: sleepHistory
+            });
+        }
+        catch(error){
+            console.error('Get sleep error:', error);
+            return ResponseHandler.serverError(res,'Failed to get sleep data');
+        }
+    }
+
+    async getsteps(req,res){
+        try{
+            console.log('get steps method called')
+            const userId=req.user._id;
+            const todayDate = new Date().toISOString().split('T')[0];
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
+            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            const last7DaysData = await DailyHealthData.find({
+                userId,
+                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+            }).sort({ date: 1 }).select('date steps').lean();
+    
+            // Format last 7 days steps data
+            const stepsHistory = last7DaysData.map(dayData => ({
+                date: dayData.date,
+                totalSteps: dayData.steps?.count || 0,
+                entries: dayData.steps?.entries || []
+            }));
+            return ResponseHandler.success(res, 'Steps data retrieved successfully', {
+                last7Days: stepsHistory
+            });
+        }
+        catch(error){
+            console.log(error)
+            return ResponseHandler.serverError(res,'Failed to get steps data');
+        }
+    }
 
     async getcalories(req,res){
         try{
