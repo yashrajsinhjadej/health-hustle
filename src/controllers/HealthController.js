@@ -269,9 +269,13 @@ class HealthController {
                     : undefined,
                 calories: responseData.calories ? {
                     consumed: responseData.calories.consumed || 0,
-                    burned: responseData.calories.burned || 0
+                    burned: responseData.calories.burned || 0,
+                    entries: responseData.calories.entries || []
                 } : undefined,
-                sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                sleep: responseData.sleep ? { 
+                    duration: responseData.sleep.duration,
+                    entries: responseData.sleep.entries || []
+                } : undefined,
                 date: responseData.date,
                 goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
                 streak: responseData.streak
@@ -387,7 +391,10 @@ class HealthController {
                             entries: responseData.calories.entries || []
                         }
                         : undefined,
-                    sleep: responseData.sleep ? { duration: responseData.sleep.duration } : undefined,
+                    sleep: responseData.sleep ? { 
+                        duration: responseData.sleep.duration,
+                        entries: responseData.sleep.entries || []
+                    } : undefined,
                     date: responseData.date,
                     goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
                     streak: responseData.streak
@@ -457,6 +464,9 @@ class HealthController {
                 console.log(`✅ Default goals created for user ${userId}`);
             }
 
+            // Prepare response data
+            let todayData;
+            
             // Clean goals data to only include essential fields
             let cleanGoals = null;
             if (userGoals) {
@@ -470,12 +480,6 @@ class HealthController {
                     }
                 };
             }
-            
-            // Prepare response data
-            const responseData = {
-                healthData: dailyHealth,
-                goals: cleanGoals
-            };
 
             // Convert ml back to glasses for frontend if health data exists
             if (dailyHealth) {
@@ -485,12 +489,19 @@ class HealthController {
                 const cleanHealthData = {
                     heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
                     steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
-                    water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                    water: formattedHealthData.water ? { 
+                        consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0),
+                        entries: formattedHealthData.water.entries || []
+                    } : undefined,
                     calories: formattedHealthData.calories ? { 
                         consumed: formattedHealthData.calories.consumed || 0, 
-                        burned: formattedHealthData.calories.burned || 0 
+                        burned: formattedHealthData.calories.burned || 0,
+                        entries: formattedHealthData.calories.entries || []
                     } : undefined,
-                    sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                    sleep: formattedHealthData.sleep ? { 
+                        duration: formattedHealthData.sleep.duration,
+                        entries: formattedHealthData.sleep.entries || []
+                    } : undefined,
                     date: formattedHealthData.date,
                     goalcompletions: formattedHealthData.goalcomplete,  // Map DB field to API response for frontend UI logic
                     streak: formattedHealthData.streak
@@ -503,8 +514,14 @@ class HealthController {
                     }
                 });
                 
-                responseData.healthData = cleanHealthData;
+                todayData = { healthData: cleanHealthData, goals: cleanGoals };
+            } else {
+                todayData = { healthData: null, goals: cleanGoals };
             }
+            
+            const responseData = {
+                todayData: todayData
+            };
 
             if (!dailyHealth) {
                 return ResponseHandler.success(res, 'No health data found for today, but goals are ready', responseData);
@@ -823,12 +840,19 @@ class HealthController {
                     const cleanHealthData = {
                         heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
                         steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
-                        water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                        water: formattedHealthData.water ? { 
+                            consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0),
+                            entries: formattedHealthData.water.entries || []
+                        } : undefined,
                         calories: formattedHealthData.calories ? { 
                             consumed: formattedHealthData.calories.consumed || 0, 
-                            burned: formattedHealthData.calories.burned || 0 
+                            burned: formattedHealthData.calories.burned || 0,
+                            entries: formattedHealthData.calories.entries || []
                         } : undefined,
-                        sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                        sleep: formattedHealthData.sleep ? { 
+                            duration: formattedHealthData.sleep.duration,
+                            entries: formattedHealthData.sleep.entries || []
+                        } : undefined,
                         date: formattedHealthData.date,
                         goalcompletions: formattedHealthData.goalcomplete  ,  // Map DB field to API response
                         streak: formattedHealthData.streak
@@ -1005,12 +1029,19 @@ class HealthController {
                     const cleanHealthData = {
                         heartRate: formattedHealthData.heartRate ? { avgBpm: formattedHealthData.heartRate.avgBpm } : undefined,
                         steps: formattedHealthData.steps ? { count: formattedHealthData.steps.count } : undefined,
-                        water: formattedHealthData.water ? { consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0) } : undefined,
+                        water: formattedHealthData.water ? { 
+                            consumed: WaterConverter.mlToGlasses(formattedHealthData.water.consumed || 0),
+                            entries: formattedHealthData.water.entries || []
+                        } : undefined,
                         calories: formattedHealthData.calories ? { 
                             consumed: formattedHealthData.calories.consumed || 0, 
-                            burned: formattedHealthData.calories.burned || 0 
+                            burned: formattedHealthData.calories.burned || 0,
+                            entries: formattedHealthData.calories.entries || []
                         } : undefined,
-                        sleep: formattedHealthData.sleep ? { duration: formattedHealthData.sleep.duration } : undefined,
+                        sleep: formattedHealthData.sleep ? { 
+                            duration: formattedHealthData.sleep.duration,
+                            entries: formattedHealthData.sleep.entries || []
+                        } : undefined,
                         date: formattedHealthData.date,
                         goalcompletions: formattedHealthData.goalcomplete  ,  // Map DB field to API response
                         streak: formattedHealthData.streak
