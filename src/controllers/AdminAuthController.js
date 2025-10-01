@@ -314,24 +314,16 @@ class AdminAuthController {
     async forgotPassword(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🔑 [ADMIN API CALLED] ================================`);
+            console.log(`� [ADMIN API CALLED] ================================`);
             console.log(`🚀 [ADMIN API] Method: FORGOT PASSWORD`);
             console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
             console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
             console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`🔑 [ADMIN API] ENVIRONMENT VARIABLES CHECK:`);
-            console.log(`🔑 [ADMIN API] - NODE_ENV: ${process.env.NODE_ENV}`);
-            console.log(`🔑 [ADMIN API] - VERCEL: ${process.env.VERCEL}`);
-            console.log(`🔑 [ADMIN API] - VERCEL_URL: ${process.env.VERCEL_URL}`);
-            console.log(`🔑 [ADMIN API] - VERCEL_ENV: ${process.env.VERCEL_ENV}`);
-            console.log(`🔑 [ADMIN API] - FRONTEND_URL exists: ${!!process.env.FRONTEND_URL}`);
-            console.log(`🔑 [ADMIN API] - FRONTEND_URL value: "${process.env.FRONTEND_URL}"`);
-            console.log(`🔑 [ADMIN API] - FRONTEND_URL type: ${typeof process.env.FRONTEND_URL}`);
-            console.log(`🔑 [ADMIN API] - FRONTEND_URL length: ${process.env.FRONTEND_URL ? process.env.FRONTEND_URL.length : 0}`);
+            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
             console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
+            console.log(`🚀 [ADMIN API] FRONTEND_URL: ${process.env.FRONTEND_URL}`);
             console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`🔑 [${requestId}] AdminAuthController.forgotPassword START`);
+            console.log(`�🔑 [${requestId}] AdminAuthController.forgotPassword START`);
             console.log(`🔑 [${requestId}] Request body:`, req.body);
 
             const { email } = req.body;
@@ -382,25 +374,9 @@ class AdminAuthController {
             console.log(`🔑 [${requestId}] Password reset token saved with expiry: ${expiresAt}`);
 
             // Generate reset link for frontend (environment-based URL)
-            console.log(`🔑 [${requestId}] ===== RESET LINK GENERATION DEBUG =====`);
-            console.log(`🔑 [${requestId}] Checking FRONTEND_URL environment variable...`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL exists: ${!!process.env.FRONTEND_URL}`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL value: "${process.env.FRONTEND_URL}"`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL type: ${typeof process.env.FRONTEND_URL}`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL is undefined: ${process.env.FRONTEND_URL === undefined}`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL is null: ${process.env.FRONTEND_URL === null}`);
-            console.log(`🔑 [${requestId}] - process.env.FRONTEND_URL is empty string: ${process.env.FRONTEND_URL === ''}`);
-            
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-            console.log(`🔑 [${requestId}] - Selected frontendUrl: "${frontendUrl}"`);
-            console.log(`🔑 [${requestId}] - Using default fallback: ${frontendUrl === 'http://localhost:3001'}`);
-            
             const resetLink = `${frontendUrl}/admin/reset-password?token=${resetToken}`;
-            console.log(`🔑 [${requestId}] - Final reset link: ${resetLink}`);
-            console.log(`🔑 [${requestId}] - Reset link length: ${resetLink.length}`);
-            console.log(`🔑 [${requestId}] - Reset link starts with https: ${resetLink.startsWith('https')}`);
-            console.log(`🔑 [${requestId}] - Reset link starts with localhost: ${resetLink.includes('localhost')}`);
-            console.log(`🔑 [${requestId}] ===== END RESET LINK DEBUG =====`);
+            console.log(`🔑 [${requestId}] Generated reset link: ${resetLink}`);
 
             // Initialize email service
             const emailService = new EmailService();

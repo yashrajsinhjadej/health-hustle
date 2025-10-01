@@ -64,7 +64,10 @@ const dailyHealthDataSchema = new mongoose.Schema({
     // Sleep Tracking
     sleep: {
         duration: Number,        // Hours slept (from watch)
-        
+        entries: [{
+            duration: Number,    // Duration of this sleep session
+            at: { type: Date, default: Date.now }  // When this sleep was recorded
+        }]
     },
     
    

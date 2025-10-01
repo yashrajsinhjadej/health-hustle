@@ -53,10 +53,28 @@ class HealthController {
             let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
 
             if(healthdatatoday){
-                if(healthdatatoday.sleep.duration+sleepDuration > 12){
+                // Ensure sleep duration is a valid number, default to 0 if undefined/null
+                const currentDuration = healthdatatoday.sleep?.duration || 0;
+                
+                if(currentDuration + sleepDuration > 12){
                     return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
                 }
-                healthdatatoday.sleep.duration += sleepDuration;
+                
+                // Initialize sleep object if it doesn't exist
+                if (!healthdatatoday.sleep) {
+                    healthdatatoday.sleep = { duration: 0, entries: [] };
+                }
+                
+                // Add to existing sleep entries array
+                if (!healthdatatoday.sleep.entries) {
+                    healthdatatoday.sleep.entries = [];
+                }
+                healthdatatoday.sleep.entries.push({
+                    duration: sleepDuration,
+                    at: new Date()
+                });
+                
+                healthdatatoday.sleep.duration = currentDuration + sleepDuration;
                 await healthdatatoday.save();
             }
             else{
@@ -64,13 +82,24 @@ class HealthController {
                     userId,
                     date: todayDate,
                     sleep: {
-                        duration: sleepDuration
+                        duration: sleepDuration,
+                        entries: [{
+                            duration: sleepDuration,
+                            at: new Date()
+                        }]
                     }
                 });
                 await healthdatatoday.save();
             }
+
+            // Format sleep data as array response
+            const sleepData = {
+                totalDuration: healthdatatoday.sleep.duration,
+                entries: healthdatatoday.sleep.entries || [],
+                date: todayDate
+            };
             
-            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { healthdatatoday });
+            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { sleepData });
         }
         catch(error){
             console.error('Add sleep error:', error);
