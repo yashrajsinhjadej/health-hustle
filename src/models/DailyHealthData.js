@@ -37,7 +37,7 @@ const dailyHealthDataSchema = new mongoose.Schema({
             default: 0
         },
         entries: [{
-            time: String,        // "08:30", "12:00"
+            at: { type: Date, default: Date.now},        
             amount: Number,      // ml consumed at this time
             notes: String        // Optional notes
         }]

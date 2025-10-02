@@ -362,7 +362,11 @@ class HealthController {
 
             if (healthdatatoday) {
                 healthdatatoday.water.consumed += waterInMl;
-                healthdatatoday.water.entries.push({ glasses: waterconsumedinglasses, ml: waterInMl });
+                healthdatatoday.water.entries.push({ 
+                    glasses: waterconsumedinglasses, 
+                    ml: waterInMl,
+                    at: new Date()
+                });
                 await healthdatatoday.save();
             } else {
                 // If no health data for today, create a new record
@@ -371,7 +375,11 @@ class HealthController {
                     date: todayDate,
                     water: {
                         consumed: waterInMl,
-                        entries: [{ glasses: waterconsumedinglasses, ml: waterInMl }]
+                        entries: [{ 
+                            glasses: waterconsumedinglasses, 
+                            ml: waterInMl,
+                            at: new Date()
+                        }]
                     }
                 });
                 await healthdatatoday.save();
