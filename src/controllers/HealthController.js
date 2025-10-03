@@ -44,7 +44,286 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 }
 
 class HealthController {
+
+    async monthlyreport(req, res) {
+        try {
+            const userId = req.user._id;
+            const { date } = req.body;
+            
+            
+            
+            // Calculate month boundaries
+            const inputDate = new Date(date);
+            const year = inputDate.getFullYear();
+            const month = inputDate.getMonth(); // 0-based (0 = January)
+            
+            // First day of month (e.g., "2025-10-01")
+            const monthStartString = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            
+            // Last day of month (e.g., "2025-10-31")  
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const monthEndString = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+            
+            console.log('Month boundaries:', { monthStartString, monthEndString, daysInMonth });
+            
+            // Get user goals
+            let userGoals = await Goals.findOne({ userId });
+            if (!userGoals) {
+                userGoals = new Goals({
+                    userId,
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
+                    sleepGoal: { hours: 8 }
+                });
+                await userGoals.save();
+            }
+            
+            // MongoDB Aggregation Query for Monthly Data
+            const monthlyData = await DailyHealthData.aggregate([
+                {
+                    $match: {
+                        userId: userId,
+                        date: {
+                            $gte: monthStartString,
+                            $lte: monthEndString
+                        }
+                    }
+                },
+                {
+                    $sort: { date: 1 }
+                },
+                {
+                    $project: {
+                        date: 1,
+                        steps: 1,
+                        water: 1,
+                        calories: 1,
+                        sleep: 1,
+                        _id: 0
+                    }
+                }
+            ]);
+            
+            // Always get TODAY's data for streak and goal completions
+            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayHealth = await DailyHealthData.findOne({
+                userId: userId,
+                date: todayDateString
+            }).select('goalcomplete streak -_id');
+            
+            // Create complete month breakdown with zero values for missing days
+            const dailyBreakdown = [];
+            
+            // Create a map of existing data for quick lookup
+            const dataMap = {};
+            monthlyData.forEach(record => {
+                dataMap[record.date] = record;
+            });
+            
+            // Generate all days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                const existingData = dataMap[dateString];
+                
+                dailyBreakdown.push({
+                    date: dateString,
+                    water: {
+                        ml: existingData?.water?.consumed || 0,
+                        glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
+                    },
+                    calories: {
+                        consumed: existingData?.calories?.consumed || 0,
+                        burned: existingData?.calories?.burned || 0
+                    },
+                    steps: {
+                        count: existingData?.steps?.count || 0
+                    },
+                    sleep: {
+                        duration: existingData?.sleep?.duration || 0
+                    }
+                });
+            }
+            
+            return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
+                goalcompletions: todayHealth?.goalcomplete || false,
+                streak: todayHealth?.streak || 0,
+                goals: {
+                    stepsGoal: userGoals.stepsGoal,
+                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                    waterIntakeGoal: userGoals.waterIntakeGoal,
+                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                    sleepGoal: { hours: userGoals.sleepGoal?.hours }
+                },
+                monthPeriod: {
+                    startDate: monthStartString,
+                    endDate: monthEndString,
+                    month: month + 1,
+                    year: year,
+                    totalDays: daysInMonth
+                },
+                dailyBreakdown: dailyBreakdown
+            });
+            
+        } catch (error) {
+            console.log(error);
+            return ResponseHandler.serverError(res, 'Failed to get monthly report');
+        }
+    }
+
     // Get specific day health data
+    async weeklyreport(req, res) {
+        try{
+            const userId=req.user._id;
+            const {date} = req.body;
+            
+            // Input validation
+            if (!date) {
+                return ResponseHandler.badRequest(res, 'Date is required in request body');
+            }
+            
+            // Validate date format (YYYY-MM-DD)
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(date)) {
+                return ResponseHandler.badRequest(res, 'Invalid date format. Please use YYYY-MM-DD format');
+            }
+            
+            const inputDate = new Date(date); // incoming date from client
+            
+            // Check if date is valid
+            if (isNaN(inputDate.getTime())) {
+                return ResponseHandler.badRequest(res, 'Invalid date provided');
+            }
+            
+            inputDate.setUTCHours(0, 0, 0, 0);
+
+            // Day of week (0 = Sunday, 6 = Saturday)
+            const dayOfWeek = inputDate.getUTCDay();
+
+            // Find Sunday (week start)
+            const weekStart = new Date(inputDate);
+            weekStart.setUTCDate(inputDate.getUTCDate() - dayOfWeek);
+            weekStart.setUTCHours(0, 0, 0, 0);
+
+            // Find Saturday (week end)
+            const weekEnd = new Date(weekStart);
+            weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+            weekEnd.setUTCHours(23, 59, 59, 999);
+
+            // Convert Date objects to YYYY-MM-DD strings for database query
+            const weekStartString = weekStart.toISOString().split('T')[0];
+            const weekEndString = weekEnd.toISOString().split('T')[0];
+            
+            console.log('Week start string:', weekStartString);
+            console.log('Week end string:', weekEndString);
+
+            // Get user goals first
+            const userGoals = await Goals.findOne({ userId })
+                            .select({
+                                _id: 0,
+                                "sleepGoal.hours": 1,
+                                stepsGoal: 1,
+                                caloriesBurnGoal: 1,
+                                waterIntakeGoal: 1,
+                                caloriesIntakeGoal: 1,
+                            })
+                            .lean();
+
+            // Fetch all 7 days' data using string dates
+            const weeklyHealthData = await DailyHealthData.find({
+                userId,
+                date: { $gte: weekStartString, $lte: weekEndString }
+            })
+            .select('date water.consumed calories.consumed calories.burned sleep.duration steps.count')
+            .sort({ date: 1 })
+            .lean();
+
+            // Generate all 7 dates for the week (Sun-Sat)
+            const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const weekDates = [];
+            
+            for (let i = 0; i < 7; i++) {
+                const currentDate = new Date(weekStart);
+                currentDate.setUTCDate(weekStart.getUTCDate() + i);
+                weekDates.push({
+                    date: currentDate.toISOString().split('T')[0],
+                    dayName: dayNames[i]
+                });
+            }
+
+            // Create complete daily breakdown with all metrics combined
+            const dailyBreakdown = weekDates.map(({ date, dayName }) => {
+                const dayData = weeklyHealthData.find(d => d.date === date);
+                return {
+                    date: date,
+                    dayName: dayName,
+                    water: {
+                        ml: dayData?.water?.consumed || 0,
+                        glasses: WaterConverter.mlToGlasses(dayData?.water?.consumed || 0)
+                    },
+                    calories: {
+                        consumed: dayData?.calories?.consumed || 0,
+                        burned: dayData?.calories?.burned || 0
+                    }
+                };
+            });
+
+            // Calculate totals (only from existing data)
+            const totalWaterIntake = weeklyHealthData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
+            const totalCaloriesConsumed = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
+            const totalCaloriesBurned = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
+            const totalSleepDuration = weeklyHealthData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
+            const totalSteps = weeklyHealthData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+            
+            // Get current streak from today's data
+            const today = new Date();
+            const dailyHealth = await DailyHealthData.findOne({ 
+                userId: userId, 
+                date: today.toISOString().split('T')[0]
+            });
+            const streak = dailyHealth ? dailyHealth.streak : 0;
+            return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
+                weekInfo:{
+                    "inputDate": date,
+                    "inputDayName": dayNames[dayOfWeek],
+                    "weekStartDate": weekStartString,
+                    "weekEndDate": weekEndString,
+                    "weekRange": `${weekStartString} to ${weekEndString}`
+                },
+                userGoals: userGoals,
+                "dailyBreakdown": dailyBreakdown,
+                "streak": streak,
+                "weekSummary":{
+                    "water":{
+                        "totalGlasses": WaterConverter.mlToGlasses(totalWaterIntake),
+                        "totalConsumed": totalWaterIntake
+                    },
+                    "calories":{
+                        "totalConsumed": totalCaloriesConsumed,
+                        "totalBurned": totalCaloriesBurned
+                    },
+                    "sleep":{
+                        "totalDuration": totalSleepDuration
+                    },
+                    "steps":{
+                        "totalCount": totalSteps
+                    }
+                }
+            });
+
+        }
+        catch(error){
+            console.error('Get weekly water report error:', error);
+            return ResponseHandler.serverError(res, 'Failed to get weekly water report');
+        }
+    }
+
+
+
+
+
 
     async addsleep(req,res){
         try{
@@ -150,8 +429,7 @@ class HealthController {
     }
 
 
-   
-
+    
     async getwater(req,res){
         try{
             const userId=req.user._id;
@@ -171,12 +449,21 @@ class HealthController {
                 await userGoals.save();
             }
             
-            const waterdata=await DailyHealthData.findOne({userId,date:date}).select('water date goalcomplete streak -_id');
+            // Get water data for requested date
+            const waterdata = await DailyHealthData.findOne({userId, date: date}).select('water date -_id');
+            
+            // Always get TODAY's data for streak and goal completions
+            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayHealth = await DailyHealthData.findOne({
+                userId: userId,
+                date: todayDateString
+            }).select('goalcomplete streak -_id');
+            
             if(waterdata){
-                waterdata.water.consumed=WaterConverter.mlToGlasses(waterdata.water.consumed || 0);
+                waterdata.water.consumed = WaterConverter.mlToGlasses(waterdata.water.consumed || 0);
                 return ResponseHandler.success(res, 'Water data retrieved successfully', {
-                    goalcompletions: waterdata.goalcomplete,
-                    streak: waterdata.streak,
+                    goalcompletions: todayHealth?.goalcomplete || false,
+                    streak: todayHealth?.streak || 0,
                     goals: {
                         stepsGoal: userGoals.stepsGoal,
                         caloriesBurnGoal: userGoals.caloriesBurnGoal,
@@ -191,8 +478,8 @@ class HealthController {
                 });
             }
             return ResponseHandler.success(res,'No water data found for the specified date',{
-                goalcompletions: null,
-                streak: null,
+                goalcompletions: todayHealth?.goalcomplete || false,
+                streak: todayHealth?.streak || 0,
                 goals: {
                     stepsGoal: userGoals.stepsGoal,
                     caloriesBurnGoal: userGoals.caloriesBurnGoal,
@@ -201,7 +488,8 @@ class HealthController {
                     sleepGoal: {
                         hours: userGoals.sleepGoal?.hours
                     }
-                }
+                },
+                date: date
             });
         }
         catch(error){return ResponseHandler.serverError(res,'Failed to get water data');}
@@ -279,12 +567,41 @@ class HealthController {
                 date: { $gte: sevenDaysAgoString, $lte: todayDate }
             }).sort({ date: 1 }).select('date steps').lean();
     
-            // Format last 7 days steps data
-            const stepsHistory = last7DaysData.map(dayData => ({
-                date: dayData.date,
-                totalSteps: dayData.steps?.count || 0,
-                entries: dayData.steps?.entries || []
-            }));
+            // Helper function to calculate step estimates
+            const calculateStepEstimates = (steps) => {
+                if (!steps || steps === 0) {
+                    return {
+                        estimatedCaloriesBurned: 0,
+                        estimatedWalkingTimeMinutes: 0,
+                        estimatedDistanceKm: 0
+                    };
+                }
+                
+                // Standard estimates (can be customized per user later)
+                const CALORIES_PER_STEP = 0.04; // Average: 40 calories per 1000 steps
+                const STEPS_PER_MINUTE = 100; // Average walking pace: 100 steps per minute
+                const STEPS_PER_KM = 1250; // Average: 1250 steps = 1 km (0.8m per step)
+                
+                return {
+                    estimatedCaloriesBurned: Math.round(steps * CALORIES_PER_STEP),
+                    estimatedWalkingTimeMinutes: Math.round(steps / STEPS_PER_MINUTE),
+                    estimatedDistanceKm: Math.round((steps / STEPS_PER_KM) * 100) / 100 // Round to 2 decimal places
+                };
+            };
+    
+            // Format last 7 days steps data with estimates
+            const stepsHistory = last7DaysData.map(dayData => {
+                const totalSteps = dayData.steps?.count || 0;
+                const estimates = calculateStepEstimates(totalSteps);
+                
+                return {
+                    date: dayData.date,
+                    totalSteps: totalSteps,
+                    entries: dayData.steps?.entries || [],
+                    estimates: estimates
+                };
+            });
+            
             return ResponseHandler.success(res, 'Steps data retrieved successfully', {
                 last7Days: stepsHistory
             });
@@ -315,11 +632,20 @@ class HealthController {
                 await userGoals.save();
             }
             
-            const caloriesdata=await DailyHealthData.findOne({userId,date:date}).select('calories date goalcomplete streak -_id');
+            // Get calories data for requested date
+            const caloriesdata = await DailyHealthData.findOne({userId, date: date}).select('calories date -_id');
+            
+            // Always get TODAY's data for streak and goal completions
+            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayHealth = await DailyHealthData.findOne({
+                userId: userId,
+                date: todayDateString
+            }).select('goalcomplete streak -_id');
+            
             if(caloriesdata){
                 return ResponseHandler.success(res, 'Calories data retrieved successfully', {
-                    goalcompletions: caloriesdata.goalcomplete,
-                    streak: caloriesdata.streak,
+                    goalcompletions: todayHealth?.goalcomplete || false,
+                    streak: todayHealth?.streak || 0,
                     goals: {
                         stepsGoal: userGoals.stepsGoal,
                         caloriesBurnGoal: userGoals.caloriesBurnGoal,
@@ -334,8 +660,8 @@ class HealthController {
                 });
             }
             return ResponseHandler.success(res,'No calories data found for the specified date',{
-                goalcompletions: null,
-                streak: null,
+                goalcompletions: todayHealth?.goalcomplete || false,
+                streak: todayHealth?.streak || 0,
                 goals: {
                     stepsGoal: userGoals.stepsGoal,
                     caloriesBurnGoal: userGoals.caloriesBurnGoal,
@@ -344,7 +670,8 @@ class HealthController {
                     sleepGoal: {
                         hours: userGoals.sleepGoal?.hours
                     }
-                }
+                },
+                date: date
             });
         }
         catch(error){
@@ -492,6 +819,13 @@ class HealthController {
                 date: date 
             });
 
+            // Always get TODAY's data for streak and goal completions
+            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayHealth = await DailyHealthData.findOne({
+                userId: userId,
+                date: todayDateString
+            });
+
             // Always fetch user goals
             let userGoals = await Goals.findOne({ userId: userId });
             if (!userGoals) {
@@ -542,9 +876,7 @@ class HealthController {
                         duration: responseData.sleep.duration,
                         entries: responseData.sleep.entries || []
                     } : undefined,
-                    date: responseData.date,
-                    goalcompletions: responseData.goalcomplete,  // Map DB field to API response for frontend UI logic
-                    streak: responseData.streak
+                    date: responseData.date
                 };
                 // Remove undefined fields
                 Object.keys(cleanHealthData).forEach(key => {
@@ -552,6 +884,19 @@ class HealthController {
                         delete cleanHealthData[key];
                     }
                 });
+            }
+
+            // Always add TODAY's streak and goal completions, regardless of whether data exists for requested date
+            if (cleanHealthData) {
+                cleanHealthData.goalcompletions = todayHealth?.goalcomplete || false;
+                cleanHealthData.streak = todayHealth?.streak || 0;
+            } else {
+                // No data for requested date, but still send today's streak and goal completions
+                cleanHealthData = {
+                    date: date,
+                    goalcompletions: todayHealth?.goalcomplete || false,
+                    streak: todayHealth?.streak || 0
+                };
             }
 
             // Always return both healthData and goals in todayData

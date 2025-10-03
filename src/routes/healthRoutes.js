@@ -65,6 +65,14 @@ router.post('/calories',validatecalories,handleHealthValidationErrors,HealthCont
 router.post('/getcalories',validateDateBody,handleHealthValidationErrors,HealthController.getcalories);
 
 
+router.post('/weeklyreport',validateDateBody,handleHealthValidationErrors,HealthController.weeklyreport);
+router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport);
+
+
+// router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport);
+
+
+
 router.get('/steps', HealthController.getsteps);
 module.exports = router;
 
