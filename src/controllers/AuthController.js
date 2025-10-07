@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const OTPUtils = require('../utils/otpUtils');
 const OTPService = require('../services/otpService');
 const ConnectionHelper = require('../utils/connectionHelper');
-const ResponseHandler = require('../utils/ResponseHandler');
+const ResponseHandler = require('../utils/responseHandler');
 
 class AuthController {
     // Generate JWT token

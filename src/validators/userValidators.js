@@ -1,3 +1,4 @@
+const ResponseHandler = require('../utils/responseHandler');
 // User Profile Validation Rules using express-validator
 const { body, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
@@ -168,7 +169,6 @@ const validateUserProfileUpdate = [
 ];
 
 // Validation result handler middleware
-const ResponseHandler = require('../utils/ResponseHandler');
 
 const handleValidationErrors = (req, res, next) => {
     console.log(`🔍 [${req.requestId}] handleValidationErrors middleware called`);

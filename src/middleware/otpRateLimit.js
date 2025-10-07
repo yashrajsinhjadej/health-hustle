@@ -2,7 +2,7 @@
 // Provides rate limiting per phone number instead of per IP
 
 const { rateLimiter } = require('./customRateLimit');
-const ResponseHandler = require('../utils/ResponseHandler');
+const ResponseHandler = require('../utils/responseHandler');
 
 // OTP-specific rate limiter that uses phone number as key
 function createOTPRateLimit(limit, windowSeconds) {

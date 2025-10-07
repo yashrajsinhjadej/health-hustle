@@ -5,7 +5,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const ResponseHandler = require('./src/utils/ResponseHandler');
+const ResponseHandler = require('./src/utils/responseHandler');
 
 // Routes
 const authRoutes = require('./src/routes/authRoutes/authRoutes');

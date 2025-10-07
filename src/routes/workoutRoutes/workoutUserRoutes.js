@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
+
+
 const { authenticateToken, adminOrUser } = require('../../middleware/auth');
 // Import all route modules
 
@@ -9,17 +11,27 @@ router.use(authenticateToken); // for checking user authentication and giving us
 router.use(adminOrUser); // for checking user authorization
 
 
-router.use('/',(req,res)=>{
-    res.json({
-        success:true,
-        message:"Workout User API endpoints",
-        user:{
-            id:req.user._id,
-            name:req.user.name,
-            role:req.user.role
-        }
+
+
+router.get('/', (req, res) => {
+    return res.json({
+        success: true,
+        message: "Workout User API endpoints",
+        user: {
+            id: req.user._id,
+            name: req.user.name,
+            role: req.user.role
+        },
+        availableEndpoints: [
+            'GET /api/workout/user - Get this info',
+            // Add more user-specific workout endpoints here
+        ]
     });
 });
+
+
+
+
 
 
 module.exports = router;

@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const ConnectionHelper = require('../utils/connectionHelper');
-const ResponseHandler = require('../utils/ResponseHandler');
+const ResponseHandler = require('../utils/responseHandler');
 
 // Verify JWT token
 const authenticateToken = async (req, res, next) => {

@@ -11,12 +11,12 @@ const workoutVideoSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    youtubeUrl: { // The essential link for streaming
+    youtubeUrl: { // Essential link for streaming
       type: String, 
       required: true,
     },
     duration: {
-      type: Number, // in seconds (Manually entered by Admin for now)
+      type: Number, // in seconds (entered by Admin)
       required: true,
     },
     createdBy: {

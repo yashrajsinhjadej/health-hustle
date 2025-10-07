@@ -3,6 +3,8 @@
 const { body, param, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
 
+const ResponseHandler = require('../utils/responseHandler');
+const { validate } = require('../models/DailyHealthData');
 // Date format validation helper
 const isValidDateFormat = (value) => {
     const validationId = `date_val_${Date.now()}`;
@@ -170,8 +172,6 @@ const validateBulkUpdate = [
 ];
 
 // Validation result handler middleware
-const ResponseHandler = require('../utils/ResponseHandler');
-const { validate } = require('../models/DailyHealthData');
 
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);

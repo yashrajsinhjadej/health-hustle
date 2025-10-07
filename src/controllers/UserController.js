@@ -10,7 +10,7 @@ const {
     getDisplayWeight
 } = require('../utils/unitConverter');
 const ConnectionHelper = require('../utils/connectionHelper');
-const ResponseHandler = require('../utils/ResponseHandler');
+const ResponseHandler = require('../utils/responseHandler');
 
 
 async function getUserProfile(req, res) {
