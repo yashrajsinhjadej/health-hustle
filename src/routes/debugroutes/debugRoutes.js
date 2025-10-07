@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
+
 // Debug route for MongoDB connection testing
 router.get('/debug', (req, res) => {
 	const mongoUri = process.env.MONGODB_URI;

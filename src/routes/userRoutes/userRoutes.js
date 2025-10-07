@@ -1,7 +1,7 @@
 // User Routes - User profile and account management
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, userOnly } = require('../../middleware/auth');
+const { authenticateToken, adminOrUser } = require('../../middleware/auth');
 const UserController = require('../../controllers/UserController');
 const { 
     validateUserProfileUpdate, 
@@ -19,7 +19,7 @@ const userRateLimit = createCustomRateLimit(
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
-router.use(userOnly);// for checking user authorization 
+router.use(adminOrUser); // for checking user authorization
 router.use(userRateLimit); // Rate limit to 60 requests per minute per user
 
 

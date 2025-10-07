@@ -7,12 +7,11 @@ const workoutSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    // One-to-Many Relationship: Reference to the WorkoutCategory
     category: {
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'WorkoutCategory', 
-      required: true,
+      type: [String], // array allows multiple categories
+      default: [],
     },
+
     level: {
       type: String,
       enum: ['beginner', 'intermediate', 'advanced'],

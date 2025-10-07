@@ -1,7 +1,7 @@
 // Health Routes - Health data management endpoints
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, userOnly } = require('../../middleware/auth');
+const { authenticateToken, adminOrUser } = require('../../middleware/auth');
 const HealthController = require('../../controllers/HealthController');
 const {
     validateWaterBody,
@@ -22,7 +22,7 @@ const healthRateLimit = createCustomRateLimit(
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); // for checking user authentication and giving user obj in req.user
-router.use(userOnly); // for checking user authorization
+router.use(adminOrUser); // for checking user authorization
 router.use(healthRateLimit); // Rate limit to 50 requests per minute per user
 
 router.get('/', (req, res) => {

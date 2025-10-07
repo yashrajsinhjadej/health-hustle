@@ -24,5 +24,7 @@ router.use('/admin', require('./adminRoutes/adminRoutes'));
 router.use('/users', require('./adminRoutes/adminRoutes')); // Alias for frontend compatibility
 router.use('/user', require('./userRoutes/userRoutes'));
 router.use('/health', require('./healthRoutes/healthRoutes'));
+router.use('/workout', require('./workoutRoutes/index'));
+
 
 module.exports = router;

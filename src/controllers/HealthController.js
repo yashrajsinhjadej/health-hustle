@@ -413,22 +413,33 @@ class HealthController {
                 await userGoals.save();
             }
 
-            // Get last 7 days of sleep data
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
-            
+            // Build current week Sunday->Saturday (UTC) and include DB values or zeros for future days
+            const now = new Date();
+            const todayDateUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().split('T')[0];
+            const dayOfWeek = now.getUTCDay();
+            const weekStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
+            const weekStartString = weekStartUTC.toISOString().split('T')[0];
+
             const last7DaysData = await DailyHealthData.find({
                 userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+                date: { $gte: weekStartString, $lte: todayDateUTC }
             }).sort({ date: 1 }).select('date sleep').lean(); // Added .lean() for better performance
-            
-            // Format last 7 days sleep data
-            const sleepHistory = last7DaysData.map(dayData => ({
-                date: dayData.date,
-                totalDuration: dayData.sleep?.duration || 0,
-                entries: dayData.sleep?.entries || []
-            }));
+
+            const dataByDate = {};
+            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
+
+            const sleepHistory = [];
+            for (let i = 0; i < 7; i++) {
+                const currentUTC = new Date(Date.UTC(weekStartUTC.getUTCFullYear(), weekStartUTC.getUTCMonth(), weekStartUTC.getUTCDate() + i));
+                const dateString = currentUTC.toISOString().split('T')[0];
+
+                if (dateString > todayDateUTC) {
+                    sleepHistory.push({ date: dateString, totalDuration: 0, entries: [] });
+                } else {
+                    const dayData = dataByDate[dateString];
+                    sleepHistory.push({ date: dateString, totalDuration: dayData?.sleep?.duration || 0, entries: dayData?.sleep?.entries || [] });
+                }
+            }
 
             // Get today's updated health data for goals and streak
             const updatedTodayData = await DailyHealthData.findOne({ userId, date: todayDate });
@@ -525,10 +536,14 @@ class HealthController {
         try{
             console.log('get sleep method called')
             const userId=req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            // Use UTC-based calculations to avoid timezone-related off-by-one-day issues
+            const now = new Date();
+            const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().split('T')[0];
+
+            // Calculate week start (Sunday) in UTC for the current week
+            const dayOfWeek = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+            const weekStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
+            const weekStartString = weekStartUTC.toISOString().split('T')[0];
             
             // Get user goals
             let userGoals = await Goals.findOne({ userId });
@@ -546,18 +561,38 @@ class HealthController {
 
             const last7DaysData = await DailyHealthData.find({
                 userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+                date: { $gte: weekStartString, $lte: todayDate }
             }).sort({ date: 1 }).select('date sleep goalcomplete streak').lean();
 
-            // Format last 7 days sleep data
-            const sleepHistory = last7DaysData.map(dayData => ({
-                date: dayData.date,
-                totalDuration: dayData.sleep?.duration || 0,
-                entries: dayData.sleep?.entries || []
-            }));
+            // Build week array Sunday -> Saturday. Past days (<= today) use DB or 0, future days (> today) are null
+            const sleepHistory = [];
+            const dataByDate = {};
+            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
 
-            // Get today's health data for goals and streak
-            const todayHealthData = last7DaysData.find(data => data.date === todayDate);
+            for (let i = 0; i < 7; i++) {
+                // Build each day from weekStartUTC using UTC to avoid timezone shifts
+                const currentUTC = new Date(Date.UTC(weekStartUTC.getUTCFullYear(), weekStartUTC.getUTCMonth(), weekStartUTC.getUTCDate() + i));
+                const dateString = currentUTC.toISOString().split('T')[0];
+
+                if (dateString > todayDate) {
+                    // Future date within this week - return zeros (not null) per requirement
+                    sleepHistory.push({
+                        date: dateString,
+                        totalDuration: 0,
+                        entries: []
+                    });
+                } else {
+                    const dayData = dataByDate[dateString];
+                    sleepHistory.push({
+                        date: dateString,
+                        totalDuration: dayData?.sleep?.duration || 0,
+                        entries: dayData?.sleep?.entries || []
+                    });
+                }
+            }
+
+            // Get today's health data for goals and streak (from DB or constructed array)
+            const todayHealthData = dataByDate[todayDate] || sleepHistory.find(d => d.date === todayDate) || { totalDuration: 0, entries: [] };
             
             return ResponseHandler.success(res, 'Sleep data retrieved successfully', {
                 goalcompletions: todayHealthData?.goalcomplete,
@@ -584,13 +619,16 @@ class HealthController {
         try{
             console.log('get steps method called')
             const userId=req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            // Build current week Sunday->Saturday in UTC
+            const now = new Date();
+            const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString().split('T')[0];
+            const dayOfWeek = now.getUTCDay();
+            const weekStartUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
+            const weekStartString = weekStartUTC.toISOString().split('T')[0];
+
             const last7DaysData = await DailyHealthData.find({
                 userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
+                date: { $gte: weekStartString, $lte: todayDate }
             }).sort({ date: 1 }).select('date steps').lean();
     
             // Helper function to calculate step estimates
@@ -615,18 +653,26 @@ class HealthController {
                 };
             };
     
-            // Format last 7 days steps data with estimates
-            const stepsHistory = last7DaysData.map(dayData => {
-                const totalSteps = dayData.steps?.count || 0;
+            // Build week array Sunday->Saturday, fill future days with zeros
+            const dataByDate = {};
+            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
+
+            const stepsHistory = [];
+            for (let i = 0; i < 7; i++) {
+                const currentUTC = new Date(Date.UTC(weekStartUTC.getUTCFullYear(), weekStartUTC.getUTCMonth(), weekStartUTC.getUTCDate() + i));
+                const dateString = currentUTC.toISOString().split('T')[0];
+
+                let totalSteps = 0;
+                let entries = [];
+                if (dateString <= todayDate) {
+                    const dayData = dataByDate[dateString];
+                    totalSteps = dayData?.steps?.count || 0;
+                    entries = dayData?.steps?.entries || [];
+                }
+
                 const estimates = calculateStepEstimates(totalSteps);
-                
-                return {
-                    date: dayData.date,
-                    totalSteps: totalSteps,
-                    entries: dayData.steps?.entries || [],
-                    estimates: estimates
-                };
-            });
+                stepsHistory.push({ date: dateString, totalSteps, entries, estimates });
+            }
             
             return ResponseHandler.success(res, 'Steps data retrieved successfully', {
                 last7Days: stepsHistory

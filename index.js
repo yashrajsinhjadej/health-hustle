@@ -23,7 +23,6 @@ const upload = multer({
 
 const app = express();
 
-// Custom in-memory rate limiting is now used instead of Redis
 
 
 // Add request logging middleware
