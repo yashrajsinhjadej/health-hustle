@@ -1,19 +1,19 @@
 // Admin Routes - Simple admin endpoints
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
-const { authenticateToken, adminOnly } = require('../middleware/auth');
-const AdminAuthController = require('../controllers/AdminAuthController');
-const AuthController = require('../controllers/AuthController');
-const ResponseHandler = require('../utils/ResponseHandler');
-const createCustomRateLimit = require('../middleware/customRateLimit');
+const User = require('../../models/User');
+const { authenticateToken, adminOnly } = require('../../middleware/auth');
+const AdminAuthController = require('../../controllers/AdminAuthController');
+const AuthController = require('../../controllers/AuthController');
+const ResponseHandler = require('../../utils/ResponseHandler');
+const createCustomRateLimit = require('../../middleware/customRateLimit');
 const { 
     validateAdminSignup, 
     validateAdminLogin, 
     validateAdminEmail,
     validateAdminPasswordReset,
     handleValidationErrors 
-} = require('../validators/userValidators');
+} = require('../../validators/userValidators');
 
 // Global admin route logging middleware
 router.use((req, res, next) => {

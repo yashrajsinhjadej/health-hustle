@@ -1,14 +1,14 @@
 // User Routes - User profile and account management
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, userOnly } = require('../middleware/auth');
-const UserController = require('../controllers/UserController');
+const { authenticateToken, userOnly } = require('../../middleware/auth');
+const UserController = require('../../controllers/UserController');
 const { 
     validateUserProfileUpdate, 
     handleValidationErrors 
-} = require('../validators/userValidators');
-const ResponseHandler = require('../utils/ResponseHandler');
-const createCustomRateLimit = require('../middleware/customRateLimit');
+} = require('../../validators/userValidators');
+const ResponseHandler = require('../../utils/ResponseHandler');
+const createCustomRateLimit = require('../../middleware/customRateLimit');
 
 
 // Create rate limiter for user routes using environment variables

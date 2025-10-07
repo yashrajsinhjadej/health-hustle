@@ -160,8 +160,17 @@ class OTPService {
                 
                 if (anyOTP && !this.isExpired(anyOTP) && !this.hasMaxAttempts(anyOTP)) {
                     console.log(`⚠️ Incrementing attempts for phone: ${phone} (current attempts: ${anyOTP.attempts})`);
-                    await this.incrementAttempts(anyOTP);
-                    const remainingAttempts = 3 - anyOTP.attempts;
+                    const updatedOTP = await this.incrementAttempts(anyOTP);
+                    const remainingAttempts = 3 - updatedOTP.attempts;
+                    
+                    // Check if this was the last attempt
+                    if (remainingAttempts <= 0) {
+                        console.log(`❌ Max attempts reached for phone: ${phone}`);
+                        return {
+                            success: false,
+                            message: 'Invalid or expired OTP. Please request a new one.'
+                        };
+                    }
                     
                     return {
                         success: false,

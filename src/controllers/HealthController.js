@@ -7,6 +7,10 @@ const ResponseHandler = require('../utils/ResponseHandler');
 const goalcounter = require('../utils/goalcounter');
 const { response } = require('../..');
 const { EsimProfilePage } = require('twilio/lib/rest/supersim/v1/esimProfile');
+const sleepduration = require('../utils/sleepduration');
+const calorieService = require('../services/calorieService');
+
+
 
 // CONFIGURABLE GOAL SYSTEM - Easy to modify which goals count for streaks
 const STREAK_GOALS = [
@@ -321,13 +325,41 @@ class HealthController {
     }
 
 
-
+    async estimateCalories(req,res){
+        try {
+            // req.file.buffer contains the image data in memory
+            const imageBuffer = req.file.buffer;
+            const mimeType = req.file.mimetype;
+        
+            // Call service to get calorie estimation
+            const result = await calorieService.estimateCaloriesFromImage(
+              imageBuffer,
+              mimeType
+            );
+        
+            // Image buffer will be garbage collected automatically
+            return res.status(200).json({
+              success: true,
+              message: 'Calorie estimation successful.',
+              data: {
+                foodDescription: result.foodDescription,
+                estimatedCalories: result.estimatedCalories
+              }
+            });
+        }
+        catch(error){   
+            console.error('Estimate calories error:', error);
+            return ResponseHandler.serverError(res, 'Failed to estimate calories');
+        }
+    }
 
 
 
     async addsleep(req,res){
         try{
-            const sleepDuration = req.body.sleep.duration;
+            const { duration } = req.body.sleep;
+            // Use duration directly from frontend
+            const sleepDuration = Number(duration);
             const userId = req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
 
@@ -336,26 +368,20 @@ class HealthController {
             if(healthdatatoday){
                 // Ensure sleep duration is a valid number, default to 0 if undefined/null
                 const currentDuration = healthdatatoday.sleep?.duration || 0;
-                
                 if(currentDuration + sleepDuration > 12){
                     return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
                 }
-                
-                // Initialize sleep object if it doesn't exist
                 if (!healthdatatoday.sleep) {
                     healthdatatoday.sleep = { duration: 0, entries: [] };
                 }
-                
-                // Add to existing sleep entries array
                 if (!healthdatatoday.sleep.entries) {
                     healthdatatoday.sleep.entries = [];
                 }
-                healthdatatoday.sleep.entries.push({
+                healthdatatoday.sleep.entries.push({        
                     duration: sleepDuration,
                     at: new Date()
                 });
-                
-                healthdatatoday.sleep.duration = currentDuration + sleepDuration;
+                healthdatatoday.sleep.duration = Number((currentDuration + sleepDuration).toFixed(2));
                 await healthdatatoday.save();
             }
             else{
@@ -1692,5 +1718,7 @@ class HealthController {
         }
     }
 }
+
+
 
 module.exports = new HealthController();

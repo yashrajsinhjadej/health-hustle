@@ -1,3 +1,4 @@
+
 // Health Data Validation Rules using express-validator
 const { body, param, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
@@ -124,12 +125,12 @@ const validateWaterBody=[
         .withMessage('Water consumed must be between 0 and 50 glasses'),
 ];
 
-const validateSleepBody=[
+const validateSleepBody = [
     body('sleep.duration')
         .notEmpty()
         .isFloat({ min: 0, max: 12 })
         .withMessage('Sleep duration must be between 0 and 12 hours'),
-]
+];
 
 const validatecalories =[
     body('calories.consumed')

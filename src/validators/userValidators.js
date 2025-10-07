@@ -68,13 +68,12 @@ const validateUserProfileUpdate = [
 
     // Email validation
     body('email')
-        .trim()
-        .notEmpty()
-        .withMessage('Email is required')
-        .isEmail()
-        .withMessage('Please enter a valid email address')
-        .normalizeEmail()
-        .withMessage('Invalid email format'),
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Please enter a valid email address')
+    .withMessage('Please enter a valid email address'),
 
     // Gender validation
     body('gender')
@@ -172,12 +171,17 @@ const validateUserProfileUpdate = [
 const ResponseHandler = require('../utils/ResponseHandler');
 
 const handleValidationErrors = (req, res, next) => {
+    console.log(`🔍 [${req.requestId}] handleValidationErrors middleware called`);
     const errors = validationResult(req);
     
+    console.log(`🔍 [${req.requestId}] Validation check - Total errors found: ${errors.array().length}`);
+    
     if (!errors.isEmpty()) {
+        console.log(`❌ [${req.requestId}] Validation FAILED - Errors:`, JSON.stringify(errors.array(), null, 2));
         return ResponseHandler.validationError(res, errors);
     }
     
+    console.log(`✅ [${req.requestId}] Validation PASSED - No errors found`);
     next();
 };
 

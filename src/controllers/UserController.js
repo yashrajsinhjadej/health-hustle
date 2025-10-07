@@ -143,6 +143,7 @@ async function updateUserProfile(req, res) {
         // Ensure MongoDB connection is ready
         console.log(`👤 [${requestId}] Ensuring MongoDB connection...`);
         await ConnectionHelper.ensureConnection();
+        console.log(`👤 [${requestId}] MongoDB connection confirmed, preparing update data...`);
         
         // Prepare update data with converted values
         const updateData = {
@@ -163,17 +164,28 @@ async function updateUserProfile(req, res) {
             profileCompleted: true // Mark profile as completed
         };
 
-        // Update user with validation
-        const userUpdated = await User.findByIdAndUpdate(
-            user._id, 
-            updateData,
-            { 
-                new: true, // Return updated document
-                runValidators: true // Run mongoose validators
-            }
-        );
+        console.log(`👤 [${requestId}] Update data prepared:`, updateData);
+        console.log(`👤 [${requestId}] Starting database update for user: ${user._id}`);
+
+        // Update user with validation and timeout
+        const userUpdated = await Promise.race([
+            User.findByIdAndUpdate(
+                user._id, 
+                updateData,
+                { 
+                    new: true, // Return updated document
+                    runValidators: true // Run mongoose validators
+                }
+            ),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database update timeout after 10 seconds')), 10000)
+            )
+        ]);
+
+        console.log(`👤 [${requestId}] Database update completed successfully`);
 
         if (!userUpdated) {
+            console.log(`👤 [${requestId}] User not found after update`);
             return ResponseHandler.notFound(res, "User not found");
         }
 
@@ -210,10 +222,20 @@ async function updateUserProfile(req, res) {
         });
 
     } catch (error) {
-        console.error('Update user profile error:', error);
+        console.error(`👤 [${requestId}] Update user profile error:`, error);
+        console.error(`👤 [${requestId}] Error name: ${error.name}`);
+        console.error(`👤 [${requestId}] Error message: ${error.message}`);
+        console.error(`👤 [${requestId}] Error stack:`, error.stack);
+        
+        // Handle specific error types
+        if (error.message.includes('timeout')) {
+            console.error(`👤 [${requestId}] Database operation timed out`);
+            return ResponseHandler.serverError(res, "Database operation timed out. Please try again.");
+        }
         
         // Handle mongoose validation errors
         if (error.name === 'ValidationError') {
+            console.error(`👤 [${requestId}] Mongoose validation error:`, error.errors);
             return ResponseHandler.mongooseError(res, error);
         }
 

@@ -1,17 +1,17 @@
 // Authentication Routes
 const express = require('express');
 const router = express.Router();
-const AuthController = require('../controllers/AuthController');
-const { authenticateToken } = require('../middleware/auth');
+const AuthController = require('../../controllers/AuthController');
+const { authenticateToken } = require('../../middleware/auth');
 const { 
     validatePhoneNumber, 
     validateOTP, 
     handleValidationErrors 
-} = require('../validators/userValidators');
-const ResponseHandler = require('../utils/ResponseHandler');
+} = require('../../validators/userValidators');
+const ResponseHandler = require('../../utils/ResponseHandler');
 
-const createCustomRateLimit = require('../middleware/customRateLimit');
-const createOTPRateLimit = require('../middleware/otpRateLimit');
+const createCustomRateLimit = require('../../middleware/customRateLimit');
+const createOTPRateLimit = require('../../middleware/otpRateLimit');
 
 router.get('/',(req,res)=>{
     return ResponseHandler.success(res, "Auth API ready");

@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         unique: true,
         sparse: true, // Allow multiple null values but unique non-null values
-        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+        match: [/^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$/, 'Please enter a valid email']
     },
     password: {
         type: String,

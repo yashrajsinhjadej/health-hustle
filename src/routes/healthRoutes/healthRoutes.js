@@ -1,17 +1,18 @@
 // Health Routes - Health data management endpoints
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, userOnly } = require('../middleware/auth');
-const HealthController = require('../controllers/HealthController');
+const { authenticateToken, userOnly } = require('../../middleware/auth');
+const HealthController = require('../../controllers/HealthController');
 const {
     validateWaterBody,
     validateDateBody,
     validateBulkUpdate,
     validatecalories,
     validateSleepBody,
+    validateImageUpload,
     handleValidationErrors: handleHealthValidationErrors
-} = require('../validators/healthValidators');
-const createCustomRateLimit = require('../middleware/customRateLimit');
+} = require('../../validators/healthValidators');
+const createCustomRateLimit = require('../../middleware/customRateLimit');
 
 // Create rate limiter for health routes using environment variables
 const healthRateLimit = createCustomRateLimit(
@@ -64,16 +65,45 @@ router.get('/getsleep',HealthController.getsleep);
 router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); // verified by yash
 router.post('/getcalories',validateDateBody,handleHealthValidationErrors,HealthController.getcalories);
 
-
 router.post('/weeklyreport',validateDateBody,handleHealthValidationErrors,HealthController.weeklyreport);
 router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport);
 
 
-// router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport);
-
-
 
 router.get('/steps', HealthController.getsteps);
+
+
+
+const { upload, checkFileExists } = require('../../middleware/uploadMiddleware');
+router.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+
+// POST /api/calories/estimate
+router.post(
+    '/estimate',
+    (req, res, next) => {
+      // Log the incoming form-data fields
+      if (req.body) {
+        console.log('Form fields:', req.body);
+      }
+      next();
+    },
+    upload.single('image'), // 'image' is the field name in form-data
+    (err, req, res, next) => {
+      if (err) {
+        console.error('Upload error:', err.message);
+        return res.status(400).json({ success: false, message: err.message });
+      }
+      next();
+    },
+    checkFileExists,
+    HealthController.estimateCalories
+  );
+    
+
+
 module.exports = router;
 
 
