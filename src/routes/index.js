@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-
 const multer = require('multer');
 
 // Error handling middleware for multer errors
@@ -18,8 +17,7 @@ router.use((error, req, res, next) => {
       message: error.message
     });
   });
-
-router.use('/', require('./debugRoutes/debugRoutes'));
+router.use('/', require('./debugroutes/debugRoutes'));
 // Import all route modules
 router.use('/auth', require('./authRoutes/authRoutes'));
 router.use('/admin', require('./adminRoutes/adminRoutes'));

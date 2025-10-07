@@ -12,6 +12,7 @@ const authRoutes = require('./src/routes/authRoutes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes/adminRoutes');
 const userRoutes = require('./src/routes/userRoutes/userRoutes');
 const healthRoutes = require('./src/routes/healthRoutes/healthRoutes');
+
 const multer = require('multer');
 const upload = multer({
     storage: multer.memoryStorage(),
