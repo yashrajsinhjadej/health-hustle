@@ -1,7 +1,7 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout');
 const { contentSecurityPolicy } = require('helmet');
-const workoutvideoModel = require('../../models/WorkoutVideo');
+const workoutvideoModel = require('../../models/workoutVideo');
 class workoutvideo 
 {
   async createWorkoutVideo(req, res) {
