@@ -1,6 +1,5 @@
 // MongoDB connection logic extracted from index.js
 const mongoose = require('mongoose');
-
 const connectDB = async () => {
     try {
         console.log('🔍 Starting MongoDB connection process...');
@@ -45,7 +44,7 @@ const connectDB = async () => {
             retryWrites: true,
             w: 'majority',
             bufferCommands: false,
-            autoIndex: false,
+            autoIndex: true,
             maxIdleTimeMS: 30000,
             connectTimeoutMS: 20000,
             heartbeatFrequencyMS: 10000,

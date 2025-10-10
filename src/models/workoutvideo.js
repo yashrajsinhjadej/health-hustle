@@ -26,5 +26,10 @@ const workoutVideoSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+workoutVideoSchema.index({ 
+    title: 'text', 
+    description: 'text' 
+}); 
+
 
 module.exports = mongoose.model('WorkoutVideo', workoutVideoSchema);

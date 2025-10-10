@@ -7,6 +7,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const ResponseHandler = require('./src/utils/responseHandler');
 
+
 // Routes
 const authRoutes = require('./src/routes/authRoutes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes/adminRoutes');
@@ -179,6 +180,10 @@ app.get('/health', async (req, res) => {
         // Check Twilio status
         const TwilioSMSService = require('./src/services/twilioSMSService');
         const twilioStatus = await TwilioSMSService.healthCheck();
+
+        //check aws s3 status 
+        const s3 = require('./src/services/s3service');
+        const s3Status = await s3.healthCheck();
         
         const healthResponse = {
             status: dbStatus === 'connected' ? 'healthy' : 'unhealthy',
@@ -196,6 +201,7 @@ app.get('/health', async (req, res) => {
                 host: dbHost
             },
             twilio: twilioStatus,
+            s3: s3Status,
             environment: process.env.NODE_ENV || 'development'
         };
         

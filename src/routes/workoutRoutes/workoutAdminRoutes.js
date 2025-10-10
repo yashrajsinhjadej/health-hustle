@@ -1,14 +1,18 @@
 const express = require('express');
 const router = express.Router();
-
 const { authenticateToken, adminOnly } = require('../../middleware/auth');
 
-const {createWorkoutValidator,handleValidationErrors} = require('../../validators/workoutValidators');
+const {createWorkoutValidator,updateworkoutvalidator,deleteWorkoutValidator,validateWorkoutImages,getworkoutByIdvalidator,handleValidationErrors} = require('../../validators/workoutValidators');
 
 const workoutAdminController = require('../../controllers/workout/workoutAdminController');
 
 
+const { upload } = require('../../middleware/uploadMiddleware');
 
+const workoutImageUpload = upload.fields([
+  { name: 'banner', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]);
 
 
 // Apply authentication and user authorization to all routes
@@ -34,12 +38,32 @@ router.get('/', (req, res) => {
     });
 });
 
+router.post(
+    '/delete/:workoutId',
+    deleteWorkoutValidator,
+    handleValidationErrors,
+    workoutAdminController.deleteWorkout
+);
+
 // CREATE WORKOUT ENDPOINT with a simple success response
 router.post(
     '/create',
+    workoutImageUpload,
+    validateWorkoutImages({required: true}), // Custom middleware to validate images
     createWorkoutValidator,        // Validation middleware
     handleValidationErrors,         // Error handling middleware for validation
-    workoutAdminController.createWorkout  // Controller logic to handle workout creation);
+    workoutAdminController.createWorkout  // Controller logic to handle workout creation
 );
+
+router.post(
+    '/update/:workoutId',
+    workoutImageUpload,
+    validateWorkoutImages({required: false}), // Custom middleware to validate images
+    handleValidationErrors,
+    workoutAdminController.updateWorkout
+);
+
+
+
 
 module.exports = router;

@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 
-
-
+const {getworkoutByIdvalidator,handleValidationErrors, listWorkoutsValidator} = require('../../validators/workoutValidators');
+const workoutUserController = require('../../controllers/workout/workoutUserContoller');
 const { authenticateToken, adminOrUser } = require('../../middleware/auth');
+
+
+
 // Import all route modules
 
 // Apply authentication and user authorization to all routes
@@ -30,8 +33,10 @@ router.get('/', (req, res) => {
 });
 
 
+router.get('/listworkout', listWorkoutsValidator, handleValidationErrors, workoutUserController.listworkout);
 
+router.post('/getworkoutbyid', getworkoutByIdvalidator, handleValidationErrors, workoutUserController.getworkoutbyid);
 
-
+// router.post('/search', workoutUserController.searchworkout);
 
 module.exports = router;

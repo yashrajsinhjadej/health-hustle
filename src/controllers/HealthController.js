@@ -5,7 +5,6 @@ const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/responseHandler');
 const goalcounter = require('../utils/goalcounter');
-const { response } = require('../..');
 const { EsimProfilePage } = require('twilio/lib/rest/supersim/v1/esimProfile');
 const sleepduration = require('../utils/sleepduration');
 const calorieService = require('../services/calorieService');
@@ -244,17 +243,17 @@ class HealthController {
             .sort({ date: 1 })
             .lean();
 
-            // Generate all 7 dates for the week (Sun-Sat)
+            // Generate the last 7 dates (weekStart -> weekEnd) and compute each day's weekday name
             const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
             const weekDates = [];
-            
+
             for (let i = 0; i < 7; i++) {
                 const currentDate = new Date(weekStart);
                 currentDate.setUTCDate(weekStart.getUTCDate() + i);
-                weekDates.push({
-                    date: currentDate.toISOString().split('T')[0],
-                    dayName: dayNames[i]
-                });
+                const dateString = currentDate.toISOString().split('T')[0];
+                // Use dayNames[i] because weekStart is set to Sunday when using calendar week
+                const dayName = dayNames[i];
+                weekDates.push({ date: dateString, dayName });
             }
 
             // Create complete daily breakdown with all metrics combined
@@ -270,6 +269,14 @@ class HealthController {
                     calories: {
                         consumed: dayData?.calories?.consumed || 0,
                         burned: dayData?.calories?.burned || 0
+                    },
+                    steps: {
+                        count: dayData?.steps?.count || 0,
+                        entries: dayData?.steps?.entries || []
+                    },
+                    sleep: {
+                        duration: dayData?.sleep?.duration || 0,
+                        entries: dayData?.sleep?.entries || []
                     }
                 };
             });
@@ -291,7 +298,8 @@ class HealthController {
             return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
                 weekInfo:{
                     "inputDate": date,
-                    "inputDayName": dayNames[dayOfWeek],
+                    // Derive the weekday name for the provided input date
+                    "inputDayName": dayNames[inputDate.getUTCDay()],
                     "weekStartDate": weekStartString,
                     "weekEndDate": weekEndString,
                     "weekRange": `${weekStartString} to ${weekEndString}`

@@ -7,7 +7,7 @@ const {
     validateUserProfileUpdate, 
     handleValidationErrors 
 } = require('../../validators/userValidators');
-const ResponseHandler = require('../../utils/ResponseHandler');
+const ResponseHandler = require('../../utils/responseHandler');
 const createCustomRateLimit = require('../../middleware/customRateLimit');
 
 
