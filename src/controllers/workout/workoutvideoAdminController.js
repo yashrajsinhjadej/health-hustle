@@ -1,7 +1,7 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout');
 const { contentSecurityPolicy } = require('helmet');
-const workoutvideoModel = require('../../models/workoutVideo');
+const workoutvideoModel = require('../../models/workoutvideo');
 class workoutvideo 
 {
   async createWorkoutVideo(req, res) {
@@ -10,7 +10,7 @@ class workoutvideo
 
         if (!workoutId) {
             return ResponseHandler.badRequest(res, 'Workout ID is required');
-        }
+        } 
         // 1️⃣ Create the new video
         const newVideo = await workoutvideoModel.create(videoData);
         // 2️⃣ Add video to workout

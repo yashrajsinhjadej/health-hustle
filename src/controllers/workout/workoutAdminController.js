@@ -1,7 +1,7 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout');
 const { contentSecurityPolicy } = require('helmet');
-const workoutvideoModel = require('../../models/workoutVideo');
+const workoutvideoModel = require('../../models/workoutvideo');
 const s3Service = require('../../services/s3service');
 class WorkoutAdminController {
 

@@ -1,6 +1,6 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout')
-const WorkoutVideoModel = require('../../models/workoutVideo');
+const WorkoutVideoModel = require('../../models/workoutvideo');
 
 // Define the minimal set of fields to return for a list view
 const WORKOUT_PROJECTION = {
