@@ -298,8 +298,7 @@ class HealthController {
             return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
                 weekInfo:{
                     "inputDate": date,
-                    // Derive the weekday name for the provided input date
-                    "inputDayName": dayNames[inputDate.getUTCDay()],
+                    "inputDayName": dayNames[dayOfWeek],
                     "weekStartDate": weekStartString,
                     "weekEndDate": weekEndString,
                     "weekRange": `${weekStartString} to ${weekEndString}`
