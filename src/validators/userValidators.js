@@ -1,4 +1,4 @@
-const ResponseHandler = require('../utils/responseHandler');
+const ResponseHandler = require('../utils/ResponseHandler');
 // User Profile Validation Rules using express-validator
 const { body, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');

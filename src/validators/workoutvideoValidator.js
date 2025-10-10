@@ -1,5 +1,5 @@
 const {body,param,validationResult} = require('express-validator');
-const ResponseHandler = require('../utils/responseHandler');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 
 const createWorkoutVideoValidator = [

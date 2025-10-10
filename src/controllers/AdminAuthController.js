@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const EmailService = require('../services/emailService');
-const ResponseHandler = require('../utils/responseHandler');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 const ConnectionHelper = require('../utils/connectionHelper');
 

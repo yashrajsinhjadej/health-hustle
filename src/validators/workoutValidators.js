@@ -1,5 +1,5 @@
 const {body,param,query,validationResult} = require('express-validator');
-const ResponseHandler = require('../utils/responseHandler');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 const validateWorkoutImages = (isRequired = true) => {
   return (req, res, next) => {

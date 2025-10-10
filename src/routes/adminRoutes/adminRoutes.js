@@ -5,7 +5,7 @@ const User = require('../../models/User');
 const { authenticateToken, adminOnly } = require('../../middleware/auth');
 const AdminAuthController = require('../../controllers/AdminAuthController');
 const AuthController = require('../../controllers/AuthController');
-const ResponseHandler = require('../../utils/responseHandler');
+const ResponseHandler = require('../../utils/ResponseHandler');
 const createCustomRateLimit = require('../../middleware/customRateLimit');
 const { 
     validateAdminSignup, 

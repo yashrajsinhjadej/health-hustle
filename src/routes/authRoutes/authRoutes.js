@@ -8,7 +8,7 @@ const {
     validateOTP, 
     handleValidationErrors 
 } = require('../../validators/userValidators');
-const ResponseHandler = require('../../utils/responseHandler');
+const ResponseHandler = require('../../utils/ResponseHandler');
 
 const createCustomRateLimit = require('../../middleware/customRateLimit');
 const createOTPRateLimit = require('../../middleware/otpRateLimit');

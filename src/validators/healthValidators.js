@@ -3,7 +3,7 @@
 const { body, param, validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
 
-const ResponseHandler = require('../utils/responseHandler');
+const ResponseHandler = require('../utils/ResponseHandler');
 const { validate } = require('../models/DailyHealthData');
 // Date format validation helper
 const isValidDateFormat = (value) => {

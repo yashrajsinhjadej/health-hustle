@@ -1,4 +1,4 @@
-const ResponseHandler = require('../../utils/responseHandler');
+const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout')
 const WorkoutVideoModel = require('../../models/WorkoutVideo');
 
