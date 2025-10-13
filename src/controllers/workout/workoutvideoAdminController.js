@@ -2,6 +2,7 @@ const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout');
 const { contentSecurityPolicy } = require('helmet');
 const workoutvideoModel = require('../../models/workoutvideo');
+const WorkoutUserController = require('../../controllers/workout/workoutUserContoller');
 class workoutvideo 
 {
   async createWorkoutVideo(req, res) {
@@ -32,7 +33,10 @@ class workoutvideo
         workout.exerciseCount = workout.videos.length;
         // Save workout
         await workout.save();
-        return ResponseHandler.success(res, 'Workout video created successfully', newVideo);
+        
+
+        await WorkoutUserController.getworkoutbyid(req, res);
+        // return ResponseHandler.success(res, 'Workout video created successfully', newVideo);
     } catch (error) {
         console.error(`❌ [${req.requestId}] Error creating workout video:`, error);
         return ResponseHandler.error(res, {
@@ -136,12 +140,11 @@ async deleteWorkoutVideo(req, res) {
       });
 
       // 5️⃣ Save the workout
-      await workout.save();
-
+      
       // 6️⃣ Delete the video document
       await workoutvideoModel.findByIdAndDelete(videoId);
-
-      return ResponseHandler.success(res, 'Workout video deleted successfully');
+      await workout.save();
+      await WorkoutUserController.getworkoutbyid(req, res);
     } catch (error) {
       console.error(`❌ [${req.requestId}] Error deleting workout video:`, error);
       return ResponseHandler.error(res, {

@@ -16,6 +16,100 @@ const WORKOUT_PROJECTION = {
 
 class WorkoutUserController {
 
+  // controllers/workoutController.js
+
+
+async getcategory(req, res) {
+    try {
+      const { category } = req.body;
+      const workouts = await workoutModel.find({ category: category });
+      return ResponseHandler.success(res, 'Workouts fetched successfully', workouts);
+    } catch (error) {
+      return ResponseHandler.error(res, error);
+    }
+  }
+
+
+
+async homepage(req, res) {
+    try {
+      // Set your home screen cap here (use 10–12). You can tweak to 10 if needed.
+      const LIMIT = 10;
+  
+      const pipeline = [
+        // Optional: filter flags if you have them
+        // { $match: { isActive: true, isPublished: true } },
+  
+        // Ensure category is an array for consistent unwinding
+        {
+          $addFields: {
+            category: {
+              $cond: [
+                { $isArray: "$category" },
+                "$category",
+                { $cond: [{ $ifNull: ["$category", false] }, ["$category"], []] }
+              ]
+            }
+          }
+        },
+  
+        // Unwind so each category value is processed separately
+        { $unwind: "$category" },
+  
+        // Normalize category values (trim + lowercase)
+        {
+          $addFields: {
+            category: {
+              $toLower: {
+                $trim: { input: "$category" }
+              }
+            }
+          }
+        },
+  
+        // Sort first so we keep the latest items in each category
+        { $sort: { createdAt: -1, _id: -1 } },
+  
+        // Group workouts by individual category value
+        {
+          $group: {
+            _id: "$category",
+            data: {
+              $push: {
+                name: { $ifNull: ["$name", "Untitled Workout"] },
+                thumbnail: { $ifNull: ["$thumbnailUrl", null] }
+              }
+            }
+          }
+        },
+  
+        // Slice to LIMIT items per category for the home screen
+        {
+          $project: {
+            _id: 0,
+            category: "$_id",
+            data: { $slice: ["$data", LIMIT] }
+          }
+        },
+  
+        // Sort categories alphabetically (optional)
+        { $sort: { category: 1 } }
+      ];
+  
+      const result = await workoutModel.aggregate(pipeline);
+  
+      return ResponseHandler.success(
+        res,
+        "Workout categories fetched successfully",
+        result
+      );
+    } catch (error) {
+      return ResponseHandler.error(res, error);
+    }
+  }
+  
+  
+      
     /**
      * Lists workouts with optional search and filtering.
      * GET /workouts?search=fullbody&level=beginner

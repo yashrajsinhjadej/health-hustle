@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const {getworkoutByIdvalidator,handleValidationErrors, listWorkoutsValidator} = require('../../validators/workoutValidators');
+const {getworkoutByIdvalidator,handleValidationErrors,getcategoryvalidator, listWorkoutsValidator} = require('../../validators/workoutValidators');
 const workoutUserController = require('../../controllers/workout/workoutUserContoller');
 const { authenticateToken, adminOrUser } = require('../../middleware/auth');
 
@@ -37,6 +37,9 @@ router.get('/listworkout', listWorkoutsValidator, handleValidationErrors, workou
 
 router.post('/getworkoutbyid', getworkoutByIdvalidator, handleValidationErrors, workoutUserController.getworkoutbyid);
 
+router.get('/Homepage', workoutUserController.homepage);
+
+router.post('/getcategory', getcategoryvalidator, handleValidationErrors, workoutUserController.getcategory);
 // router.post('/search', workoutUserController.searchworkout);
 
 module.exports = router;

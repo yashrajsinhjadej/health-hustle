@@ -167,6 +167,13 @@ const listWorkoutsValidator = [
 
 
 
+const getcategoryvalidator = [
+    body('category')
+        .notEmpty().withMessage('Category is required')
+        .isString().withMessage('Category must be a string'),
+];
+
+
 module.exports = {
     createWorkoutValidator,
     listWorkoutsValidator,
@@ -175,5 +182,6 @@ module.exports = {
     deleteWorkoutValidator,
     getworkByIdvalidator,
     validateWorkoutImages,
-    handleValidationErrors
+    handleValidationErrors, 
+    getcategoryvalidator
 };
