@@ -6,14 +6,7 @@ const validateWorkoutImages = (isRequired = true) => {
     const files = req.files || {};
     const totalImages = (files.banner?.length || 0) + (files.thumbnail?.length || 0);
 
-    if (isRequired && totalImages === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'At least 1 image is required (banner or thumbnail)',
-      });
-    }
-
-    if (totalImages > 2) {
+    if (isRequired && totalImages > 2) {
       return res.status(400).json({
         success: false,
         message: 'Maximum 2 images allowed (banner + thumbnail)',

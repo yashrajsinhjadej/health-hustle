@@ -204,7 +204,6 @@ async homepage(req, res) {
 
             // Replace videos array with sorted videos
             workout.videos = videosWithSequence;
-
             return ResponseHandler.success(res, 'Workout fetched successfully', workout);
         } catch (error) {
             return ResponseHandler.error(res, error);
