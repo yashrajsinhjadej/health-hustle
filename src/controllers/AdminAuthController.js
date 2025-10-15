@@ -7,8 +7,48 @@ const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const EmailService = require('../services/emailService');
 const ResponseHandler = require('../utils/ResponseHandler');
+const {Parser}=require('json2csv');
+
+
 
 const ConnectionHelper = require('../utils/connectionHelper');
+
+
+
+
+// Common function
+async function fetchUsers(queryParams) {
+    await ConnectionHelper.ensureConnection();
+
+    const profileCompleted = queryParams.profileCompleted;
+    const gender = queryParams.gender;
+    const age_min = parseInt(queryParams.age_min);
+    const age_max = parseInt(queryParams.age_max);
+
+    const userQuery = { role: 'user' };
+
+    if (profileCompleted === 'true') userQuery.profileCompleted = true;
+    else if (profileCompleted === 'false') userQuery.profileCompleted = false;
+
+    if (gender && ['male', 'female', 'other'].includes(gender.toLowerCase())) {
+        userQuery.gender = gender.toLowerCase();
+    }
+
+    if (!isNaN(age_min) || !isNaN(age_max)) {
+        userQuery.age = {};
+        if (!isNaN(age_min)) userQuery.age.$gte = age_min;
+        if (!isNaN(age_max)) userQuery.age.$lte = age_max;
+    }
+
+    const users = await User.find(userQuery)
+        .select('name email gender age phone profileCompleted isActive signupAt lastLoginAt')
+        .sort({ signupAt: -1 })
+        .lean();
+
+    return users;
+}
+
+
 
 class AdminAuthController {
     // Generate JWT token
@@ -728,106 +768,27 @@ class AdminAuthController {
             
             return ResponseHandler.error(res, "Server error", "Failed to delete user. Please try again later.", 500);
         }
-    }
-
-    // Admin Dashboard with Pagination and Performance Optimization
+    } 
+    
+    
     async dashboard(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`🔥 [ADMIN API CALLED] Dashboard`);
+        console.log(`📊 [${requestId}] Query params:`, req.query);
+
         try {
-            console.log(`� [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: DASHBOARD`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`�📊 [${requestId}] AdminAuthController.dashboard START`);
-            console.log(`📊 [${requestId}] Query params:`, req.query);
-
-            // Extract pagination parameters
             const page = parseInt(req.query.page) || 1;
-            const limit = Math.min(parseInt(req.query.limit) || 10, 50); // Max 50 users per page
-            const search = req.query.search || '';
-            const status = req.query.status; // 'active', 'inactive', or undefined for all
+            const limit = Math.min(parseInt(req.query.limit) || 10, 50);
 
-            console.log(`📊 [${requestId}] Pagination: page=${page}, limit=${limit}, search="${search}", status=${status}`);
+            const allUsers = await fetchUsers(req.query); // ✅ use the external function
 
-            // Ensure MongoDB connection is ready
-            await ConnectionHelper.ensureConnection();
-
-            // Build search and filter query for users
-            let userQuery = { role: 'user' };
-            
-            if (search) {
-                userQuery.$or = [
-                    { name: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } }
-                ];
-            }
-
-            if (status === 'active') {
-                userQuery.isActive = true;
-            } else if (status === 'inactive') {
-                userQuery.isActive = false;
-            }
-
-            console.log(`📊 [${requestId}] User query:`, JSON.stringify(userQuery));
-
-            // Use MongoDB aggregation for efficient stats calculation (all users with role 'user')
-            const statsAggregation = [
-                { $match: { role: 'user' } },
-                {
-                    $group: {
-                        _id: null,
-                        totalUsers: { $sum: 1 },
-                        activeUsers: {
-                            $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-                        },
-                        inactiveUsers: {
-                            $sum: { $cond: [{ $eq: ['$isActive', false] }, 1, 0] }
-                        },
-                        completedProfiles: {
-                            $sum: { $cond: [{ $eq: ['$profileCompleted', true] }, 1, 0] }
-                        },
-                        verifiedUsers: {
-                            $sum: { $cond: [{ $eq: ['$isVerified', true] }, 1, 0] }
-                        }
-                    }
-                }
-            ];
-
-            console.log(`📊 [${requestId}] Executing stats aggregation...`);
-            const statsResult = await User.aggregate(statsAggregation);
-            const stats = statsResult[0] || {
-                totalUsers: 0,
-                activeUsers: 0,
-                inactiveUsers: 0,
-                completedProfiles: 0,
-                verifiedUsers: 0
-            };
-
-            console.log(`📊 [${requestId}] Stats calculated:`, stats);
-
-            // Get paginated user list based on query
-            const skip = (page - 1) * limit;
-            const totalFilteredUsers = await User.countDocuments(userQuery);
+            // Pagination
+            const totalFilteredUsers = allUsers.length;
             const totalPages = Math.ceil(totalFilteredUsers / limit);
+            const skip = (page - 1) * limit;
+            const usersPage = allUsers.slice(skip, skip + limit);
 
-            console.log(`📊 [${requestId}] Pagination calc: skip=${skip}, totalFiltered=${totalFilteredUsers}, totalPages=${totalPages}`);
-
-            const users = await User.find(userQuery)
-                .select('name email gender age phone profileCompleted isActive isVerified signupAt lastLoginAt')
-                .sort({ signupAt: -1 }) // Newest first
-                .skip(skip)
-                .limit(limit)
-                .lean(); // Use lean() for better performance
-
-            console.log(`📊 [${requestId}] Found ${users.length} users`);
-
-            // Format users data for frontend
-            const formattedUsers = users.map(user => ({
+            const formattedUsers = usersPage.map(user => ({
                 id: user._id,
                 name: user.name || 'New User',
                 email: user.email || 'Not provided',
@@ -835,20 +796,12 @@ class AdminAuthController {
                 gender: user.gender || 'Not specified',
                 age: user.age || 'Not specified',
                 profileCompleted: user.profileCompleted || false,
-                isVerified: user.isVerified || false,
                 status: user.isActive ? 'Active' : 'Inactive',
                 signupDate: user.signupAt,
                 lastLogin: user.lastLoginAt || 'Never'
             }));
 
             const responseData = {
-                stats: {
-                    totalUsers: stats.totalUsers,
-                    activeUsers: stats.activeUsers,
-                    inactiveUsers: stats.inactiveUsers,
-                    completedProfiles: stats.completedProfiles,
-                    verifiedUsers: stats.verifiedUsers || 0
-                },
                 users: formattedUsers,
                 pagination: {
                     currentPage: page,
@@ -858,35 +811,95 @@ class AdminAuthController {
                     hasNextPage: page < totalPages,
                     hasPrevPage: page > 1
                 },
-                admin: {
-                    id: req.user._id,
-                    name: req.user.name,
-                    email: req.user.email,
-                    role: req.user.role
+                appliedFilters: {
+                    profileCompleted: req.query.profileCompleted || null,
+                    gender: req.query.gender || null,
+                    age: { min: req.query.age_min || null, max: req.query.age_max || null }
                 },
-                filters: {
-                    search: search,
-                    status: status
+                stats:{
+                    totalUsers: allUsers.length,
+                    activeUsers: allUsers.filter(u => u.isActive).length,
+                    completedProfiles: allUsers.filter(u => u.profileCompleted).length
                 }
             };
 
-            console.log(`📊 [${requestId}] Dashboard response prepared - ${formattedUsers.length} users on page ${page}`);
-            console.log(`📊 [${requestId}] AdminAuthController.dashboard SUCCESS`);
-            
             return ResponseHandler.success(res, "Dashboard data retrieved successfully", responseData);
-
         } catch (error) {
-            console.error(`📊 [${requestId}] Admin dashboard error:`, error);
-            
-            if (error.name === 'CastError') {
-                return ResponseHandler.error(res, "Invalid request", "Invalid page or limit parameter", 400);
-            }
-            
-            return ResponseHandler.error(res, "Server error", "Failed to load dashboard data. Please try again later.", 500);
+            console.error(`❌ [${requestId}] Dashboard error:`, error);
+            return ResponseHandler.error(res, "Server error", "Failed to load dashboard data", 500);
         }
     }
 
-    // Admin Logout - Enhanced with admin-specific tracking and security monitoring
+    async exportDashboardData(req, res) {
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`📥 [${requestId}] Export CSV`);
+        console.log(`📊 [${requestId}] Query params:`, req.query);
+
+        try {
+            const users = await  fetchUsers(req.query); // ✅ use the external function
+
+            if (!users || users.length === 0) {
+                return ResponseHandler.error(res, 'No data available', 'No dashboard data found to export', 404);
+            }
+
+            const fields = [
+                { label: 'Name', value: 'name' },
+                { label: 'Email', value: 'email' },
+                { label: 'Gender', value: 'gender' },
+                { label: 'Age', value: 'age' },
+                { label: 'Status', value: row => (row.isActive ? 'Active' : 'Inactive') },
+                { label: 'Profile Completed', value: row => (row.profileCompleted ? 'Complete' : 'Incomplete') },
+            ];
+
+            const json2csv = new Parser({ fields });
+            const csv = json2csv.parse(users);
+
+            res.header('Content-Type', 'text/csv');
+            res.attachment('dashboard_export.csv');
+            res.send(csv);
+
+        } catch (error) {
+            console.error(`❌ [${requestId}] Export error:`, error);
+            return ResponseHandler.error(res, 'Server error', 'Failed to export CSV', 500);
+        }
+    }
+async fetchUsers(queryParams) {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`📊 [${requestId}] Fetching users with filters:`, queryParams);
+
+    await ConnectionHelper.ensureConnection();
+
+    const profileCompleted = queryParams.profileCompleted;
+    const gender = queryParams.gender;
+    const age_min = parseInt(queryParams.age_min);
+    const age_max = parseInt(queryParams.age_max);
+
+    // Build Mongo query
+    const userQuery = { role: 'user' };
+
+    if (profileCompleted === 'true') userQuery.profileCompleted = true;
+    else if (profileCompleted === 'false') userQuery.profileCompleted = false;
+
+    if (gender && ['male', 'female', 'other'].includes(gender.toLowerCase())) {
+        userQuery.gender = gender.toLowerCase();
+    }
+
+    if (!isNaN(age_min) || !isNaN(age_max)) {
+        userQuery.age = {};
+        if (!isNaN(age_min)) userQuery.age.$gte = age_min;
+        if (!isNaN(age_max)) userQuery.age.$lte = age_max;
+    }
+
+    const users = await User.find(userQuery)
+        .select('name email gender age phone profileCompleted isActive signupAt lastLoginAt')
+        .sort({ signupAt: -1 })
+        .lean();
+
+    console.log(`📊 [${requestId}] Fetched ${users.length} users`);
+    return users;
+}
+
+// Admin Logout - Enhanced with admin-specific tracking and security monitoring
     async logout(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {

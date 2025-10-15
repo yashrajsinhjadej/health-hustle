@@ -206,6 +206,7 @@ async homepage(req, res) {
             workout.videos = videosWithSequence;
             return ResponseHandler.success(res, 'Workout fetched successfully', workout);
         } catch (error) {
+            console.error('getworkoutbyid error:', error);
             return ResponseHandler.error(res, error);
         }
     }

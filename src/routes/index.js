@@ -25,6 +25,6 @@ router.use('/users', require('./adminRoutes/adminRoutes')); // Alias for fronten
 router.use('/user', require('./userRoutes/userRoutes'));
 router.use('/health', require('./healthRoutes/healthRoutes'));
 router.use('/workout', require('./workoutRoutes/index'));
-
+router.use('/cms', require('./CMSRoutes/CMSRoutes'));
 
 module.exports = router;

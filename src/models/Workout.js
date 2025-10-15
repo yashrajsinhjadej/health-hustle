@@ -1,108 +1,37 @@
 const mongoose = require('mongoose');
 
-const workoutSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      unique:true
-    },
-    category: {
-      type: [String], // array allows multiple categories
-      default: [],
-      required: true,
-    },
-    level: {
-      type: String,
-      enum: ['beginner', 'intermediate', 'advanced'],
-      default: 'beginner',
-      required: true,
-    },
-    duration: { 
-      type: Number, // total duration in minutes
-      // required: true,
-    },
-    bannerUrl: { 
-      type: String, // Large, high-res image for detail header
-    },
-    thumbnailUrl: {
-      type: String, // Small, cropped image for list cards
-    },
-    introduction: {
-      type: String,
-      trim: true,
-      required:true
-    },
-    exerciseCount: {
-      type: Number, // Denormalized count (videos.length)
-      default: 0,
-    },
-    detailedInstructions: { 
-      type: [String], // Structured instructions/steps
-      default: [],
-    },
-    
-    // One-to-Many Relationship with sequence
-    videos: [
-      {
-        video: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkoutVideo' },
-        sequence: { type: Number, default: 0 }, // Order inside the workout
-      },
-    ],
-
-    equipment: {
-      type: [String], 
-      default: [],
-    },
-    targetMuscles: {
-      type: [String],
-      default: [],
-    },
-    caloriesBurnedEstimate: {
-      type: Number,
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Admin',
-    },
-    sequence: {
-      type: Number,
-      default: 0, // Order of workouts for frontend
-    },
-  },
-  { timestamps: true }
-);
-
-// Define Indexes
-workoutSchema.index({ 
-    name: 'text', 
-    introduction: 'text' 
-}); 
-workoutSchema.index({ level: 1 });       // Index for filtering by level
-workoutSchema.index({ category: 1 });  // Multikey index for array filtering
-workoutSchema.index({ sequence: 1 });    // Index for fast sorting by sequence
-
-// *** NEW ADDITION: Call createIndexes after schema definition to ensure index exists ***
-// This should only be done once on application startup if autoIndex: false is set elsewhere.
-// This is the simplest way to fix the IndexNotFound error in development.
-workoutSchema.post('init', function() {
-    // Only run this logic if it hasn't been run already, or if we are sure we need it.
-    // However, calling createIndexes on the Model when the app starts is the safest way to ensure it exists.
-    // Mongoose handles the index creation on the model itself, not the instance.
-});
-
-const Workout = mongoose.model('Workout', workoutSchema);
-
-// Export the model and also call createIndexes() once to ensure the index is present.
-// If your Mongoose connection has { autoIndex: true }, this is redundant but harmless.
-// If { autoIndex: false }, this is necessary.
-Workout.createIndexes().catch(err => {
-    // Log error if index creation fails (e.g., permission issues)
-    if (err.code !== 27) { // Ignore the IndexNotFound error if it's during startup before creation
-        console.error('Error creating Workout Text Index:', err.message);
+const WorkoutSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  thumbnailUrl: { type: String, required: true },
+  bannerUrl: { type: String, required: true },
+  description: { type: String },        // general description
+  introduction: { type: String },       // text intro for the workout
+  equipment: [{ type: String }],        // e.g., ["Dumbbell", "Mat"]
+  // Category can be an array to support multiple categories per workout
+  category: [{ type: String }],
+  // Duration in seconds (or minutes depending on your system) - used by controllers
+  duration: { type: Number },
+  // Sequence is used for ordering workouts in lists
+  sequence: { type: Number, default: 0, index: true },
+  // Number of exercise/video items in the workout
+  exerciseCount: { type: Number, default: 0 },
+  // Videos array: each item references a WorkoutVideo and has a sequence/order
+  videos: [
+    {
+      video: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkoutVideo' },
+      sequence: { type: Number, default: 0 }
     }
+  ],
+  level: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced', 'beginner', 'intermediate', 'advanced'] },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 
-module.exports = Workout;
+// Optional indexes for fast filtering
+WorkoutSchema.index({ level: 1 });
+WorkoutSchema.index({ name: 1 });
+
+module.exports = mongoose.model('Workout', WorkoutSchema);

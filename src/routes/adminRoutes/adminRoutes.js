@@ -146,6 +146,7 @@ protectedRouter.post('/logout', AdminAuthController.logout);
 
 // GET /admin/dashboard - Enhanced admin dashboard with pagination and performance optimization
 protectedRouter.get('/dashboard', AdminAuthController.dashboard);
+protectedRouter.get('/dashboard/export', AdminAuthController.exportDashboardData);
 
 // GET /admin/users/:userId - Get individual user details
 protectedRouter.get('/users/:userId', AdminAuthController.getUser);
