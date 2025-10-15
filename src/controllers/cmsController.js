@@ -1,6 +1,5 @@
 // controllers/cmsController.js
 const CMSPage = require('../models/CMSPage');
-const { marked } = require('marked');
 const ResponseHandler = require('../utils/ResponseHandler');
 
 /**
@@ -8,8 +7,10 @@ const ResponseHandler = require('../utils/ResponseHandler');
  * - For 'contact-us': expects JSON string; renders structured sections.
  * - For others (e.g., 'about-us'): converts Markdown to HTML; HTML strings pass through via marked.
  */
-const generateHtmlFromRaw = (rawContent, slug) => {
+const generateHtmlFromRaw = async (rawContent, slug) => {
   let contentHtml = '';
+
+  const { marked } = await import('marked'); // dynamic import
 
   const baseStyle = `
     body { font-family: sans-serif; padding: 15px; margin: auto; line-height: 1.6; color: #1c1c1c; }
@@ -53,7 +54,7 @@ const generateHtmlFromRaw = (rawContent, slug) => {
       }
     }
 
-    // Default path: Markdown → HTML, HTML strings are handled by marked as pass-through
+    // Default path: Markdown → HTML
     if (!contentHtml) {
       contentHtml = marked(rawContent);
     }
@@ -82,8 +83,6 @@ const generateHtmlFromRaw = (rawContent, slug) => {
 /**
  * PUT /api/admin/cms-pages/:slug
  * Upsert a CMS page: update if exists, create if not.
- * Accepts: { rawContent?: string, title?: string }
- * Returns: { success, message, data: slug }
  */
 exports.upsertCMSPage = async (req, res) => {
   const { slug } = req.params;
@@ -100,10 +99,9 @@ exports.upsertCMSPage = async (req, res) => {
     }
     if (typeof rawContent === 'string') {
       updateFields.rawContent = rawContent;
-      updateFields.htmlContent = generateHtmlFromRaw(rawContent, slug);
+      updateFields.htmlContent = await generateHtmlFromRaw(rawContent, slug); // await here
     }
 
-    // Title fallback when creating for the first time
     const defaultTitle =
       updateFields.title ||
       slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -121,7 +119,6 @@ exports.upsertCMSPage = async (req, res) => {
       }
     );
 
-    // Optional distinction
     const wasJustCreated =
       cmsPage.createdAt &&
       Math.abs(Date.now() - new Date(cmsPage.createdAt).getTime()) < 2500;
