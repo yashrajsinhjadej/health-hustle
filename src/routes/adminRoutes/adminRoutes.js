@@ -58,15 +58,21 @@ const adminRateLimit = createCustomRateLimit(
     parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
 ); // Admin routes rate limit from env
 
+const adminAuthLimit = createCustomRateLimit(
+    parseInt(process.env.ADMIN_AUTH_LIMIT) || 5, 
+    parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
+); // Admin auth routes rate limit from env
+
+
 // Public admin auth routes (no authentication required)
-router.post('/signup', adminRateLimit, (req, res, next) => {
+router.post('/signup', adminAuthLimit, (req, res, next) => {
     console.log(`📝 [ADMIN SIGNUP] Starting admin signup process...`);
     console.log(`📝 [ADMIN SIGNUP] Email: ${req.body.email}`);
     console.log(`📝 [ADMIN SIGNUP] Name: ${req.body.name}`);
     next();
 }, validateAdminSignup, handleValidationErrors, AdminAuthController.signup);
 
-router.post('/login', adminRateLimit, (req, res, next) => {
+router.post('/login', adminAuthLimit, (req, res, next) => {
     console.log(`🔑 [ADMIN LOGIN] Starting admin login process...`);
     console.log(`🔑 [ADMIN LOGIN] Email: ${req.body.email}`);
     next();
@@ -79,12 +85,6 @@ router.post('/forgot-password', adminRateLimit, (req, res, next) => {
     next();
 }, validateAdminEmail, handleValidationErrors, AdminAuthController.forgotPassword);
 
-// GET /admin/reset-password - Show password reset form
-router.get('/reset-password', (req, res, next) => {
-    console.log(`🔓 [RESET PASSWORD FORM] Showing password reset form...`);
-    console.log(`🔓 [RESET PASSWORD FORM] Token: ${req.query.token ? 'Present' : 'Missing'}`);
-    next();
-}, AdminAuthController.showResetForm);
 
 // POST /admin/reset-password - Process password reset with token
 router.post('/reset-password', adminRateLimit, (req, res, next) => {
@@ -93,45 +93,7 @@ router.post('/reset-password', adminRateLimit, (req, res, next) => {
     next();
 }, validateAdminPasswordReset, handleValidationErrors, AdminAuthController.resetPassword);
 
-// GET /admin/forgot-password - Show forgot password form
-router.get('/forgot-password', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Admin Password Reset - Health Hustle</title>
-            <style>
-                body { font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }
-                .form-group { margin-bottom: 15px; }
-                label { display: block; margin-bottom: 5px; font-weight: bold; }
-                input[type="email"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-                button { background-color: #e74c3c; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
-                button:hover { background-color: #c0392b; }
-                .header { text-align: center; margin-bottom: 30px; }
-                .header h1 { color: #e74c3c; }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>Health Hustle Admin</h1>
-                <h2>Forgot Your Password?</h2>
-                <p>Enter your admin email address and we'll send you a password reset link.</p>
-            </div>
-            
-            <form method="POST" action="/api/admin/forgot-password">
-                <div class="form-group">
-                    <label for="email">Admin Email:</label>
-                    <input type="email" id="email" name="email" required 
-                           placeholder="Enter your admin email address">
-                </div>
-                
-                <button type="submit">Send Reset Link</button>
-            </form>
-        </body>
-        </html>
-    `);
-});
-
+    
 // Protected admin routes (authentication required)
 const protectedRouter = express.Router();
 protectedRouter.use(authenticateToken);
