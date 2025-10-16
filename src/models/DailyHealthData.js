@@ -9,7 +9,7 @@ const dailyHealthDataSchema = new mongoose.Schema({
         required: true
     },
     
-    // Date in YYYY-MM-DD format for easy querying
+    // Date in YYYY-MM-DD format for easy querying  
     date: {
         type: String,
         required: true,

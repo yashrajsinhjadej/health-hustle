@@ -13,40 +13,96 @@ const {Parser}=require('json2csv');
 
 const ConnectionHelper = require('../utils/connectionHelper');
 
-
-
-
-// Common function
 async function fetchUsers(queryParams) {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`🔍 [fetchUsers ${requestId}] ========== FUNCTION CALLED ==========`);
+    console.log(`🔍 [fetchUsers ${requestId}] Received params:`, JSON.stringify(queryParams, null, 2));
+
     await ConnectionHelper.ensureConnection();
 
+    // Extract filter parameters
     const profileCompleted = queryParams.profileCompleted;
     const gender = queryParams.gender;
     const age_min = parseInt(queryParams.age_min);
     const age_max = parseInt(queryParams.age_max);
+    const searchTerm = queryParams.search;
 
+    console.log(`🔍 [fetchUsers ${requestId}] Extracted values:`);
+    console.log(`   - profileCompleted: ${profileCompleted}`);
+    console.log(`   - gender: ${gender}`);
+    console.log(`   - age_min: ${age_min}`);
+    console.log(`   - age_max: ${age_max}`);
+    console.log(`   - searchTerm: "${searchTerm}"`);
+
+    // Build MongoDB query
     const userQuery = { role: 'user' };
 
-    if (profileCompleted === 'true') userQuery.profileCompleted = true;
-    else if (profileCompleted === 'false') userQuery.profileCompleted = false;
+    // Profile completed filter
+    if (profileCompleted === 'true') {
+        userQuery.profileCompleted = true;
+        console.log(`✅ [fetchUsers ${requestId}] Added filter: profileCompleted = true`);
+    } else if (profileCompleted === 'false') {
+        userQuery.profileCompleted = false;
+        console.log(`✅ [fetchUsers ${requestId}] Added filter: profileCompleted = false`);
+    }
 
+    // Gender filter
     if (gender && ['male', 'female', 'other'].includes(gender.toLowerCase())) {
         userQuery.gender = gender.toLowerCase();
+        console.log(`✅ [fetchUsers ${requestId}] Added filter: gender = ${gender.toLowerCase()}`);
     }
 
+    // Age range filter
     if (!isNaN(age_min) || !isNaN(age_max)) {
         userQuery.age = {};
-        if (!isNaN(age_min)) userQuery.age.$gte = age_min;
-        if (!isNaN(age_max)) userQuery.age.$lte = age_max;
+        if (!isNaN(age_min)) {
+            userQuery.age.$gte = age_min;
+            console.log(`✅ [fetchUsers ${requestId}] Added filter: age >= ${age_min}`);
+        }
+        if (!isNaN(age_max)) {
+            userQuery.age.$lte = age_max;
+            console.log(`✅ [fetchUsers ${requestId}] Added filter: age <= ${age_max}`);
+        }
     }
 
+    // SEARCH FILTER - This is the critical part
+    if (searchTerm && searchTerm.trim() !== '') {
+        console.log(`🔍 [fetchUsers ${requestId}] ✅✅✅ SEARCH TERM DETECTED: "${searchTerm}" ✅✅✅`);
+        const searchRegex = new RegExp(searchTerm.trim(), 'i');
+        userQuery.$or = [
+            { name: searchRegex },
+            { email: searchRegex },
+            { phone: searchRegex }
+        ];
+        console.log(`🔍 [fetchUsers ${requestId}] Added $or search clause:`, userQuery.$or);
+    } else {
+        console.log(`⚠️ [fetchUsers ${requestId}] NO SEARCH TERM - Returning all users (with other filters)`);
+    }
+
+    console.log(`🔍 [fetchUsers ${requestId}] FINAL MongoDB Query:`, JSON.stringify(userQuery, null, 2));
+
+    // Execute the query
     const users = await User.find(userQuery)
         .select('name email gender age phone profileCompleted isActive signupAt lastLoginAt')
         .sort({ signupAt: -1 })
         .lean();
 
+    console.log(`🔍 [fetchUsers ${requestId}] ========== QUERY EXECUTED ==========`);
+    console.log(`🔍 [fetchUsers ${requestId}] Found ${users.length} users`);
+    
+    if (users.length > 0 && users.length <= 5) {
+        console.log(`🔍 [fetchUsers ${requestId}] Sample results:`, users.map(u => ({
+            name: u.name,
+            email: u.email,
+            phone: u.phone
+        })));
+    }
+    
+    console.log(`🔍 [fetchUsers ${requestId}] ========== FUNCTION COMPLETE ==========`);
+    
     return users;
 }
+
 
 
 
@@ -769,26 +825,42 @@ class AdminAuthController {
             return ResponseHandler.error(res, "Server error", "Failed to delete user. Please try again later.", 500);
         }
     } 
-    
-    
+ 
+
+    // ============================================
+    // Dashboard Function - Use this.fetchUsers()
+    // ============================================
     async dashboard(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`🔥 [ADMIN API CALLED] Dashboard`);
-        console.log(`📊 [${requestId}] Query params:`, req.query);
+        
+        console.log('='.repeat(80));
+        console.log(`🔥 [${requestId}] DASHBOARD API CALLED`);
+        console.log(`📊 [${requestId}] Full URL: ${req.originalUrl}`);
+        console.log(`📊 [${requestId}] Query params:`, JSON.stringify(req.query, null, 2));
+        console.log('='.repeat(80));
 
         try {
             const page = parseInt(req.query.page) || 1;
             const limit = Math.min(parseInt(req.query.limit) || 10, 50);
 
-            const allUsers = await fetchUsers(req.query); // ✅ use the external function
+            console.log(`📊 [${requestId}] Pagination: page=${page}, limit=${limit}`);
+            console.log(`📊 [${requestId}] Calling this.fetchUsers()...`);
 
-            // Pagination
-            const totalFilteredUsers = allUsers.length;
+            // ✅ Use this.fetchUsers() because it's a class method
+            const allFilteredUsers = await fetchUsers(req.query);
+            
+            console.log(`📊 [${requestId}] *** this.fetchUsers() returned ${allFilteredUsers.length} users ***`);
+
+            // Calculate pagination
+            const totalFilteredUsers = allFilteredUsers.length;
             const totalPages = Math.ceil(totalFilteredUsers / limit);
             const skip = (page - 1) * limit;
-            const usersPage = allUsers.slice(skip, skip + limit);
+            const usersForCurrentPage = allFilteredUsers.slice(skip, skip + limit);
 
-            const formattedUsers = usersPage.map(user => ({
+            console.log(`📊 [${requestId}] Paginated: showing ${usersForCurrentPage.length} users`);
+
+            // Format users
+            const formattedUsers = usersForCurrentPage.map(user => ({
                 id: user._id,
                 name: user.name || 'New User',
                 email: user.email || 'Not provided',
@@ -801,6 +873,7 @@ class AdminAuthController {
                 lastLogin: user.lastLoginAt || 'Never'
             }));
 
+            // Response
             const responseData = {
                 users: formattedUsers,
                 pagination: {
@@ -812,39 +885,55 @@ class AdminAuthController {
                     hasPrevPage: page > 1
                 },
                 appliedFilters: {
+                    search: req.query.search || null,
                     profileCompleted: req.query.profileCompleted || null,
                     gender: req.query.gender || null,
-                    age: { min: req.query.age_min || null, max: req.query.age_max || null }
+                    age: { 
+                        min: req.query.age_min || null, 
+                        max: req.query.age_max || null 
+                    }
                 },
-                stats:{
-                    totalUsers: allUsers.length,
-                    activeUsers: allUsers.filter(u => u.isActive).length,
-                    completedProfiles: allUsers.filter(u => u.profileCompleted).length
+                stats: {
+                    totalUsers: totalFilteredUsers,
+                    activeUsers: allFilteredUsers.filter(u => u.isActive).length,
+                    completedProfiles: allFilteredUsers.filter(u => u.profileCompleted).length
                 }
             };
 
+            console.log(`✅ [${requestId}] Response ready - ${formattedUsers.length} users`);
+            console.log('='.repeat(80));
+            
             return ResponseHandler.success(res, "Dashboard data retrieved successfully", responseData);
+
         } catch (error) {
             console.error(`❌ [${requestId}] Dashboard error:`, error);
+            console.error(`❌ [${requestId}] Stack:`, error.stack);
             return ResponseHandler.error(res, "Server error", "Failed to load dashboard data", 500);
         }
     }
 
+    // ============================================
+    // Export Dashboard Data - Use this.fetchUsers()
+    // ============================================
     async exportDashboardData(req, res) {
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`📥 [${requestId}] Export CSV`);
+        console.log(`📥 [${requestId}] Export CSV START`);
         console.log(`📊 [${requestId}] Query params:`, req.query);
 
         try {
-            const users = await  fetchUsers(req.query); // ✅ use the external function
+            // ✅ Use this.fetchUsers() because it's a class method
+            const users = await fetchUsers(req.query);
+
+            console.log(`📥 [${requestId}] Exporting ${users.length} users`);
 
             if (!users || users.length === 0) {
-                return ResponseHandler.error(res, 'No data available', 'No dashboard data found to export', 404);
+                return ResponseHandler.error(res, 'No data available', 'No users found matching your filters', 404);
             }
 
             const fields = [
                 { label: 'Name', value: 'name' },
                 { label: 'Email', value: 'email' },
+                { label: 'Phone', value: 'phone' },
                 { label: 'Gender', value: 'gender' },
                 { label: 'Age', value: 'age' },
                 { label: 'Status', value: row => (row.isActive ? 'Active' : 'Inactive') },
@@ -853,6 +942,8 @@ class AdminAuthController {
 
             const json2csv = new Parser({ fields });
             const csv = json2csv.parse(users);
+
+            console.log(`✅ [${requestId}] CSV generated successfully`);
 
             res.header('Content-Type', 'text/csv');
             res.attachment('dashboard_export.csv');
@@ -863,41 +954,7 @@ class AdminAuthController {
             return ResponseHandler.error(res, 'Server error', 'Failed to export CSV', 500);
         }
     }
-async fetchUsers(queryParams) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`📊 [${requestId}] Fetching users with filters:`, queryParams);
 
-    await ConnectionHelper.ensureConnection();
-
-    const profileCompleted = queryParams.profileCompleted;
-    const gender = queryParams.gender;
-    const age_min = parseInt(queryParams.age_min);
-    const age_max = parseInt(queryParams.age_max);
-
-    // Build Mongo query
-    const userQuery = { role: 'user' };
-
-    if (profileCompleted === 'true') userQuery.profileCompleted = true;
-    else if (profileCompleted === 'false') userQuery.profileCompleted = false;
-
-    if (gender && ['male', 'female', 'other'].includes(gender.toLowerCase())) {
-        userQuery.gender = gender.toLowerCase();
-    }
-
-    if (!isNaN(age_min) || !isNaN(age_max)) {
-        userQuery.age = {};
-        if (!isNaN(age_min)) userQuery.age.$gte = age_min;
-        if (!isNaN(age_max)) userQuery.age.$lte = age_max;
-    }
-
-    const users = await User.find(userQuery)
-        .select('name email gender age phone profileCompleted isActive signupAt lastLoginAt')
-        .sort({ signupAt: -1 })
-        .lean();
-
-    console.log(`📊 [${requestId}] Fetched ${users.length} users`);
-    return users;
-}
 
 // Admin Logout - Enhanced with admin-specific tracking and security monitoring
     async logout(req, res) {
