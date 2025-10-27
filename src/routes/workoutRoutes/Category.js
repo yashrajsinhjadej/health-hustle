@@ -15,15 +15,17 @@ router.use(adminOnly);
 
 router.post('/create',createCategoryValidator, handleValidationErrors, CategoryController.createCategory);
 
+
+
 router.post('/update/:id', updateCategoryValidator, handleValidationErrors, CategoryController.updateCategory);
 router.post('/delete/:id', deleteCategoryValidator, handleValidationErrors, CategoryController.deleteCategory);
 
 
 
 router.get('/list', CategoryController.getAllCategories);
+// router.get('/list/:id')
 
-
-
+router.get('/list/:id', CategoryController.getCategoryById);
 
 
 module.exports = router;

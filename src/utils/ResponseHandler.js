@@ -2,6 +2,19 @@
 // Keeps responses minimal and easy for frontend to handle
 
 class ResponseHandler {
+
+    /**
+     * Bad request response (400)
+     * @param {Object} res - Express response object
+     * @param {string} message - Error message
+     * @param {Object} error - Detailed error description (can be object or string)
+     */
+    static badRequest(res, message, error) {
+        return res.status(400).json({
+            message,
+            error
+        });
+    }
     
     // ✅ SUCCESS RESPONSES
     
