@@ -5,7 +5,10 @@ const CategorySchema = new mongoose.Schema({
   designId: { type: Number, required: true },
   categorySequence: { type: Number, required: true, default: 1 }, // order on frontend
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  isActive: { type: Boolean, default: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 });
 
 
