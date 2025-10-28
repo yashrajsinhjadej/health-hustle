@@ -1,8 +1,8 @@
 const express = require('express');
-const { adminOnly, authenticateToken } = require('../../middleware/auth');
+const { adminOnly, authenticateToken } = require('../../../middleware/auth');
 const router = express.Router();
-const { handleValidationErrors,updateWorkoutVideoValidator,deleteWorkoutVideoValidator,createWorkoutVideoValidator } = require('../../validators/workoutvideoValidator');
-const WorkoutVideoController = require('../../controllers/workout/workoutvideoAdminController');
+const { handleValidationErrors,updateWorkoutVideoValidator,deleteWorkoutVideoValidator,createWorkoutVideoValidator } = require('../../../validators/workoutvideoValidator');
+const WorkoutVideoController = require('../../../controllers/workout/workoutvideoAdminController');
 // adding the middleware for the video 
 router.use(authenticateToken)
 router.use(adminOnly)

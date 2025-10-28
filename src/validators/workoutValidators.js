@@ -70,39 +70,14 @@ const createWorkoutValidator = [
     .notEmpty().withMessage('Duration is required')
     .isInt({ min: 1 }).withMessage('Duration must be a positive number'),
 
-  body('level')
-    .notEmpty().withMessage('Level is required')
-    .isIn(['beginner', 'intermediate', 'advanced'])
-    .withMessage('Level must be beginner, intermediate, or advanced'),
-
-  body('category')
-    .notEmpty().withMessage('Category is required')
-    .isArray().withMessage('Category must be an array of strings'),
-    
   body('introduction')
     .notEmpty().withMessage('Introduction is required')
     .isString().withMessage('Introduction must be a string'),
 
-  body('detailedInstructions')
-    .optional()
-    .isArray().withMessage('Detailed instructions must be an array of strings'),
-
-  body('equipment')
-    .optional()
-    .isArray().withMessage('Equipment must be an array of strings'),
-
-  body('targetMuscles')
-    .optional()
-    .isArray().withMessage('Target muscles must be an array of strings'),
-
-  body('caloriesBurnedEstimate')
-    .optional()
-    .isInt({ min: 0 }).withMessage('Calories burned must be a positive number'),
-  body('sequence')
-  .optional()
-  .isInt({ min: 1 }).withMessage('Sequence must be a positive integer'),
+  body('categoryIds')
+    .notEmpty().withMessage('At least one category is required')
+    .isArray({ min: 1 }).withMessage('CategoryIds must be an array of MongoDB IDs')
 ];
-
 
 
 
@@ -161,9 +136,9 @@ const listWorkoutsValidator = [
 
 
 const getcategoryvalidator = [
-    body('category')
-        .notEmpty().withMessage('Category is required')
-        .isString().withMessage('Category must be a string'),
+    body('categoryId')
+        .notEmpty().withMessage('Category ID is required')
+        .isMongoId().withMessage('Invalid Category ID format'),
 ];
 
 

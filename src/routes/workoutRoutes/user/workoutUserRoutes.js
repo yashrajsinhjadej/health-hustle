@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-const {getworkoutByIdvalidator,handleValidationErrors,getcategoryvalidator, listWorkoutsValidator} = require('../../validators/workoutValidators');
-const workoutUserController = require('../../controllers/workout/workoutUserContoller');
-const { authenticateToken, adminOrUser } = require('../../middleware/auth');
+const {getworkoutByIdvalidator,handleValidationErrors,getcategoryvalidator, listWorkoutsValidator} = require('../../../validators/workoutValidators');
+const workoutUserController = require('../../../controllers/workout/workoutUserContoller');
+const { authenticateToken, adminOrUser } = require('../../../middleware/auth');
 
 
 
@@ -32,14 +32,20 @@ router.get('/', (req, res) => {
     });
 });
 
-
+// list all the workout available 
 router.get('/listworkout', listWorkoutsValidator, handleValidationErrors, workoutUserController.listworkout);
 
+// get details of a particular workout 
 router.post('/getworkoutbyid', getworkoutByIdvalidator, handleValidationErrors, workoutUserController.getworkoutbyid);
 
+
+//mobile view
 router.get('/Homepage', workoutUserController.homepage);
 
+
+// get all the workout of the particular category 
 router.post('/getcategory', getcategoryvalidator, handleValidationErrors, workoutUserController.getcategory);
-// router.post('/search', workoutUserController.searchworkout);
+
+
 
 module.exports = router;

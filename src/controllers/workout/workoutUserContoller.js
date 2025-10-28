@@ -1,7 +1,7 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout')
 const WorkoutVideoModel = require('../../models/workoutvideo');
-
+const categoryWorkout = require('../../models/CategoryWorkout');
 // Define the minimal set of fields to return for a list view
 const WORKOUT_PROJECTION = {
     _id: 1,
@@ -18,17 +18,47 @@ class WorkoutUserController {
 
   // controllers/workoutController.js
 
-
-async getcategory(req, res) {
+  async getcategory(req, res) {
     try {
-      const { category } = req.body;
-      const workouts = await workoutModel.find({ category: category });
-      return ResponseHandler.success(res, 'Workouts fetched successfully', workouts);
+      const { categoryId } = req.body;
+      
+      // Find all category-workout associations
+      const categoryWorkouts = await categoryWorkout
+        .find({ categoryId: categoryId,isActive:true })
+        .sort({ sequence: 1 }); // Sort by sequence
+      
+      if (!categoryWorkouts || categoryWorkouts.length === 0) {
+        return ResponseHandler.success(res, 'No workouts found in this category', []);
+      }
+  
+      // Extract workout IDs
+      const workoutIds = categoryWorkouts.map(cw => cw.workoutId);
+      
+      // Fetch workout details
+      const workouts = await workoutModel
+        .find({ _id: { $in: workoutIds } })
+        .select(WORKOUT_PROJECTION); // Use your existing projection
+      
+      // Create a map of workouts by ID for easy lookup
+      const workoutMap = {};
+      workouts.forEach(workout => {
+        workoutMap[workout._id.toString()] = workout.toObject();
+      });
+      
+      // Combine category-workout data with workout details, maintaining sequence order
+      const result = categoryWorkouts.map(cw => ({
+        ...workoutMap[cw.workoutId.toString()],
+        sequence: cw.sequence,
+        categoryWorkoutId: cw._id
+      }));
+
+      return ResponseHandler.success(res, 'Workouts fetched successfully', result);
+      
     } catch (error) {
+      console.error('❌ getcategory error:', error);
       return ResponseHandler.error(res, error);
     }
   }
-
 
 
 async homepage(req, res) {

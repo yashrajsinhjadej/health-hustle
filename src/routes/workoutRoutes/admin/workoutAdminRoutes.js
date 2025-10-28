@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, adminOnly } = require('../../middleware/auth');
+const { authenticateToken, adminOnly } = require('../../../middleware/auth');
 
-const {createWorkoutValidator,updateworkoutvalidator,deleteWorkoutValidator,validateWorkoutImages,getworkoutByIdvalidator,handleValidationErrors} = require('../../validators/workoutValidators');
+const {createWorkoutValidator,updateworkoutvalidator,deleteWorkoutValidator,validateWorkoutImages,getworkoutByIdvalidator,handleValidationErrors} = require('../../../validators/workoutValidators');
 
-const workoutAdminController = require('../../controllers/workout/workoutAdminController');
+const workoutAdminController = require('../../../controllers/workout/workoutAdminController');
 
 
-const { upload } = require('../../middleware/uploadMiddleware');
+const { upload } = require('../../../middleware/uploadMiddleware');
 
 const workoutImageUpload = upload.fields([
   { name: 'banner', maxCount: 1 },

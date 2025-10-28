@@ -4,9 +4,9 @@ const router = express.Router();
 
 
 
-router.use('/admin', require('./workoutAdminRoutes'));
-router.use('/user', require('./workoutUserRoutes'));
-router.use('/videos', require('./workoutVideoRoutes.js'));
-router.use('/category',require('./Category.js'))
+router.use('/admin', require('./admin/workoutAdminRoutes.js'));
+router.use('/user', require('./user/workoutUserRoutes.js'));
+router.use('/admin/videos', require('./admin/workoutVideoRoutes.js'));
+router.use('/admin/category',require('./admin/CategoryAdminRoutes.js'))
 
 module.exports = router;
