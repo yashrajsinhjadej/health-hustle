@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken, adminOnly } = require('../../../middleware/auth');
 
-const {createWorkoutValidator,updateworkoutvalidator,deleteWorkoutValidator,validateWorkoutImages,getworkoutByIdvalidator,handleValidationErrors} = require('../../../validators/workoutValidators');
+const {createWorkoutValidator,updateWorkoutValidator,getworkByIdvalidators,deleteWorkoutValidator,validateWorkoutImages,getworkoutByIdvalidator,handleValidationErrors} = require('../../../validators/workoutValidators');
 
 const workoutAdminController = require('../../../controllers/workout/workoutAdminController');
 
@@ -57,13 +57,18 @@ router.post(
 
 router.post(
     '/update/:workoutId',
+    updateWorkoutValidator,
     workoutImageUpload,
     validateWorkoutImages({required: false}), // Custom middleware to validate images
     handleValidationErrors,
     workoutAdminController.updateWorkout
 );
 
-
+router.get('/getworkoutbyid/:workoutId',
+    getworkByIdvalidators,
+    handleValidationErrors,
+    workoutAdminController.getworkoutbyid
+);
 
 
 module.exports = router;

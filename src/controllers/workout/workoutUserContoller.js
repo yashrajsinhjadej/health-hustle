@@ -148,7 +148,7 @@ async homepage(req, res) {
                       duration: 1,
                       difficulty: 1,
                       caloriesBurned: 1,
-                      description: 1
+                      introduction: 1
                     }
                   }
                 ],
@@ -191,9 +191,9 @@ async homepage(req, res) {
                 name: { $ifNull: ['$$workout.name', 'Untitled Workout'] },
                 thumbnail: { $ifNull: ['$$workout.thumbnailUrl', null] },
                 duration: '$$workout.duration',
-                difficulty: '$$workout.difficulty',
+                level: '$$workout.level',
                 caloriesBurned: '$$workout.caloriesBurned',
-                description: '$$workout.description'
+                introduction: '$$workout.introduction'
               }
             }
           }

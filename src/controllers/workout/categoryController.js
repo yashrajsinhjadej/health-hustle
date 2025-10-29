@@ -160,31 +160,42 @@ class CategoryController {
    */
   async getAllCategories(req, res) {
     try {
-      const categories = await categoryModel.aggregate([
-        { $match: { isActive: true } },
+    const categories = await categoryModel.aggregate([
+  { $match: { isActive: true } },
+  {
+    $lookup: {
+      from: 'categoryworkouts',
+      let: { catId: '$_id' },
+      pipeline: [
         {
-          $lookup: {
-            from: 'categoryworkouts',
-            localField: '_id',
-            foreignField: 'categoryId',
-            as: 'workouts'
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ['$categoryId', '$$catId'] },
+                { $eq: ['$isActive', true] }  // ← Only count active associations
+              ]
+            }
           }
-        },
-        { $addFields: { totalWorkouts: { $size: '$workouts' } } },
-        {
-          $project: {
-            _id: 1,
-            designId: 1,
-            name: 1,
-            description: 1,
-            categorySequence: 1,
-            totalWorkouts: 1,
-            createdAt: 1,
-            updatedAt: 1
-          }
-        },
-        { $sort: { categorySequence: 1 } }
-      ]);
+        }
+      ],
+      as: 'workouts'
+    }
+  },
+  { $addFields: { totalWorkouts: { $size: '$workouts' } } },
+  {
+    $project: {
+      _id: 1,
+      designId: 1,
+      name: 1,
+      introduction: 1,
+      categorySequence: 1,
+      totalWorkouts: 1,
+      createdAt: 1,
+      updatedAt: 1
+    }
+  },
+  { $sort: { categorySequence: 1 } }
+]);
     
       return ResponseHandler.success(res, 'Categories retrieved successfully', categories);
     } catch (error) {

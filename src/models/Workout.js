@@ -9,8 +9,6 @@ const WorkoutSchema = new mongoose.Schema({
   introduction: { type: String },        // intro text
   equipment: [{ type: String }],         // e.g. ["Dumbbell", "Mat"]
 
-  // ✅ Removed category (will add later)
-  // ✅ Removed sequence (will add later using drag & drop)
 
   duration: { type: Number },            // in minutes
   exerciseCount: { type: Number, default: 0 },
@@ -27,7 +25,7 @@ const WorkoutSchema = new mongoose.Schema({
     enum: ['Beginner', 'Intermediate', 'Advanced'],
     default: 'Beginner'
   },
-
+  caloriesBurned: { type: Number },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   isActive: { type: Boolean, default: true },
 

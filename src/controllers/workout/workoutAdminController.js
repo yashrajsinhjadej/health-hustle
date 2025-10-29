@@ -163,11 +163,15 @@ class WorkoutAdminController {
       // -----------------------------
       // 7️⃣ Create workout in DB
       // -----------------------------
+
+      console.log('guierhgiurghiegheirghfinveirunverinerbiuerwbneirbneirbnefubneribueriubheowirbhfkneiorubheribndfknegy7ernbkneioruhp4oghweuirgheiuowrbnerbneirubneiohgheiuworghegiuepr gheionhvergiounhrg mopvwhy5h59nuyvhn5890wnvw4-y58bv y9hn5hw-uy59-upw3nv890y5wnvy89uw50y9uqw35m9yv-qw5n9ne59vwpy9j')
+
+      console.log(workoutData)
       const workout = await workoutModel.create({
         name: workoutData.name.trim(),
-        description: workoutData.description,
+        introduction: workoutData.introduction,
         duration: workoutData.duration,
-        difficulty: workoutData.difficulty,
+        level: workoutData.level,
         caloriesBurned: workoutData.caloriesBurned,
         equipment: workoutData.equipment,
         bannerUrl,
@@ -280,177 +284,492 @@ class WorkoutAdminController {
     }
   }
 
-  async deleteWorkout(req, res) {
-    try {
-      const workoutId = req.params.workoutId;
-      if (!workoutId) {
-        return ResponseHandler.badRequest(res, 'Workout ID is required');
-      }
 
-      console.log('Workout ID to delete:', workoutId);
+async deleteWorkout(req, res) {
+  try {
+    const workoutId = req.params.workoutId;
 
-      const workout = await workoutModel.findById(workoutId);
-      if (!workout) {
-        return ResponseHandler.notFound(res, 'Workout not found');
-      }
+    // -----------------------------
+    // 1️⃣ Validate and find workout
+    // -----------------------------
+    if (!workoutId) {
+      return ResponseHandler.badRequest(res, 'Workout ID is required');
+    }
 
-      console.log('Workout found:', workout);
+    console.log('🗑️ Deleting workout:', workoutId);
 
-      const deletedSequence = workout.sequence;
+    const workout = await workoutModel.findById(workoutId);
+    if (!workout) {
+      return ResponseHandler.notFound(res, 'Workout not found');
+    }
 
-      // Delete images from S3
-      if (workout.bannerUrl) {
-        try {
-          const bannerKey = s3Service.getKeyFromUrl(workout.bannerUrl);
-          if (bannerKey) await s3Service.deleteFromS3(bannerKey);
-          console.log('Deleted banner from S3:', workout.bannerUrl);
-        } catch (err) {
-          console.warn('Failed to delete banner from S3:', err.message);
+    // Already deleted
+    if (!workout.isActive) {
+      return ResponseHandler.success(res, 'Workout is already deleted');
+    }
+
+    console.log('✅ Workout found:', workout.name);
+
+    // -----------------------------
+    // 2️⃣ Find all CategoryWorkout associations
+    // -----------------------------
+    const categoryAssociations = await categoryWorkout.find({
+      workoutId,
+      isActive: true
+    }).lean();
+
+    console.log(`📂 Found ${categoryAssociations.length} active category associations`);
+
+    // -----------------------------
+    // 3️⃣ Soft delete CategoryWorkout associations & reorder sequences
+    // -----------------------------
+    for (const association of categoryAssociations) {
+      const { _id: associationId, categoryId, sequence: deletedSequence } = association;
+
+      console.log(`🔄 Processing category ${categoryId}, sequence ${deletedSequence}`);
+
+      // Soft delete this association
+      await categoryWorkout.updateOne(
+        { _id: associationId },
+        { 
+          isActive: false,
+          sequence: null, // Remove from active sequence
+          updatedAt: Date.now()
         }
-      }
-
-      if (workout.thumbnailUrl) {
-        try {
-          const thumbnailKey = s3Service.getKeyFromUrl(workout.thumbnailUrl);
-          if (thumbnailKey) await s3Service.deleteFromS3(thumbnailKey);
-          console.log('Deleted thumbnail from S3:', workout.thumbnailUrl);
-        } catch (err) {
-          console.warn('Failed to delete thumbnail from S3:', err.message);
-        }
-      }
-
-      // Delete all workout videos linked to this workout
-      const videoIds = workout.videos.map(v => v.video).filter(Boolean);
-      if (videoIds.length > 0) {
-        await workoutvideoModel.deleteMany({ _id: { $in: videoIds } });
-        console.log(`Deleted ${videoIds.length} workout videos.`);
-      }
-
-      // Delete the workout itself
-      await workoutModel.findByIdAndDelete(workoutId);
-      console.log('Workout deleted. Now updating sequences...');
-
-      // Decrement sequence of remaining workouts
-      await workoutModel.updateMany(
-        { sequence: { $gt: deletedSequence } },
-        { $inc: { sequence: -1 } }
       );
 
-      return ResponseHandler.success(res, 'Workout and its resources deleted successfully');
-    } catch (error) {
-      console.error(error);
-      return ResponseHandler.error(res, error);
+      // Shift remaining ACTIVE workouts in this category UP by 1
+      const shiftResult = await categoryWorkout.updateMany(
+        {
+          categoryId,
+          sequence: { $gt: deletedSequence },
+          isActive: true
+        },
+        { 
+          $inc: { sequence: -1 }
+        }
+      );
+
+      console.log(`  ✅ Shifted ${shiftResult.modifiedCount} workouts UP in category`);
     }
+
+    // -----------------------------
+    // 4️⃣ Handle S3 Images
+    // -----------------------------
+    
+    // OPTION A: Keep images for potential restoration (RECOMMENDED for soft delete)
+    console.log('📦 Keeping S3 images for potential restoration');
+    
+    // OPTION B: Delete images from S3 (uncomment if you want hard delete)
+    /*
+    console.log('🗑️ Deleting S3 images...');
+    
+    if (workout.bannerUrl) {
+      try {
+        const bannerKey = s3Service.getKeyFromUrl(workout.bannerUrl);
+        if (bannerKey) {
+          await s3Service.deleteFromS3(bannerKey);
+          console.log('  ✅ Deleted banner from S3:', workout.bannerUrl);
+        }
+      } catch (err) {
+        console.warn('  ⚠️ Failed to delete banner from S3:', err.message);
+      }
+    }
+
+    if (workout.thumbnailUrl) {
+      try {
+        const thumbnailKey = s3Service.getKeyFromUrl(workout.thumbnailUrl);
+        if (thumbnailKey) {
+          await s3Service.deleteFromS3(thumbnailKey);
+          console.log('  ✅ Deleted thumbnail from S3:', workout.thumbnailUrl);
+        }
+      } catch (err) {
+        console.warn('  ⚠️ Failed to delete thumbnail from S3:', err.message);
+      }
+    }
+    */
+
+    // -----------------------------
+    // 5️⃣ Soft delete workout videos
+    // -----------------------------
+    const videoIds = workout.videos.map(v => v.video).filter(Boolean);
+    if (videoIds.length > 0) {
+      const videoResult = await workoutvideoModel.updateMany(
+        { _id: { $in: videoIds } },
+        { 
+          isActive: false,
+          updatedAt: Date.now()
+        }
+      );
+      console.log(`🎥 Soft deleted ${videoResult.modifiedCount} workout videos`);
+    }
+
+    // -----------------------------
+    // 6️⃣ Soft delete the workout itself
+    // -----------------------------
+    await workoutModel.updateOne(
+      { _id: workoutId },
+      { 
+        isActive: false,
+        sequence: null, // Remove from global sequence (if used)
+        updatedBy: req.user?._id,
+        updatedAt: Date.now()
+      }
+    );
+
+    console.log('✅ Workout soft deleted successfully');
+
+    return ResponseHandler.success(
+      res, 
+      'Workout deleted successfully'
+    );
+
+  } catch (error) {
+    console.error('❌ Error deleting workout:', error);
+    return ResponseHandler.serverError(
+      res, 
+      'An error occurred while deleting the workout'
+    );
   }
+}
+
 
   async updateWorkout(req, res) {
+  try {
+    const workoutId = req.params.workoutId;
+    const updateData = req.body;
+
+    // -----------------------------
+    // 1️⃣ Validate workout ID
+    // -----------------------------
+    if (!workoutId) {
+      return ResponseHandler.badRequest(res, 'Workout ID is required');
+    }
+
+    const workout = await workoutModel.findById(workoutId);
+    if (!workout) {
+      return ResponseHandler.notFound(res, 'Workout not found');
+    }
+
+    // Don't allow updating inactive workouts
+    if (!workout.isActive) {
+      return ResponseHandler.forbidden(res, 'Cannot update an inactive workout');
+    }
+
+    console.log('📝 Updating workout:', workoutId);
+
+    // -----------------------------
+    // 2️⃣ Handle Category Membership Sync
+    // -----------------------------
+    if (updateData.categoryIds !== undefined) {
+      let categoryIds = updateData.categoryIds || [];
+
+      // Handle different input formats for categoryIds
+      if (typeof categoryIds === 'string') {
+        try {
+          categoryIds = JSON.parse(categoryIds);
+        } catch {
+          categoryIds = categoryIds ? [categoryIds] : [];
+        }
+      }
+      if (!Array.isArray(categoryIds)) {
+        categoryIds = [categoryIds];
+      }
+
+      // Remove duplicates and normalize to strings
+      categoryIds = [...new Set(categoryIds.map(id => id?.toString()))].filter(Boolean);
+
+      console.log('📂 Category IDs to sync:', categoryIds);
+
+      // Validate all categories exist and are ACTIVE
+      if (categoryIds.length > 0) {
+        const categoryObjectIds = categoryIds.map(id => {
+          try {
+            return new mongoose.Types.ObjectId(id);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
+        if (categoryObjectIds.length !== categoryIds.length) {
+          return ResponseHandler.badRequest(res, 'One or more category IDs are invalid');
+        }
+
+        const validCategories = await CategoryModel.find({
+          _id: { $in: categoryObjectIds },
+          isActive: true,
+        }).select('_id name');
+
+        if (validCategories.length !== categoryObjectIds.length) {
+          const validIds = validCategories.map(c => c._id.toString());
+          const invalidIds = categoryIds.filter(id => !validIds.includes(id));
+          return ResponseHandler.badRequest(
+            res,
+            `Invalid or inactive category IDs: ${invalidIds.join(', ')}`
+          );
+        }
+
+        console.log('✅ All categories valid:', validCategories.map(c => c.name));
+      }
+
+      // Load current active associations
+      const currentAssociations = await categoryWorkout.find({
+        workoutId,
+        isActive: true
+      }).lean();
+
+      const currentCategoryIds = currentAssociations.map(a => a.categoryId.toString());
+      console.log('📋 Current active categories:', currentCategoryIds);
+
+      // Deactivate associations NOT in categoryIds
+      const categoriesToDeactivate = currentCategoryIds.filter(
+        id => !categoryIds.includes(id)
+      );
+
+      if (categoriesToDeactivate.length > 0) {
+        const deactivateResult = await categoryWorkout.updateMany(
+          {
+            workoutId,
+            categoryId: { $in: categoriesToDeactivate.map(id => new mongoose.Types.ObjectId(id)) },
+            isActive: true
+          },
+          {
+            isActive: false,
+            updatedAt: Date.now()
+          }
+        );
+        console.log(`🔴 Deactivated ${deactivateResult.modifiedCount} associations`);
+      }
+
+      // Process each categoryId: move to end (whether reactivating or creating)
+      if (categoryIds.length > 0) {
+        const categoryObjectIds = categoryIds.map(id => new mongoose.Types.ObjectId(id));
+
+        // Get max sequence for each category in one query
+        const sequenceResults = await categoryWorkout.aggregate([
+          {
+            $match: {
+              categoryId: { $in: categoryObjectIds },
+              isActive: true,
+            },
+          },
+          {
+            $group: {
+              _id: '$categoryId',
+              maxSequence: { $max: '$sequence' },
+            },
+          },
+        ]);
+
+        // Create a map: categoryId -> maxSequence
+        const sequenceMap = {};
+        sequenceResults.forEach(result => {
+          sequenceMap[result._id.toString()] = result.maxSequence || 0;
+        });
+
+        // Process each category
+        for (const categoryId of categoryIds) {
+          const categoryObjectId = new mongoose.Types.ObjectId(categoryId);
+          const idStr = categoryObjectId.toString();
+          
+          // Calculate next sequence (max + 1)
+          const maxSeq = sequenceMap[idStr] || 0;
+          const nextSeq = maxSeq + 1;
+
+          // Check if association already exists (active or inactive)
+          const existingAssociation = await categoryWorkout.findOne({
+            categoryId: categoryObjectId,
+            workoutId
+          });
+
+          if (existingAssociation) {
+            // Update existing: reactivate and move to end
+            existingAssociation.isActive = true;
+            existingAssociation.sequence = nextSeq;
+            existingAssociation.updatedAt = Date.now();
+            await existingAssociation.save();
+            console.log(`🔄 Updated association for category ${idStr}: sequence ${nextSeq}`);
+          } else {
+            // Create new association at the end
+            await categoryWorkout.create({
+              categoryId: categoryObjectId,
+              workoutId,
+              sequence: nextSeq,
+              isActive: true,
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            });
+            console.log(`✅ Created association for category ${idStr}: sequence ${nextSeq}`);
+          }
+
+          // Update sequenceMap for next iteration
+          sequenceMap[idStr] = nextSeq;
+        }
+      }
+
+      console.log('✅ Category membership synced');
+    }
+
+    // -----------------------------
+    // 3️⃣ Handle Image Uploads
+    // -----------------------------
+    const files = req.files || {};
+
+    // -- Banner Image --
+    if (files.banner && files.banner[0]) {
+      console.log('🖼️ Uploading new banner...');
+      
+      const newBanner = files.banner[0];
+      const newKey = await s3Service.uploadToS3(
+        newBanner.buffer,
+        newBanner.originalname,
+        newBanner.mimetype
+      );
+
+      // Delete old banner if exists
+      if (workout.bannerUrl) {
+        const oldBannerKey = s3Service.getKeyFromUrl(workout.bannerUrl);
+        if (oldBannerKey) {
+          try {
+            await s3Service.deleteFromS3(oldBannerKey);
+            console.log('🗑️ Old banner deleted from S3');
+          } catch (err) {
+            console.warn('⚠️ Failed to delete old banner:', err.message);
+          }
+        }
+      }
+
+      // Update DB link
+      workout.bannerUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${newKey}`;
+      console.log('✅ Banner updated');
+    }
+
+    // -- Thumbnail Image --
+    if (files.thumbnail && files.thumbnail[0]) {
+      console.log('🖼️ Uploading new thumbnail...');
+      
+      const newThumbnail = files.thumbnail[0];
+      const newKey = await s3Service.uploadToS3(
+        newThumbnail.buffer,
+        newThumbnail.originalname,
+        newThumbnail.mimetype
+      );
+
+      // Delete old thumbnail if exists
+      if (workout.thumbnailUrl) {
+        const oldThumbKey = s3Service.getKeyFromUrl(workout.thumbnailUrl);
+        if (oldThumbKey) {
+          try {
+            await s3Service.deleteFromS3(oldThumbKey);
+            console.log('🗑️ Old thumbnail deleted from S3');
+          } catch (err) {
+            console.warn('⚠️ Failed to delete old thumbnail:', err.message);
+          }
+        }
+      }
+
+      // Update DB link
+      workout.thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${newKey}`;
+      console.log('✅ Thumbnail updated');
+    }
+
+    // -----------------------------
+    // 4️⃣ Update other workout fields
+    // -----------------------------
+    // Remove fields that shouldn't be mass-assigned
+    const fieldsToExclude = [
+      'categoryIds',
+      '_id', 
+      'createdAt', 
+      'createdBy',
+      'isActive'
+    ];
+    
+    fieldsToExclude.forEach(field => delete updateData[field]);
+    console.log('🔧 Updating workout fields:', updateData);
+    // Update allowed fields
+    if (updateData.name) workout.name = updateData.name.trim();
+    if (updateData.introduction !== undefined) workout.introduction = updateData.introduction;
+    if (updateData.duration !== undefined) workout.duration = updateData.duration;
+    if (updateData.level !== undefined) workout.level = updateData.level;
+    if (updateData.caloriesBurned !== undefined) workout.caloriesBurned = updateData.caloriesBurned;
+    if (updateData.equipment !== undefined) workout.equipment = updateData.equipment;
+
+    workout.updatedBy = req.user?._id;
+    workout.updatedAt = Date.now();
+
+    await workout.save();
+
+    console.log('✅ Workout updated successfully');
+
+    // -----------------------------
+    // 5️⃣ Get updated category associations for response
+    // -----------------------------
+    const updatedAssociations = await categoryWorkout.find({
+      workoutId,
+      isActive: true
+    }).select('categoryId').lean();
+
+    const activeCategoryIds = updatedAssociations.map(a => a.categoryId.toString());
+
+    const responseData = workout.toObject();
+    responseData.categories = activeCategoryIds;
+
+    return ResponseHandler.success(res, 'Workout updated successfully', responseData);
+
+  } catch (error) {
+    console.error('❌ Error updating workout:', error);
+    
+    // Handle duplicate name error
+    if (error.code === 11000 && error.keyPattern && error.keyPattern.name) {
+      return ResponseHandler.forbidden(res, 'Workout name already exists');
+    }
+    
+    return ResponseHandler.serverError(
+      res, 
+      'An error occurred while updating the workout'
+    );
+  }
+}
+
+async getworkoutbyid(req, res) {
     try {
       const workoutId = req.params.workoutId;
-      const updateData = req.body;
 
       if (!workoutId) {
         return ResponseHandler.badRequest(res, 'Workout ID is required');
       }
 
-      const workout = await workoutModel.findById(workoutId);
+      const workout = await workoutModel.findById(workoutId).lean();
+
       if (!workout) {
         return ResponseHandler.notFound(res, 'Workout not found');
       }
+      
+      const category = await categoryWorkout.find({workoutId:workout._id,isActive:true}).lean();
+      const categoryIds = category.map(cat => cat.categoryId);
+      const categoryName = await CategoryModel.find({_id:{$in:categoryIds},isActive:true}).select('_id name').lean();
+      workout.category = categoryName;
 
-      // 🧩 Handle sequence changes
-      if (
-        updateData.sequence !== undefined &&
-        updateData.sequence !== workout.sequence
-      ) {
-        const newSequence = Number(updateData.sequence);
-        const oldSequence = workout.sequence;
+      const allCategories = await CategoryModel.find({ isActive: true })
+      .select('_id name')
+      .sort({ categorySequence: 1 }) // Sort by your sequence field
+      .lean();
 
-        if (Number.isNaN(newSequence) || newSequence <= 0) {
-          return ResponseHandler.badRequest(res, 'sequence must be a positive number');
-        }
+      workout.allCategories = allCategories;
 
-        if (newSequence > oldSequence) {
-          await workoutModel.updateMany(
-            { sequence: { $gt: oldSequence, $lte: newSequence } },
-            { $inc: { sequence: -1 } }
-          );
-        } else {
-          await workoutModel.updateMany(
-            { sequence: { $gte: newSequence, $lt: oldSequence } },
-            { $inc: { sequence: 1 } }
-          );
-        }
+      return ResponseHandler.success(
+        res,
+        'Workout retrieved successfully',
+        workout
+      );
 
-        workout.sequence = newSequence;
-      }
-
-      // 🖼️ Handle Image Uploads
-      const files = req.files || {};
-
-      // -- Banner Image
-      if (files.banner && files.banner[0]) {
-        const newBanner = files.banner[0];
-        const newKey = await s3Service.uploadToS3(
-          newBanner.buffer,
-          newBanner.originalname,
-          newBanner.mimetype
-        );
-
-        // Delete old banner if exists
-        if (workout.bannerUrl) {
-          const oldBannerKey = s3Service.getKeyFromUrl(workout.bannerUrl);
-          if (oldBannerKey) {
-            try {
-              await s3Service.deleteFromS3(oldBannerKey);
-              console.log('🗑 Old banner deleted from S3');
-            } catch (err) {
-              console.warn('⚠️ Failed to delete old banner:', err.message);
-            }
-          }
-        }
-
-        // Update DB link
-        workout.bannerUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${newKey}`;
-      }
-
-      // -- Thumbnail Image
-      if (files.thumbnail && files.thumbnail[0]) {
-        const newThumbnail = files.thumbnail[0];
-        const newKey = await s3Service.uploadToS3(
-          newThumbnail.buffer,
-          newThumbnail.originalname,
-          newThumbnail.mimetype
-        );
-
-        // Delete old thumbnail if exists
-        if (workout.thumbnailUrl) {
-          const oldThumbKey = s3Service.getKeyFromUrl(workout.thumbnailUrl);
-          if (oldThumbKey) {
-            try {
-              await s3Service.deleteFromS3(oldThumbKey);
-              console.log('🗑️ Old thumbnail deleted from S3');
-            } catch (err) {
-              console.warn('⚠️ Failed to delete old thumbnail:', err.message);
-            }
-          }
-        }
-
-        // Update DB link
-        workout.thumbnailUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${newKey}`;
-      }
-
-      // 📝 Update other fields
-      Object.assign(workout, updateData);
-
-      await workout.save();
-
-      return ResponseHandler.success(res, 'Workout updated successfully', workout);
     } catch (error) {
-      console.error('❌ Error updating workout:', error);
-      if (error.code === 11000 && error.keyPattern && error.keyPattern.name) {
-        return ResponseHandler.error(res, 'Workout name already exists');
-      }
-      return ResponseHandler.error(res, error);
+      console.error('❌ Error retrieving workout by ID:', error);
+      return ResponseHandler.serverError(
+        res,
+        'An error occurred while retrieving the workout'
+      );
     }
   }
 }

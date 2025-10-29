@@ -1,5 +1,6 @@
 const {body,param,query,validationResult} = require('express-validator');
 const ResponseHandler = require('../utils/ResponseHandler');
+const { get } = require('mongoose');
 
 const validateWorkoutImages = (isRequired = true) => {
   return (req, res, next) => {
@@ -16,43 +17,89 @@ const validateWorkoutImages = (isRequired = true) => {
     next();
   };
 };
-const updateworkoutvalidator = [
-    param('workoutId')
+
+
+const updateWorkoutValidator = [
+  // Path parameter validation
+  param('workoutId')
     .notEmpty().withMessage('Workout ID is required')
     .isMongoId().withMessage('Invalid Workout ID format'),
-    body('name')
+
+  // Category IDs validation (required for syncing)
+  body('categoryIds')
+    .optional()
+    .custom((value) => {
+      // Handle string, array, or JSON string
+      if (typeof value === 'string') {
+        try {
+          value = JSON.parse(value);
+        } catch {
+          // If not JSON, treat as single ID
+          value = [value];
+        }
+      }
+      
+      if (!Array.isArray(value)) {
+        value = [value];
+      }
+
+      // Check if all values are valid MongoDB IDs
+      const allValid = value.every(id => {
+        if (!id) return false;
+        return /^[a-f\d]{24}$/i.test(id.toString());
+      });
+
+      if (!allValid) {
+        throw new Error('All category IDs must be valid MongoDB ObjectIds');
+      }
+
+      return true;
+    }),
+
+  // Workout fields validation
+  body('name')
     .optional()
     .isString().withMessage('Name must be a string')
-    .trim(),
-    body('duration')
+    .trim()
+    .notEmpty().withMessage('Name cannot be empty'),
+
+  body('description')
+    .optional()
+    .isString().withMessage('Description must be a string'),
+
+  body('duration')
     .optional()
     .isInt({ min: 1 }).withMessage('Duration must be a positive number'),
-    body('level')
+
+  body('level')
     .optional()
-    .isIn(['beginner', 'intermediate', 'advanced'])
-    .withMessage('Level must be beginner, intermediate, or advanced'),
-    body('category')
+    .isString().withMessage('Difficulty must be a string')
+    .isIn(['Beginner', 'Intermediate', 'Advanced'])
+    .withMessage('Difficulty must be Beginner, Intermediate, or Advanced'),
+
+  body('caloriesBurned')
     .optional()
-    .isArray().withMessage('Category must be an array of strings'),
-    body('introduction')
+    .isInt({ min: 0 }).withMessage('Calories burned must be a non-negative number'),
+
+  body('equipment')
     .optional()
-    .isString().withMessage('Introduction must be a string'),
-    body('detailedInstructions')
-    .optional()
-    .isArray().withMessage('Detailed instructions must be an array of strings'),
-    body('equipment')
-    .optional()
-    .isArray().withMessage('Equipment must be an array of strings'),
-    body('targetMuscles')
-    .optional()
-    .isArray().withMessage('Target muscles must be an array of strings'),
-    body('caloriesBurnedEstimate')
-    .optional()
-    .isInt({ min: 0 }).withMessage('Calories burned must be a positive number'),
-    body('sequence')
-    .optional()
-    .isInt({ min: 1 }).withMessage('Sequence must be a positive integer'),
-];  
+    .custom((value) => {
+      // Handle string or array
+      if (typeof value === 'string') {
+        try {
+          value = JSON.parse(value);
+        } catch {
+          throw new Error('Equipment must be a valid JSON array');
+        }
+      }
+      
+      if (!Array.isArray(value)) {
+        throw new Error('Equipment must be an array');
+      }
+
+      return true;
+    })
+];
 
 const getworkoutByIdvalidator = [
     body('workoutId')
@@ -80,6 +127,12 @@ const createWorkoutValidator = [
 ];
 
 
+const getworkByIdvalidator = [
+  param('workoutId')
+    .notEmpty().withMessage('Workout ID is required')
+    .isMongoId().withMessage('Invalid Workout ID format')
+]
+
 
 const handleValidationErrors = (req, res, next) => {
     console.log(`🔍 [${req.requestId}] handleValidationErrors middleware called`);
@@ -101,8 +154,8 @@ const deleteWorkoutValidator = [
     .isMongoId().withMessage('Invalid Workout ID format')
 ];
 
-const getworkByIdvalidator = [
-    body('workoutId')
+const getworkByIdvalidators = [
+    param('workoutId')
     .notEmpty().withMessage('Workout ID is required')
     .isMongoId().withMessage('Invalid Workout ID format')
 ];
@@ -144,8 +197,9 @@ const getcategoryvalidator = [
 
 module.exports = {
     createWorkoutValidator,
+    getworkByIdvalidators,
     listWorkoutsValidator,
-    updateworkoutvalidator,
+    updateWorkoutValidator,
     getworkoutByIdvalidator,
     deleteWorkoutValidator,
     getworkByIdvalidator,
