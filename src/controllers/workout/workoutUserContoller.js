@@ -2,6 +2,7 @@ const ResponseHandler = require('../../utils/ResponseHandler');
 const workoutModel = require('../../models/Workout')
 const WorkoutVideoModel = require('../../models/workoutvideo');
 const categoryWorkout = require('../../models/CategoryWorkout');
+const CategoryModel = require('../../models/Category');
 // Define the minimal set of fields to return for a list view
 const WORKOUT_PROJECTION = {
     _id: 1,
@@ -60,85 +61,181 @@ class WorkoutUserController {
     }
   }
 
-
+/**
+ * HOMEPAGE API - Production Ready
+ * Returns all active categories with their top N workouts
+ * 
+ * Flow:
+ * Category (sorted by categorySequence) 
+ *   → CategoryWorkout (sorted by sequence, isActive=true)
+ *     → Workout (isActive=true)
+ * 
+ * Performance: Single aggregation query
+ */
 async homepage(req, res) {
-    try {
-      // Set your home screen cap here (use 10–12). You can tweak to 10 if needed.
-      const LIMIT = 10;
-  
-      const pipeline = [
-        // Optional: filter flags if you have them
-        // { $match: { isActive: true, isPublished: true } },
-  
-        // Ensure category is an array for consistent unwinding
-        {
-          $addFields: {
-            category: {
-              $cond: [
-                { $isArray: "$category" },
-                "$category",
-                { $cond: [{ $ifNull: ["$category", false] }, ["$category"], []] }
-              ]
-            }
-          }
-        },
-  
-        // Unwind so each category value is processed separately
-        { $unwind: "$category" },
-  
-        // Normalize category values (trim + lowercase)
-        {
-          $addFields: {
-            category: {
-              $toLower: {
-                $trim: { input: "$category" }
+  try {
+    const LIMIT = 10; // Number of workouts per category
+
+    console.log('🏠 Fetching homepage data...');
+
+    const result = await CategoryModel.aggregate([
+      // ==========================================
+      // STEP 1: Filter only active categories
+      // ==========================================
+      { 
+        $match: { isActive: true } 
+      },
+
+      // ==========================================
+      // STEP 2: Sort categories by their sequence
+      // ==========================================
+      { 
+        $sort: { categorySequence: 1 } 
+      },
+
+      // ==========================================
+      // STEP 3: Lookup CategoryWorkout associations
+      // ==========================================
+      {
+        $lookup: {
+          from: 'categoryworkouts', // Physical collection name
+          let: { catId: '$_id' },
+          pipeline: [
+            // Filter: only active associations for this category
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$categoryId', '$$catId'] },
+                    { $eq: ['$isActive', true] }
+                  ]
+                }
+              }
+            },
+            
+            // Sort by sequence within category (workout order)
+            { $sort: { sequence: 1 } },
+            
+            // Limit to top N workouts
+            { $limit: LIMIT },
+            
+            // ==========================================
+            // STEP 4: Lookup actual workout details
+            // ==========================================
+            {
+              $lookup: {
+                from: 'workouts', // Physical collection name
+                let: { workoutId: '$workoutId' },
+                pipeline: [
+                  // Filter: only active workouts
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ['$_id', '$$workoutId'] },
+                          { $eq: ['$isActive', true] }
+                        ]
+                      }
+                    }
+                  },
+                  
+                  // Only return necessary fields (optimization)
+                  {
+                    $project: {
+                      _id: 1,
+                      name: 1,
+                      thumbnailUrl: 1,
+                      duration: 1,
+                      difficulty: 1,
+                      caloriesBurned: 1,
+                      description: 1
+                    }
+                  }
+                ],
+                as: 'workoutDetails'
+              }
+            },
+            
+            // Flatten workout details array
+            { 
+              $unwind: { 
+                path: '$workoutDetails', 
+                preserveNullAndEmptyArrays: false // Skip if workout not found
+              } 
+            },
+            
+            // Replace root with workout data only
+            { $replaceRoot: { newRoot: '$workoutDetails' } }
+          ],
+          as: 'workouts'
+        }
+      },
+
+      // ==========================================
+      // STEP 5: Format final response
+      // ==========================================
+      {
+        $project: {
+          _id: 0, // Don't expose internal _id at root level
+          categoryId: '$_id',
+          category: '$name',
+          designId: 1,
+          categorySequence: 1, // Include for debugging/sorting verification
+          totalWorkouts: { $size: '$workouts' },
+          data: {
+            $map: {
+              input: '$workouts',
+              as: 'workout',
+              in: {
+                _id: '$$workout._id',
+                name: { $ifNull: ['$$workout.name', 'Untitled Workout'] },
+                thumbnail: { $ifNull: ['$$workout.thumbnailUrl', null] },
+                duration: '$$workout.duration',
+                difficulty: '$$workout.difficulty',
+                caloriesBurned: '$$workout.caloriesBurned',
+                description: '$$workout.description'
               }
             }
           }
-        },
-  
-        // Sort first so we keep the latest items in each category
-        { $sort: { createdAt: -1, _id: -1 } },
-  
-        // Group workouts by individual category value
-        {
-          $group: {
-            _id: "$category",
-            data: {
-              $push: {
-                name: { $ifNull: ["$name", "Untitled Workout"] },
-                thumbnail: { $ifNull: ["$thumbnailUrl", null] }
-              }
-            }
-          }
-        },
-  
-        // Slice to LIMIT items per category for the home screen
-        {
-          $project: {
-            _id: 0,
-            category: "$_id",
-            data: { $slice: ["$data", LIMIT] }
-          }
-        },
-  
-        // Sort categories alphabetically (optional)
-        { $sort: { category: 1 } }
-      ];
-  
-      const result = await workoutModel.aggregate(pipeline);
-  
-      return ResponseHandler.success(
-        res,
-        "Workout categories fetched successfully",
-        result
-      );
-    } catch (error) {
-      return ResponseHandler.error(res, error);
-    }
+        }
+      },
+
+      // ==========================================
+      // STEP 6: Optional - Filter out empty categories
+      // ==========================================
+      // Uncomment if you don't want to show categories with no workouts
+      // { 
+      //   $match: { 
+      //     totalWorkouts: { $gt: 0 } 
+      //   } 
+      // }
+    ]);
+
+    console.log(`✅ Homepage data fetched: ${result.length} categories`);
+    
+    // Log summary
+    const summary = result.map(cat => ({
+      category: cat.category,
+      workouts: cat.totalWorkouts
+    }));
+    console.log('📊 Category summary:', summary);
+
+    return ResponseHandler.success(
+      res,
+      'Homepage data fetched successfully',
+      result
+    );
+
+  } catch (error) {
+    console.error('❌ Homepage API error:', error);
+    
+    // Provide more context in error
+    return ResponseHandler.serverError(
+      res,
+      'An error occurred while fetching homepage data'
+    );
   }
-  
-  
+}
       
     /**
      * Lists workouts with optional search and filtering.
