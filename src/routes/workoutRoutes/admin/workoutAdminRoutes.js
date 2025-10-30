@@ -39,7 +39,7 @@ router.get('/', (req, res) => {
 });
 
 router.post(
-    '/delete/:workoutId',
+    '/delete',
     deleteWorkoutValidator,
     handleValidationErrors,
     workoutAdminController.deleteWorkout

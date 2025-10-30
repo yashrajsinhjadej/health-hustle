@@ -149,7 +149,7 @@ const handleValidationErrors = (req, res, next) => {
     next();
 };
 const deleteWorkoutValidator = [
-  param('workoutId')
+  body('workoutId')
     .notEmpty().withMessage('Workout ID is required')
     .isMongoId().withMessage('Invalid Workout ID format')
 ];

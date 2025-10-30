@@ -287,7 +287,7 @@ class WorkoutAdminController {
 
 async deleteWorkout(req, res) {
   try {
-    const workoutId = req.params.workoutId;
+    const workoutId = req.body.workoutId;
 
     // -----------------------------
     // 1️⃣ Validate and find workout
@@ -733,45 +733,92 @@ async deleteWorkout(req, res) {
 }
 
 async getworkoutbyid(req, res) {
-    try {
-      const workoutId = req.params.workoutId;
+  try {
+    const workoutId = req.params.workoutId;
 
-      if (!workoutId) {
-        return ResponseHandler.badRequest(res, 'Workout ID is required');
-      }
+    // 1) Validate ID
+    if (!workoutId) {
+      return ResponseHandler.badRequest(res, "Workout ID is required");
+    }
+    if (!mongoose.Types.ObjectId.isValid(workoutId)) {
+      return ResponseHandler.badRequest(res, "Invalid Workout ID");
+    }
 
-      const workout = await workoutModel.findById(workoutId).lean();
-
-      if (!workout) {
-        return ResponseHandler.notFound(res, 'Workout not found');
-      }
-      
-      const category = await categoryWorkout.find({workoutId:workout._id,isActive:true}).lean();
-      const categoryIds = category.map(cat => cat.categoryId);
-      const categoryName = await CategoryModel.find({_id:{$in:categoryIds},isActive:true}).select('_id name').lean();
-      workout.category = categoryName;
-
-      const allCategories = await CategoryModel.find({ isActive: true })
-      .select('_id name')
-      .sort({ categorySequence: 1 }) // Sort by your sequence field
+    // 2) Fetch workout and populate videos
+    const workout = await workoutModel
+      .findById(workoutId)
+      .populate({
+        path: "videos.video",
+        select: "_id title description youtubeUrl duration",
+        model: workoutvideoModel,
+      })
       .lean();
 
-      workout.allCategories = allCategories;
-
-      return ResponseHandler.success(
-        res,
-        'Workout retrieved successfully',
-        workout
-      );
-
-    } catch (error) {
-      console.error('❌ Error retrieving workout by ID:', error);
-      return ResponseHandler.serverError(
-        res,
-        'An error occurred while retrieving the workout'
-      );
+    if (!workout) {
+      return ResponseHandler.notFound(res, "Workout not found");
     }
+
+    // 3) Sort videos by sequence and drop entries with missing populated docs
+    const sortedVideos = Array.isArray(workout.videos)
+      ? workout.videos
+          .filter((v) => v && v.video) // ensure populated doc exists
+          .sort((a, b) => {
+            const sa = Number.isFinite(a.sequence) ? a.sequence : 0;
+            const sb = Number.isFinite(b.sequence) ? b.sequence : 0;
+            return sa - sb;
+          })
+      : [];
+
+    workout.videos = sortedVideos;
+
+    // 4) Attach active categories for this workout
+    const categoryLinks = await categoryWorkout
+      .find({ workoutId: workout._id, isActive: true })
+      .select("categoryId")
+      .lean();
+
+    const categoryIds = categoryLinks
+      .map((link) => link.categoryId)
+      .filter((id) => !!id);
+
+    const categories =
+      categoryIds.length > 0
+        ? await CategoryModel.find({
+            _id: { $in: categoryIds },
+            isActive: true,
+          })
+            .select("_id name")
+            .lean()
+        : [];
+
+    workout.category = categories;
+
+    // 5) Attach all active categories (sorted by categorySequence)
+    const allCategoriesRaw = await CategoryModel.find({ isActive: true })
+      .select("_id name categorySequence")
+      .sort({ categorySequence: 1 })
+      .lean();
+
+    // Strip categorySequence from response if not needed client-side
+    workout.allCategories = allCategoriesRaw.map(({ _id, name }) => ({ _id, name }));
+
+    // 6) Flatten videos for frontend convenience
+    workout.videos = workout.videos.map((item) => ({
+      _id: item.video._id,
+      title: item.video.title,
+      description: item.video.description,
+      youtubeUrl: item.video.youtubeUrl,
+      duration: item.video.duration,
+      sequence: item.sequence,
+    }));
+
+    return ResponseHandler.success(res, "Workout retrieved successfully", workout);
+  } catch (error) {
+    console.error("❌ Error retrieving workout by ID:", error);
+    return ResponseHandler.serverError(res, "An error occurred while retrieving the workout");
   }
+}
+
 }
 
 module.exports = new WorkoutAdminController();
