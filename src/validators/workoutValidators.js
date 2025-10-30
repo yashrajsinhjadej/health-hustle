@@ -113,10 +113,6 @@ const createWorkoutValidator = [
     .isString().withMessage('Name must be a string')
     .trim(),
 
-  body('duration')
-    .notEmpty().withMessage('Duration is required')
-    .isInt({ min: 1 }).withMessage('Duration must be a positive number'),
-
   body('introduction')
     .notEmpty().withMessage('Introduction is required')
     .isString().withMessage('Introduction must be a string'),

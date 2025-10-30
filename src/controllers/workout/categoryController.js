@@ -1,5 +1,7 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
 const categoryModel = require('../../models/Category');
+const CategoryWorkout = require('../../models/CategoryWorkout');
+
 
 class CategoryController {
   /**
@@ -225,6 +227,20 @@ class CategoryController {
         return ResponseHandler.success(res, 'Category is already deleted');
       }
 
+         // Guard: check for any ACTIVE workout links
+    const blockingCount = await CategoryWorkout.countDocuments({
+      categoryId: category._id,
+      isActive: true
+    });
+
+    if (blockingCount > 0) {
+      // Optionally also return a small sample of blocking workoutIds
+      return ResponseHandler.forbidden(res, 'Category cannot be deleted while it has active workouts. Delete or unlink workouts first.', { 
+      });
+    }
+
+
+
       const deletedSequence = category.categorySequence;
 
       // 1️⃣ Soft delete: set isActive to false and categorySequence to null
@@ -278,61 +294,7 @@ class CategoryController {
     }
   }
 
-  /**
-   * RESTORE CATEGORY (Optional - if you want to reactivate deleted categories)
-   * Logic: Append to the end of active categories
-   */
-  async restoreCategory(req, res) {
-    try {
-      const categoryId = req.params.id;
 
-      const category = await categoryModel.findById(categoryId);
-      if (!category) {
-        return ResponseHandler.notFound(res, 'Category not found');
-      }
-
-      if (category.isActive) {
-        return ResponseHandler.badRequest(res, 'Category is already active');
-      }
-
-      // Check if name conflict exists with active categories
-      const existingCategory = await categoryModel.findOne({ 
-        name: category.name, 
-        isActive: true,
-        _id: { $ne: categoryId }
-      });
-      
-      if (existingCategory) {
-        return ResponseHandler.forbidden(res, 'Cannot restore: Another active category with this name exists');
-      }
-
-      // Find max sequence among active categories and append
-      const lastActiveCategory = await categoryModel
-        .findOne({ isActive: true }, { categorySequence: 1 })
-        .sort({ categorySequence: -1 })
-        .lean();
-
-      const nextSequence = lastActiveCategory 
-        ? (Number(lastActiveCategory.categorySequence) || 0) + 1 
-        : 1;
-
-      await categoryModel.updateOne(
-        { _id: categoryId },
-        { 
-          isActive: true,
-          categorySequence: nextSequence,
-          updatedBy: req.user?._id, 
-          updatedAt: Date.now() 
-        }
-      );
-
-      const restoredCategory = await categoryModel.findById(categoryId);
-      return ResponseHandler.success(res, 'Category restored successfully', restoredCategory);
-    } catch (error) {
-      console.error('Error restoring category:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while restoring the category');
-    }
-  }
 }
 
 module.exports = new CategoryController();

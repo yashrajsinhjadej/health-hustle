@@ -10,7 +10,7 @@ const WorkoutSchema = new mongoose.Schema({
   equipment: [{ type: String }],         // e.g. ["Dumbbell", "Mat"]
 
 
-  duration: { type: Number },            // in minutes
+  duration: { type: Number , default:0},            // in minutes
   exerciseCount: { type: Number, default: 0 },
 
   videos: [

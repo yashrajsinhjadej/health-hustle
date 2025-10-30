@@ -433,8 +433,7 @@ async deleteWorkout(req, res) {
   }
 }
 
-
-  async updateWorkout(req, res) {
+async updateWorkout(req, res) {
   try {
     const workoutId = req.params.workoutId;
     const updateData = req.body;
@@ -521,31 +520,65 @@ async deleteWorkout(req, res) {
       const currentCategoryIds = currentAssociations.map(a => a.categoryId.toString());
       console.log('📋 Current active categories:', currentCategoryIds);
 
-      // Deactivate associations NOT in categoryIds
-      const categoriesToDeactivate = currentCategoryIds.filter(
-        id => !categoryIds.includes(id)
-      );
+      // Determine which categories to remove, keep, and add
+      const categoriesToRemove = currentCategoryIds.filter(id => !categoryIds.includes(id));
+      const categoriesToKeep = currentCategoryIds.filter(id => categoryIds.includes(id));
+      const categoriesToAdd = categoryIds.filter(id => !currentCategoryIds.includes(id));
 
-      if (categoriesToDeactivate.length > 0) {
-        const deactivateResult = await categoryWorkout.updateMany(
-          {
+      console.log('➖ Categories to remove:', categoriesToRemove);
+      console.log('✔️ Categories to keep:', categoriesToKeep);
+      console.log('➕ Categories to add:', categoriesToAdd);
+
+      // REMOVE: Deactivate associations and reorder sequences
+      if (categoriesToRemove.length > 0) {
+        for (const categoryId of categoriesToRemove) {
+          const categoryObjectId = new mongoose.Types.ObjectId(categoryId);
+          
+          // Find the association to remove
+          const associationToRemove = await categoryWorkout.findOne({
             workoutId,
-            categoryId: { $in: categoriesToDeactivate.map(id => new mongoose.Types.ObjectId(id)) },
+            categoryId: categoryObjectId,
             isActive: true
-          },
-          {
-            isActive: false,
-            updatedAt: Date.now()
+          });
+
+          if (associationToRemove) {
+            const deletedSequence = associationToRemove.sequence;
+
+            // Soft delete this association
+            await categoryWorkout.updateOne(
+              { _id: associationToRemove._id },
+              {
+                isActive: false,
+                sequence: null,
+                updatedAt: Date.now()
+              }
+            );
+
+            // Shift remaining ACTIVE workouts in this category UP by 1
+            const shiftResult = await categoryWorkout.updateMany(
+              {
+                categoryId: categoryObjectId,
+                sequence: { $gt: deletedSequence },
+                isActive: true
+              },
+              {
+                $inc: { sequence: -1 }
+              }
+            );
+
+            console.log(`🔴 Removed from category ${categoryId}, shifted ${shiftResult.modifiedCount} workouts UP`);
           }
-        );
-        console.log(`🔴 Deactivated ${deactivateResult.modifiedCount} associations`);
+        }
       }
 
-      // Process each categoryId: move to end (whether reactivating or creating)
-      if (categoryIds.length > 0) {
-        const categoryObjectIds = categoryIds.map(id => new mongoose.Types.ObjectId(id));
+      // KEEP: Do nothing - existing associations maintain their sequence
+      console.log(`✅ Keeping ${categoriesToKeep.length} existing associations with their sequences unchanged`);
 
-        // Get max sequence for each category in one query
+      // ADD: Process ONLY new categories - add them to the end of EACH NEW category
+      if (categoriesToAdd.length > 0) {
+        const categoryObjectIds = categoriesToAdd.map(id => new mongoose.Types.ObjectId(id));
+
+        // Get max sequence for ONLY the NEW categories in one query
         const sequenceResults = await categoryWorkout.aggregate([
           {
             $match: {
@@ -567,30 +600,30 @@ async deleteWorkout(req, res) {
           sequenceMap[result._id.toString()] = result.maxSequence || 0;
         });
 
-        // Process each category
-        for (const categoryId of categoryIds) {
+        // Process each NEW category ONLY
+        for (const categoryId of categoriesToAdd) {
           const categoryObjectId = new mongoose.Types.ObjectId(categoryId);
           const idStr = categoryObjectId.toString();
           
-          // Calculate next sequence (max + 1)
+          // Calculate next sequence for THIS NEW category (max + 1)
           const maxSeq = sequenceMap[idStr] || 0;
           const nextSeq = maxSeq + 1;
 
-          // Check if association already exists (active or inactive)
+          // Check if association already exists (might be inactive from previous removal)
           const existingAssociation = await categoryWorkout.findOne({
             categoryId: categoryObjectId,
             workoutId
           });
 
           if (existingAssociation) {
-            // Update existing: reactivate and move to end
+            // Reactivate and move to end of THIS category
             existingAssociation.isActive = true;
             existingAssociation.sequence = nextSeq;
             existingAssociation.updatedAt = Date.now();
             await existingAssociation.save();
-            console.log(`🔄 Updated association for category ${idStr}: sequence ${nextSeq}`);
+            console.log(`🔄 Reactivated association for NEW category ${idStr}: sequence ${nextSeq}`);
           } else {
-            // Create new association at the end
+            // Create new association at the end of THIS category
             await categoryWorkout.create({
               categoryId: categoryObjectId,
               workoutId,
@@ -599,15 +632,15 @@ async deleteWorkout(req, res) {
               createdAt: Date.now(),
               updatedAt: Date.now()
             });
-            console.log(`✅ Created association for category ${idStr}: sequence ${nextSeq}`);
+            console.log(`✅ Created new association for NEW category ${idStr}: sequence ${nextSeq}`);
           }
 
-          // Update sequenceMap for next iteration
+          // Update sequenceMap for next iteration (in case of multiple new categories)
           sequenceMap[idStr] = nextSeq;
         }
       }
 
-      console.log('✅ Category membership synced');
+      console.log('✅ Category membership synced - kept sequences maintain their position');
     }
 
     // -----------------------------
@@ -687,6 +720,7 @@ async deleteWorkout(req, res) {
     
     fieldsToExclude.forEach(field => delete updateData[field]);
     console.log('🔧 Updating workout fields:', updateData);
+    
     // Update allowed fields
     if (updateData.name) workout.name = updateData.name.trim();
     if (updateData.introduction !== undefined) workout.introduction = updateData.introduction;
@@ -822,3 +856,4 @@ async getworkoutbyid(req, res) {
 }
 
 module.exports = new WorkoutAdminController();
+  
