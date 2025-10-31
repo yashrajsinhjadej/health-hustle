@@ -56,7 +56,7 @@ const validateAdminEmail = [
 ];
 
 // Validation rules for user profile update
-const validateUserProfileUpdate = [
+const validateUserFirstTime = [
     // Name validation
     body('name')
         .trim()
@@ -221,6 +221,80 @@ const validateAdminPasswordReset = [
         .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
 ];
 
+const validateUserProfileUpdate = [
+    // Name validation (optional)
+    body('name')
+        .optional()
+        .trim()
+        .isLength({ min: 1, max: 50 })
+        .withMessage('Name must be between 1 and 50 characters')
+        .matches(/^[a-zA-Z\s]+$/)
+        .withMessage('Name can only contain letters and spaces'),
+
+    // Email validation (optional)
+    body('email')
+        .optional()
+        .trim()
+        .isEmail()
+        .withMessage('Please enter a valid email address')
+        .normalizeEmail(),
+
+    // Gender validation (optional)
+    body('gender')
+        .optional()
+        .trim()
+        .isIn(['male', 'female', 'other'])
+        .withMessage('Gender must be male, female, or other'),
+
+    // Age validation (optional)
+    body('age')
+        .optional()
+        .isInt({ min: 13, max: 120 })
+        .withMessage('Age must be between 13 and 120'),
+
+    // Height unit validation (required if height is provided)
+    body('heightUnit')
+        .if(body('height').exists())
+        .notEmpty()
+        .withMessage('Height unit is required when height is provided')
+        .isIn(['cm', 'ft'])
+        .withMessage('Height unit must be cm or ft'),
+
+    // Height validation (optional, but requires heightUnit if provided)
+    body('height')
+        .optional()
+        .isFloat({ min: 0.1 })
+        .withMessage('Height must be a positive number')
+        .custom((value, { req }) => {
+            if (value && !req.body.heightUnit) {
+                throw new Error('Height unit must be provided when height is specified');
+            }
+            return true;
+        }),
+
+    // Weight unit validation (required if weight is provided)
+    body('weightUnit')
+        .if(body('weight').exists())
+        .notEmpty()
+        .withMessage('Weight unit is required when weight is provided')
+        .isIn(['kg', 'lbs'])
+        .withMessage('Weight unit must be kg or lbs'),
+
+    // Weight validation (optional, but requires weightUnit if provided)
+    body('weight')
+        .optional()
+        .isFloat({ min: 0.1 })
+        .withMessage('Weight must be a positive number')
+        .custom((value, { req }) => {
+            if (value && !req.body.weightUnit) {
+                throw new Error('Weight unit must be provided when weight is specified');
+            }
+            return true;
+        })
+];
+
+
+
 module.exports = {
     validateUserProfileUpdate,
     validatePhoneNumber,
@@ -229,5 +303,6 @@ module.exports = {
     validateAdminLogin,
     validateAdminEmail,
     validateAdminPasswordReset,
+    validateUserFirstTime,
     handleValidationErrors
 }; 

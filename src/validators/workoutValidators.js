@@ -191,10 +191,26 @@ const getcategoryvalidator = [
 ];
 
 
+const updatesequencevalidator = [
+    body('workoutId')
+        .notEmpty().withMessage('Workout ID is required')
+        .isMongoId().withMessage('Invalid Workout ID format'),
+
+    body('categoryId')
+        .notEmpty().withMessage('Category ID is required')
+        .isMongoId().withMessage('Invalid Category ID format'),
+
+    body('workoutsequence')
+        .notEmpty().withMessage('Workout sequence is required')
+        .isInt({ min: 1 }).withMessage('Workout sequence must be a positive integer'),
+]
+
+
 module.exports = {
     createWorkoutValidator,
     getworkByIdvalidators,
     listWorkoutsValidator,
+    updatesequencevalidator,
     updateWorkoutValidator,
     getworkoutByIdvalidator,
     deleteWorkoutValidator,

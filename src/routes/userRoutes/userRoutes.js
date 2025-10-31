@@ -5,6 +5,7 @@ const { authenticateToken, adminOrUser } = require('../../middleware/auth');
 const UserController = require('../../controllers/UserController');
 const { 
     validateUserProfileUpdate, 
+    validateUserFirstTime,
     handleValidationErrors 
 } = require('../../validators/userValidators');
 const ResponseHandler = require('../../utils/ResponseHandler');
@@ -41,6 +42,11 @@ router.get('/', (req, res) => {
 router.get('/profile', UserController.getUserProfile); // verified by 
 
 // PUT /user/firsttime - Complete profile setup during first registration
-router.post('/firsttime', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile);
+router.post('/firsttime', validateUserFirstTime, handleValidationErrors, UserController.updateFirstTimeProfile);
+
+router.post('/delete', UserController.deleteUserAccount);
+
+router.post('/update', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile);
+
 
 module.exports = router;

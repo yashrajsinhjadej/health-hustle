@@ -8,8 +8,9 @@ const mongoose = require('mongoose');
 const EmailService = require('../services/emailService');
 const ResponseHandler = require('../utils/ResponseHandler');
 const {Parser}=require('json2csv');
-
-
+const otpmodel = require('../models/OTP');
+const dailyHealthData = require('../models/DailyHealthData');
+const Goals = require('../models/Goals');
 
 const ConnectionHelper = require('../utils/connectionHelper');
 
@@ -626,6 +627,14 @@ class AdminAuthController {
             // 2. Delete the user from database
             await User.findByIdAndDelete(userId);
             console.log(`🗑️  [${requestId}] User deleted successfully: ${userId}`);
+
+            // delete related data if any (e.g., password resets,healthdata,workoutdata,goals,otp)
+            await PasswordReset.deleteMany({ userId: userId });
+            await dailyHealthData.deleteMany({ userId: userId });
+            await otpmodel.deleteMany({ userId: userId });
+            await Goals.deleteMany({ userId: userId });
+
+            console.log(`🗑️  [${requestId}] Related data for user deleted: ${userId}`);
 
             // 3. Fetch all users (exclude admins from the list)
             let users = await User.find({ role: { $ne: 'admin' } })

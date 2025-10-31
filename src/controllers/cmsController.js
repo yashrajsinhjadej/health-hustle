@@ -141,7 +141,7 @@ exports.upsertCMSPage = async (req, res) => {
 exports.getPublicCMSPageHTML = async (req, res) => {
   try {
     const cmsPage = await CMSPage.findOne({ slug: req.params.slug }).select('htmlContent');
-
+    
     if (!cmsPage) {
       return res
         .status(404)

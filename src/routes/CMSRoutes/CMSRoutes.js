@@ -13,7 +13,7 @@ const router = express.Router();
 router.put('/admin/cms-pages/:slug', /* protect, admin, */ upsertCMSPage);
 
 // Public: full HTML
-router.get('/cms/about-us', getPublicCMSPageHTML);
+router.get('/:slug', getPublicCMSPageHTML);
 
 
 module.exports = router; // Use module.exports = router;

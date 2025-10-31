@@ -12,6 +12,202 @@ const {
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
 
+const dailyHealthData = require('../models/DailyHealthData');
+const otp = require('../models/OTP');
+const Goals = require('../models/Goals');
+const passwordReset = require('../models/PasswordReset');
+
+async function updateUserProfile(req, res) {
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+        console.log(`👤 [${requestId}] UserController.updateUserProfile START`);
+        console.log(`👤 [${requestId}] Request body:`, req.body);
+        
+        const user = req.user;
+        console.log(`👤 [${requestId}] User from middleware: ${user._id}`);
+        console.log(`👤 [${requestId}] User profile completed: ${user.profileCompleted}`);
+
+        // Check if profile is completed (users can only update after initial setup)
+        if (user.profileCompleted !== true) {
+            console.log(`👤 [${requestId}] Profile not completed for user: ${user._id}`);
+            return ResponseHandler.error(res, "Profile update failed", "Please complete your profile first before updating.");
+        }
+
+        const {
+            name,
+            email,
+            gender,
+            height,
+            heightUnit,
+            weight,
+            weightUnit,
+            age
+        } = req.body;
+
+        console.log(`👤 [${requestId}] Profile data received:`, {
+            name, email, gender, height, heightUnit, weight, weightUnit, age
+        });
+
+        // Prepare update data object (only include fields that are provided)
+        const updateData = {};
+
+        // Add provided fields to update data
+        if (name !== undefined) {
+            updateData.name = name.trim();
+        }
+
+        if (email !== undefined) {
+            updateData.email = email.toLowerCase().trim();
+        }
+
+        if (gender !== undefined) {
+            updateData.gender = gender.toLowerCase();
+        }
+
+        if (age !== undefined) {
+            updateData.age = age;
+        }
+
+        // Handle height update
+        if (height !== undefined && heightUnit !== undefined) {
+            try {
+                console.log(`👤 [${requestId}] Converting height...`);
+                const heightInCm = convertHeightToCm(height, heightUnit);
+                console.log(`👤 [${requestId}] Converted - Height: ${heightInCm}cm`);
+
+                // Validate converted height
+                if (!isValidHeight(heightInCm)) {
+                    console.log(`👤 [${requestId}] Invalid height: ${heightInCm}cm`);
+                    return ResponseHandler.error(res, "Invalid height", 
+                        `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`);
+                }
+
+                updateData.height = heightInCm;
+                updateData['userPreferences.heightUnit'] = heightUnit;
+            } catch (conversionError) {
+                console.error(`👤 [${requestId}] Height conversion error:`, conversionError);
+                return ResponseHandler.error(res, 'Height conversion failed');
+            }
+        }
+
+        // Handle weight update
+        if (weight !== undefined && weightUnit !== undefined) {
+            try {
+                console.log(`👤 [${requestId}] Converting weight...`);
+                const weightInKg = convertWeightToKg(weight, weightUnit);
+                console.log(`👤 [${requestId}] Converted - Weight: ${weightInKg}kg`);
+
+                // Validate converted weight
+                if (!isValidWeight(weightInKg)) {
+                    console.log(`👤 [${requestId}] Invalid weight: ${weightInKg}kg`);
+                    return ResponseHandler.error(res, "Invalid weight", 
+                        `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`);
+                }
+
+                updateData.weight = weightInKg;
+                updateData['userPreferences.weightUnit'] = weightUnit;
+            } catch (conversionError) {
+                console.error(`👤 [${requestId}] Weight conversion error:`, conversionError);
+                return ResponseHandler.error(res, 'Weight conversion failed');
+            }
+        }
+
+        // Check if there's anything to update
+        if (Object.keys(updateData).length === 0) {
+            console.log(`👤 [${requestId}] No fields to update`);
+            return ResponseHandler.error(res, "No update data", "No valid fields provided for update.");
+        }
+
+        console.log(`👤 [${requestId}] Update data prepared:`, updateData);
+
+        // Ensure MongoDB connection is ready
+        console.log(`👤 [${requestId}] Ensuring MongoDB connection...`);
+        await ConnectionHelper.ensureConnection();
+        console.log(`👤 [${requestId}] MongoDB connection confirmed, starting database update...`);
+
+        // Update user with validation and timeout
+        const userUpdated = await Promise.race([
+            User.findByIdAndUpdate(
+                user._id, 
+                updateData,
+                { 
+                    new: true, // Return updated document
+                    runValidators: true // Run mongoose validators
+                }
+            ),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Database update timeout after 10 seconds')), 10000)
+            )
+        ]);
+
+        console.log(`👤 [${requestId}] Database update completed successfully`);
+
+        if (!userUpdated) {
+            console.log(`👤 [${requestId}] User not found after update`);
+            return ResponseHandler.notFound(res, "User not found");
+        }
+
+        console.log(`👤 Profile updated for user ${userUpdated._id} - ${userUpdated.name}`);
+        if (updateData.height) {
+            console.log(`📏 Height updated: ${height} ${heightUnit} → ${updateData.height} cm`);
+        }
+        if (updateData.weight) {
+            console.log(`⚖️ Weight updated: ${weight} ${weightUnit} → ${updateData.weight} kg`);
+        }
+
+        // Calculate display height and weight for response
+        const displayHeight = getDisplayHeight(userUpdated.height, userUpdated.userPreferences.heightUnit);
+        const displayWeight = getDisplayWeight(userUpdated.weight, userUpdated.userPreferences.weightUnit);
+        
+        console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
+        console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+
+        return ResponseHandler.success(res, "Profile updated successfully", {
+            user: {
+                id: userUpdated._id,
+                name: userUpdated.name,
+                phone: userUpdated.phone,
+                email: userUpdated.email,
+                profileCompleted: userUpdated.profileCompleted,
+                age: userUpdated.age,
+                gender: userUpdated.gender,
+                height: userUpdated.height, // Raw height in cm
+                weight: userUpdated.weight, // Raw weight in kg
+                displayHeight: displayHeight, // Height in user's preferred unit
+                displayWeight: displayWeight, // Weight in user's preferred unit
+                userPreferences: userUpdated.userPreferences
+            }
+        });
+
+    } catch (error) {
+        console.error(`👤 [${requestId}] Update user profile error:`, error);
+        console.error(`👤 [${requestId}] Error name: ${error.name}`);
+        console.error(`👤 [${requestId}] Error message: ${error.message}`);
+        console.error(`👤 [${requestId}] Error stack:`, error.stack);
+        
+        // Handle specific error types
+        if (error.message.includes('timeout')) {
+            console.error(`👤 [${requestId}] Database operation timed out`);
+            return ResponseHandler.serverError(res, "Database operation timed out. Please try again.");
+        }
+        
+        // Handle mongoose validation errors
+        if (error.name === 'ValidationError') {
+            console.error(`👤 [${requestId}] Mongoose validation error:`, error.errors);
+            return ResponseHandler.mongooseError(res, error);
+        }
+
+        // Handle duplicate key errors (email/phone already exists)
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyPattern)[0];
+            console.error(`👤 [${requestId}] Duplicate key error for field: ${field}`);
+            return ResponseHandler.error(res, "Update failed", `This ${field} is already in use.`);
+        }
+
+        return ResponseHandler.serverError(res, "Failed to update profile");
+    }
+}
+
 
 async function getUserProfile(req, res) {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -78,7 +274,7 @@ async function getUserProfile(req, res) {
 }
 
 
-async function updateUserProfile(req, res) {
+async function updateFirstTimeProfile(req, res) {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
         console.log(`👤 [${requestId}] UserController.updateUserProfile START`);
@@ -243,8 +439,45 @@ async function updateUserProfile(req, res) {
     }
 }
 
+const deleteUserAccount = async (req, res) => {
+  const userId = req.user?._id;
+  try {
+    if (!userId) {
+      return ResponseHandler.unauthorized(res, "Authentication required");
+    }
+
+    // Delete user
+    const deletedUser = await User.findByIdAndDelete(userId);
+    if (!deletedUser) {
+      return ResponseHandler.error(res, "Not found", "User account does not exist", 404);
+    }
+
+    // Best-effort cascade deletes (do not block success)
+    try {
+      await dailyHealthData.deleteMany({ user: userId });
+      await otp.deleteMany({ user: userId });
+      await passwordReset.deleteMany({ user: userId });
+      await Goals.deleteMany({ user: userId });
+    } catch (cascadeErr) {
+      console.warn("Cascade delete warning:", cascadeErr);
+    }
+
+    return ResponseHandler.success(res, "User account deleted successfully");
+  } catch (error) {
+    console.error("Error deleting user account:", error);
+
+    if (error?.name === "CastError") {
+      return ResponseHandler.error(res, "Invalid request", "Invalid user ID format", 400);
+    }
+
+    return ResponseHandler.serverError(res, "Failed to delete user account");
+  }
+};
+
 
 module.exports = {
     getUserProfile,
+    updateFirstTimeProfile,
+    deleteUserAccount,
     updateUserProfile
 };
