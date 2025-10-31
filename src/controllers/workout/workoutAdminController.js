@@ -853,6 +853,140 @@ async getworkoutbyid(req, res) {
   }
 }
 
+// controllers/workoutController.js
+
+// import mongoose from "mongoose";
+// import { ResponseHandler } from "../utils/responseHandler.js";
+// import categoryWorkout from "../models/categoryWorkout.js";
+
+/**
+ * Updates the sequence/order of a workout within a category.
+ * This function moves a single workout to a target position and shifts other workouts accordingly
+ * so that sequences remain contiguous without collisions.
+ *
+ * Security/robustness notes:
+ * - Uses a transaction to ensure atomic updates.
+ * - Validates inputs and ensures integers for sequence.
+ * - Handles no-op (same sequence) quickly.
+ * - Uses index hints in comments; ensure you create indexes in your model.
+ */
+async  updateWorkoutSequence(req, res) {
+  const session = await mongoose.startSession();
+
+  try {
+    const { workoutId, categoryId, workoutsequence } = req.body;
+
+    console.log('🔄 Updating workout sequence:', req.body)
+    console.log(workoutsequence)
+
+    // Validate required fields (the original code had a logic bug)
+    if (!workoutId || !categoryId || workoutsequence === undefined || workoutsequence === null) {
+      return ResponseHandler.badRequest(
+        res,
+        "workoutId, categoryId and workoutsequence are required"
+      );
+    }
+
+    // Ensure sequence is a positive integer
+    const newSequence = Number(workoutsequence);
+    if (!Number.isInteger(newSequence) || newSequence < 1) {
+      return ResponseHandler.badRequest(res, "workoutsequence must be a positive integer");
+    }
+
+    await session.startTransaction();
+
+    // 1) Find the existing record to get its current sequence
+    const current = await categoryWorkout.findOne(
+      { categoryId, workoutId },
+      { sequence: 1, _id: 0 }
+    ).session(session);
+
+    if (!current) {
+      await session.abortTransaction();
+      return ResponseHandler.notFound(res, "Workout not found in this category");
+    }
+
+    const oldSequence = current.sequence;
+
+    // Optional: find max sequence in the category to clamp newSequence
+    const maxDoc = await categoryWorkout
+      .find({ categoryId }, { sequence: 1 })
+      .sort({ sequence: -1 })
+      .limit(1)
+      .session(session);
+    const maxSequence = maxDoc.length ? maxDoc[0].sequence : 0;
+
+    if (maxSequence === 0) {
+      // Should not happen because we found 'current', but guard anyway
+      await session.abortTransaction();
+      return ResponseHandler.serverError(res, "Invalid category sequence state");
+    }
+
+    // Clamp newSequence to valid range [1, maxSequence]
+    const targetSequence = Math.max(1, Math.min(newSequence, maxSequence));
+
+    // 2) No-op if target equals current
+    if (targetSequence === oldSequence) {
+      await session.commitTransaction();
+      return ResponseHandler.success(res, "Workout sequence unchanged", {
+        workoutId,
+        categoryId,
+        sequence: targetSequence
+      });
+    }
+
+    // 3) Shift other items in affected range
+    if (oldSequence < targetSequence) {
+      // Moving down: shift items between (oldSequence+1 .. targetSequence) up by -1
+      await categoryWorkout.updateMany(
+        {
+          categoryId,
+          sequence: { $gt: oldSequence, $lte: targetSequence },
+          workoutId: { $ne: workoutId }
+        },
+        { $inc: { sequence: -1 } },
+        { session }
+      );
+    } else {
+      // Moving up: shift items between (targetSequence .. oldSequence-1) down by +1
+      await categoryWorkout.updateMany(
+        {
+          categoryId,
+          sequence: { $gte: targetSequence, $lt: oldSequence },
+          workoutId: { $ne: workoutId }
+        },
+        { $inc: { sequence: 1 } },
+        { session }
+      );
+    }
+
+    // 4) Set the workout to its target position
+    await categoryWorkout.updateOne(
+      { categoryId, workoutId },
+      { $set: { sequence: targetSequence } },
+      { session }
+    );
+
+    await session.commitTransaction();
+
+    return ResponseHandler.success(res, "Workout sequence updated successfully", {
+      workoutId,
+      categoryId,
+      sequence: targetSequence
+    });
+  } catch (error) {
+    console.error("❌ Error updating workout sequence:", error);
+    try {
+      await session.abortTransaction();
+    } catch (_) {}
+    return ResponseHandler.serverError(res, "An error occurred while updating workout sequence");
+  } finally {
+    session.endSession();
+  }
+}
+
+
+
 }
 
 module.exports = new WorkoutAdminController();

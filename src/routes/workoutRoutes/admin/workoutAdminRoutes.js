@@ -70,5 +70,7 @@ router.get('/getworkoutbyid/:workoutId',
     workoutAdminController.getworkoutbyid
 );
 
-
+router.post('/updatesequence',
+    workoutAdminController.updateWorkoutSequence
+);
 module.exports = router;

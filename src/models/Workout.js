@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const WorkoutSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
+  name: { type: String, required: true},
   thumbnailUrl: { type: String, required: true },
   bannerUrl: { type: String, required: true },
 
