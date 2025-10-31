@@ -1,19 +1,38 @@
 const express = require('express');
 const {
   upsertCMSPage,
-  getPublicCMSPageHTML
-} = require('../../controllers/cmsController'); // Use require
+  getCMSPageForEdit,
+  listCMSPages,
+  getPublicCMSPageHTML,
+  deleteCMSPage
+} = require('../../controllers/cmsController');
 
-// Assuming you import your authentication middleware here:
-// const { protect, admin } = require('../middleware/authMiddleware'); 
+// Import your auth middleware
+// const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Admin: upsert only
-router.put('/admin/cms-pages/:slug', /* protect, admin, */ upsertCMSPage);
+// ============================================
+// ADMIN ROUTES (Protected)
+// ============================================
 
-// Public: full HTML
-router.get('/:slug', getPublicCMSPageHTML);
+// Create or Update CMS Page
+router.post('/admin/cms', /* protect, adminOnly, */ upsertCMSPage);
 
+// Get CMS Page for Editing
+router.get('/admin/:slug', /* protect, adminOnly, */ getCMSPageForEdit);
 
-module.exports = router; // Use module.exports = router;
+// List all CMS Pages
+router.get('/admin/cms', /* protect, adminOnly, */ listCMSPages);
+
+// Delete CMS Page
+router.delete('/admin/cms/:slug', /* protect, adminOnly, */ deleteCMSPage);
+
+// ============================================
+// PUBLIC ROUTES (No Auth)
+// ============================================
+
+// Get CMS Page as HTML (for WebView)
+router.get('/public/cms/:slug', getPublicCMSPageHTML);
+
+module.exports = router;
