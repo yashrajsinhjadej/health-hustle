@@ -1,34 +1,34 @@
+// models/CMSPage.js
 const mongoose = require('mongoose');
 
-const CMSPageSchema = new mongoose.Schema({
-  // Unique identifier used in the URL and by the mobile app
+const cmsPageSchema = new mongoose.Schema({
   slug: {
     type: String,
-    required: [true, 'Slug is required for CMS pages'],
+    required: true,
     unique: true,
-    lowercase: true,
     trim: true,
+    lowercase: true
   },
-  // Title for the Admin UI
   title: {
     type: String,
-    required: [true, 'Title is required'],
-    trim: true,
-  },
-  // Raw content (e.g., Markdown) edited by the admin
-  rawContent: {
-    type: String,
     required: true,
+    trim: true
   },
-  // Pre-rendered, mobile-optimized HTML sent to the WebView
   htmlContent: {
     type: String,
-    required: true,
+    required: true
   },
-}, {
-  timestamps: true, // Adds createdAt and updatedAt
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
-const CMSPage = mongoose.model('CMSPage', CMSPageSchema);
+// Index for faster queries
+cmsPageSchema.index({ slug: 1 });
 
-module.exports = CMSPage;
+module.exports = mongoose.model('CMSPage', cmsPageSchema);

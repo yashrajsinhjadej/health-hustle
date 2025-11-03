@@ -7,7 +7,7 @@ const CMSPage = require('../models/CMSPage');
  */
 exports.upsertCMSPage = async (req, res) => {
   try {
-    const { slug, title, htmlContent, metaDescription } = req.body;
+    const { slug, title, htmlContent } = req.body;
 
     // Validation
     if (!slug || !title || !htmlContent) {
@@ -27,7 +27,6 @@ exports.upsertCMSPage = async (req, res) => {
         slug: sanitizedSlug,
         title,
         htmlContent,
-        metaDescription: metaDescription || '',
         updatedAt: Date.now()
       },
       {
@@ -115,7 +114,7 @@ exports.listCMSPages = async (req, res) => {
 exports.getPublicCMSPageHTML = async (req, res) => {
   try {
     const cmsPage = await CMSPage.findOne({ slug: req.params.slug })
-      .select('title htmlContent metaDescription');
+      .select('title htmlContent');
     
     if (!cmsPage) {
       return res
@@ -124,13 +123,20 @@ exports.getPublicCMSPageHTML = async (req, res) => {
         .send(generateErrorHTML('404', 'Page Not Found'));
     }
 
+    console.log('📄 Rendering CMS page:', req.params.slug);
+    console.log('📝 Content length:', cmsPage.htmlContent.length);
+    console.log('🔍 Has onclick:', cmsPage.htmlContent.includes('onclick'));
+
     // Generate full HTML document for mobile WebView
-    const fullHTML = generateFullHTML(cmsPage.title, cmsPage.htmlContent, cmsPage.metaDescription);
+    const fullHTML = generateFullHTML(cmsPage.title, cmsPage.htmlContent);
+
+    console.log('✅ Full HTML length:', fullHTML.length);
 
     return res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
-      .set('Cache-Control', 'public, max-age=300') // Cache for 5 minutes
+      .set('Cache-Control', 'no-cache') // Disable cache for testing
+      .set('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline' 'unsafe-hashes'; script-src-attr 'unsafe-inline' 'unsafe-hashes'; style-src 'unsafe-inline';")
       .send(fullHTML);
 
   } catch (error) {
@@ -173,13 +179,23 @@ exports.deleteCMSPage = async (req, res) => {
 };
 
 // Helper function to generate full HTML document
-function generateFullHTML(title, content, metaDescription = '') {
+function generateFullHTML(title, content) {
+  // Extract and separate scripts from content
+  const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  const scripts = [];
+  let contentWithoutScripts = content;
+  
+  let match;
+  while ((match = scriptRegex.exec(content)) !== null) {
+    scripts.push(match[1]); // Store script content
+    contentWithoutScripts = contentWithoutScripts.replace(match[0], ''); // Remove script tags
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="${escapeHtml(metaDescription)}">
     <title>${escapeHtml(title)}</title>
     <style>
         * {
@@ -280,7 +296,20 @@ function generateFullHTML(title, content, metaDescription = '') {
     </style>
 </head>
 <body>
-    ${content}
+    ${contentWithoutScripts}
+    ${scripts.length > 0 ? `<script>
+        // Execute scripts after DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            ${scripts.join('\n')}
+        });
+        // Also execute immediately in case DOM is already loaded
+        if (document.readyState === 'loading') {
+            // DOM not ready, event listener will handle it
+        } else {
+            // DOM already loaded, execute now
+            ${scripts.join('\n')}
+        }
+    </script>` : ''}
 </body>
 </html>`;
 }
