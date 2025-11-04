@@ -28,7 +28,7 @@ const cmsPageSchema = new mongoose.Schema({
   }
 });
 
-// Index for faster queries
-cmsPageSchema.index({ slug: 1 });
+// Note: slug index removed - unique: true already creates an index automatically
+// Keeping this line would cause "Duplicate schema index" warning
 
 module.exports = mongoose.model('CMSPage', cmsPageSchema);

@@ -1,10 +1,14 @@
 // services/s3Service.js
-const AWS = require('aws-sdk');
+// Upgraded to AWS SDK v3 - modular and tree-shakeable for better performance
+const { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+// Create S3 client with v3 configuration
+const s3Client = new S3Client({
   region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
 });
 
 const BUCKET = process.env.AWS_BUCKET_NAME;
@@ -46,17 +50,20 @@ const uploadToS3 = async (fileBuffer, fileName, mimetype, options = {}) => {
     ContentType: mimetype,
   };
 
-  // Optional params
+  // Optional params (SDK v3 style)
   if (acl) params.ACL = acl;
   if (cacheControl) params.CacheControl = cacheControl;
   if (contentDisposition) params.ContentDisposition = contentDisposition;
 
-  const data = await s3.upload(params).promise();
+  // SDK v3: Use command pattern instead of .promise()
+  const command = new PutObjectCommand(params);
+  const data = await s3Client.send(command);
 
   // Return both key (for DB) and a URL (for immediate use in UI if appropriate)
   return {
-    key: data.Key,
-    url: getS3PublicUrl(data.Key),
+    key: key,
+    url: getS3PublicUrl(key),
+    etag: data.ETag, // SDK v3 response format
   };
 };
 
@@ -77,13 +84,20 @@ const deleteFromS3 = async (key) => {
     Bucket: BUCKET,
     Key: key,
   };
-  await s3.deleteObject(params).promise();
+  
+  // SDK v3: Use command pattern
+  const command = new DeleteObjectCommand(params);
+  await s3Client.send(command);
 };
 
 const healthCheck = async () => {
   try {
-    // Try listing 1 object to verify access
-    await s3.listObjectsV2({ Bucket: BUCKET, MaxKeys: 1 }).promise();
+    // SDK v3: Use command pattern to list objects
+    const command = new ListObjectsV2Command({ 
+      Bucket: BUCKET, 
+      MaxKeys: 1 
+    });
+    await s3Client.send(command);
     return { status: 'healthy', message: 'S3 service is accessible' };
   } catch (error) {
     return { status: 'unhealthy', message: error.message };
