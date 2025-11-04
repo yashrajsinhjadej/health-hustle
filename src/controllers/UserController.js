@@ -11,7 +11,7 @@ const {
 } = require('../utils/unitConverter');
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
-
+const s3 = require('../services/s3Service');
 const dailyHealthData = require('../models/DailyHealthData');
 const otp = require('../models/OTP');
 const Goals = require('../models/Goals');
@@ -169,6 +169,7 @@ async function updateUserProfile(req, res) {
                 phone: userUpdated.phone,
                 email: userUpdated.email,
                 profileCompleted: userUpdated.profileCompleted,
+                profilePictureUrl: userUpdated.profilePictureUrl || null,
                 age: userUpdated.age,
                 gender: userUpdated.gender,
                 height: userUpdated.height, // Raw height in cm
@@ -244,8 +245,9 @@ async function getUserProfile(req, res) {
                 email: user.email,
                 role: user.role,
                 profileCompleted: user.profileCompleted,
-                lastLoginAt:user.lastLoginAt,
-                signupAt:user.signupAt,
+                profilePictureUrl: user.profilePictureUrl || null,
+                lastLoginAt: user.lastLoginAt,
+                signupAt: user.signupAt,
                 // Include profile data if available
                 ...(user.profileCompleted && {
                     age: user.age,
@@ -403,6 +405,7 @@ async function updateFirstTimeProfile(req, res) {
                 phone: userUpdated.phone,
                 email: userUpdated.email,
                 profileCompleted: userUpdated.profileCompleted,
+                profilePictureUrl: userUpdated.profilePictureUrl || null,
                 age: userUpdated.age,
                 gender: userUpdated.gender,
                 height: userUpdated.height, // Raw height in cm
@@ -475,9 +478,157 @@ const deleteUserAccount = async (req, res) => {
 };
 
 
+const addProfilePicture = async (req, res) => {
+    const userId = req.user?._id;
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        console.log(`🖼️ [${requestId}] UserController.addProfilePicture START`);
+        console.log(`🖼️ [${requestId}] User ID: ${userId}`);
+
+        // -----------------------------
+        // 1️⃣ Validate file upload
+        // -----------------------------
+        if (!req.file) {
+            console.log(`🖼️ [${requestId}] No file uploaded`);
+            return ResponseHandler.badRequest(res, 'Profile picture is required');
+        }
+
+        const file = req.file;
+        console.log(`🖼️ [${requestId}] File received:`, {
+            fieldname: file.fieldname,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+        });
+
+        // -----------------------------
+        // 2️⃣ Get user from database
+        // -----------------------------
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`🖼️ [${requestId}] User not found: ${userId}`);
+            return ResponseHandler.notFound(res, 'User not found');
+        }
+
+        // -----------------------------
+        // 3️⃣ Upload new profile picture to S3
+        // -----------------------------
+        console.log(`🖼️ [${requestId}] Uploading to S3...`);
+        const uploadResult = await s3.uploadToS3(
+            file.buffer,
+            file.originalname,
+            file.mimetype,
+            {
+                keyPrefix: 'users/profile-pictures/',
+                cacheControl: 'public, max-age=31536000, immutable',
+                contentDisposition: 'inline',
+            }
+        );
+
+        console.log(`🖼️ [${requestId}] S3 upload successful:`, {
+            key: uploadResult.key,
+            url: uploadResult.url
+        });
+
+        // -----------------------------
+        // 4️⃣ Delete old profile picture if exists
+        // -----------------------------
+        if (user.profilePictureKey) {
+            console.log(`🖼️ [${requestId}] Deleting old profile picture from S3...`);
+            try {
+                await s3.deleteFromS3(user.profilePictureKey);
+                console.log(`🖼️ [${requestId}] ✅ Old profile picture deleted:`, user.profilePictureKey);
+            } catch (deleteErr) {
+                console.warn(`🖼️ [${requestId}] ⚠️ Failed to delete old profile picture:`, deleteErr.message);
+                // Continue anyway - don't block upload
+            }
+        } else {
+            console.log(`🖼️ [${requestId}] No existing profile picture to delete`);
+        }
+
+        // -----------------------------
+        // 5️⃣ Update user with new profile picture
+        // -----------------------------
+        user.profilePictureUrl = uploadResult.url || s3.getS3PublicUrl(uploadResult.key);
+        user.profilePictureKey = uploadResult.key;
+        await user.save();
+
+        console.log(`🖼️ [${requestId}] ✅ Profile picture updated successfully`);
+
+        return ResponseHandler.success(res, "Profile picture updated successfully", {
+            profilePictureUrl: user.profilePictureUrl
+        });
+    } catch (error) {
+        console.error(`🖼️ [${requestId}] ❌ Error adding profile picture:`, error);
+        return ResponseHandler.serverError(res, "Failed to update profile picture");
+    }
+};
+
+const deleteProfilePicture = async (req, res) => {
+    const userId = req.user?._id;
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        console.log(`🗑️ [${requestId}] UserController.deleteProfilePicture START`);
+        console.log(`🗑️ [${requestId}] User ID: ${userId}`);
+
+        // -----------------------------
+        // 1️⃣ Get user from database
+        // -----------------------------
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`🗑️ [${requestId}] User not found: ${userId}`);
+            return ResponseHandler.notFound(res, 'User not found');
+        }
+
+        // -----------------------------
+        // 2️⃣ Check if user has a profile picture
+        // -----------------------------
+        if (!user.profilePictureKey && !user.profilePictureUrl) {
+            console.log(`🗑️ [${requestId}] No profile picture to delete`);
+            return ResponseHandler.error(res, 'No profile picture', 'User does not have a profile picture', 400);
+        }
+
+        // -----------------------------
+        // 3️⃣ Delete profile picture from S3
+        // -----------------------------
+        if (user.profilePictureKey) {
+            console.log(`🗑️ [${requestId}] Deleting profile picture from S3:`, user.profilePictureKey);
+            try {
+                await s3.deleteFromS3(user.profilePictureKey);
+                console.log(`🗑️ [${requestId}] ✅ Profile picture deleted from S3`);
+            } catch (deleteErr) {
+                console.error(`🗑️ [${requestId}] ❌ Failed to delete from S3:`, deleteErr.message);
+                // Continue to update database even if S3 deletion fails
+            }
+        } else {
+            console.log(`🗑️ [${requestId}] No S3 key found, skipping S3 deletion`);
+        }
+
+        // -----------------------------
+        // 4️⃣ Update user - remove profile picture references
+        // -----------------------------
+        user.profilePictureUrl = null;
+        user.profilePictureKey = null;
+        await user.save();
+
+        console.log(`🗑️ [${requestId}] ✅ Profile picture removed from user record`);
+
+        return ResponseHandler.success(res, "Profile picture deleted successfully", {
+            profilePictureUrl: null
+        });
+    } catch (error) {
+        console.error(`🗑️ [${requestId}] ❌ Error deleting profile picture:`, error);
+        return ResponseHandler.serverError(res, "Failed to delete profile picture");
+    }
+};
+
 module.exports = {
     getUserProfile,
     updateFirstTimeProfile,
     deleteUserAccount,
+    addProfilePicture,
+    deleteProfilePicture,
     updateUserProfile
 };

@@ -10,7 +10,8 @@ const {
 } = require('../../validators/userValidators');
 const ResponseHandler = require('../../utils/ResponseHandler');
 const createCustomRateLimit = require('../../middleware/customRateLimit');
-
+const { upload, checkFileExists } = require('../../middleware/uploadMiddleware');
+const validateImageUpload = require('../../middleware/validateImageUpload');
 
 // Create rate limiter for user routes using environment variables
 const userRateLimit = createCustomRateLimit(
@@ -48,5 +49,16 @@ router.post('/delete', UserController.deleteUserAccount);
 
 router.post('/update', validateUserProfileUpdate, handleValidationErrors, UserController.updateUserProfile);
 
+// POST /user/addprofilepic - Upload or update profile picture
+router.post(
+    '/addprofilepic',
+    upload.single('profilePic'),
+    validateImageUpload,
+    checkFileExists,
+    UserController.addProfilePicture
+);
+
+// POST /user/deleteprofilepic - Delete profile picture
+router.post('/deleteprofilepic', UserController.deleteProfilePicture);
 
 module.exports = router;

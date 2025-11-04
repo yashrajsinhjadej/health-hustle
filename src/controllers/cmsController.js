@@ -1,9 +1,10 @@
 // controllers/cmsController.js
 const CMSPage = require('../models/CMSPage');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 /**
  * Admin: Create or Update CMS Page
- * POST /api/admin/cms
+ * POST /api/cms/admin/create
  */
 exports.upsertCMSPage = async (req, res) => {
   try {
@@ -109,7 +110,7 @@ exports.listCMSPages = async (req, res) => {
 
 /**
  * Public: Get CMS Page as HTML (for WebView)
- * GET /api/public/cms/:slug
+ * GET /api/cms/:slug
  */
 exports.getPublicCMSPageHTML = async (req, res) => {
   try {
@@ -123,19 +124,13 @@ exports.getPublicCMSPageHTML = async (req, res) => {
         .send(generateErrorHTML('404', 'Page Not Found'));
     }
 
-    console.log('📄 Rendering CMS page:', req.params.slug);
-    console.log('📝 Content length:', cmsPage.htmlContent.length);
-    console.log('🔍 Has onclick:', cmsPage.htmlContent.includes('onclick'));
-
     // Generate full HTML document for mobile WebView
     const fullHTML = generateFullHTML(cmsPage.title, cmsPage.htmlContent);
-
-    console.log('✅ Full HTML length:', fullHTML.length);
 
     return res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
-      .set('Cache-Control', 'no-cache') // Disable cache for testing
+      .set('Cache-Control', 'no-cache')
       .set('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline' 'unsafe-hashes'; script-src-attr 'unsafe-inline' 'unsafe-hashes'; style-src 'unsafe-inline';")
       .send(fullHTML);
 

@@ -115,6 +115,14 @@ const userSchema = new mongoose.Schema({
         },
         default: []
     },
+    profilePictureUrl: {
+        type: String,
+        default: null
+    },
+    profilePictureKey: {
+        type: String,
+        default: null
+    },
     userPreferences: {
         heightUnit: {
             type: String,

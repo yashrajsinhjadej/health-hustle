@@ -7,13 +7,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const ResponseHandler = require('./src/utils/ResponseHandler');
 
-
-// Routes
-const authRoutes = require('./src/routes/authRoutes/authRoutes');
-const adminRoutes = require('./src/routes/adminRoutes/adminRoutes');
-const userRoutes = require('./src/routes/userRoutes/userRoutes');
-const healthRoutes = require('./src/routes/healthRoutes/healthRoutes');
-
 const multer = require('multer');
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -182,7 +175,7 @@ app.get('/health', async (req, res) => {
         const twilioStatus = await TwilioSMSService.healthCheck();
 
         //check aws s3 status 
-        const s3 = require('./src/services/s3service');
+        const s3 = require('./src/services/s3Service');
         const s3Status = await s3.healthCheck();
         
         const healthResponse = {
