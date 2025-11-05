@@ -75,25 +75,22 @@ router.get('/steps', HealthController.getsteps);
 
 
 const { upload, checkFileExists } = require('../../middleware/uploadMiddleware');
-router.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
-    next();
-  });
+const Logger = require('../../utils/logger');
 
 // POST /api/calories/estimate
 router.post(
     '/estimate',
     (req, res, next) => {
-      // Log the incoming form-data fields
-      if (req.body) {
-        console.log('Form fields:', req.body);
+      // Log the incoming form-data fields for debugging
+      if (req.body && Object.keys(req.body).length > 0) {
+        Logger.info('Estimate endpoint form fields', null, { fields: req.body });
       }
       next();
     },
     upload.single('image'), // 'image' is the field name in form-data
     (err, req, res, next) => {
       if (err) {
-        console.error('Upload error:', err.message);
+        Logger.error('Upload error in estimate endpoint', null, { error: err.message });
         return res.status(400).json({ success: false, message: err.message });
       }
       next();

@@ -3,6 +3,7 @@
 
 const { rateLimiter } = require('./customRateLimit');
 const ResponseHandler = require('../utils/ResponseHandler');
+const Logger = require('../utils/logger');
 
 // OTP-specific rate limiter that uses phone number as key
 function createOTPRateLimit(limit, windowSeconds) {
@@ -17,7 +18,11 @@ function createOTPRateLimit(limit, windowSeconds) {
                 const { allowed, remaining, ttl } = await rateLimiter.isAllowed(ipKey, limit, windowSeconds);
                 
                 if (!allowed) {
-                    console.log(`🚫 OTP Rate limit exceeded for IP ${req.ip}: ${remaining} remaining, reset in ${ttl}s`);
+                    Logger.warn('otp-rate-limit', `Rate limit exceeded for IP`, { 
+                        ip: req.ip, 
+                        remaining, 
+                        ttl 
+                    });
                     return res.status(429).json({
                         error: "Too many requests",
                         retryAfter: ttl,
@@ -31,7 +36,9 @@ function createOTPRateLimit(limit, windowSeconds) {
             }
 
             // Clean phone number (remove any formatting)
-            const cleanPhone = phone.replace(/\D/g, '');
+            // Convert to string first to handle both string and number types
+            const phoneString = String(phone);
+            const cleanPhone = phoneString.replace(/\D/g, '');
             
             // Use phone number + endpoint as key for rate limiting
             const phoneKey = `phone:${cleanPhone}:${req.path}`;
@@ -39,7 +46,11 @@ function createOTPRateLimit(limit, windowSeconds) {
             const { allowed, remaining, ttl } = await rateLimiter.isAllowed(phoneKey, limit, windowSeconds);
 
             if (!allowed) {
-                console.log(`🚫 OTP Rate limit exceeded for phone ${cleanPhone}: ${remaining} remaining, reset in ${ttl}s`);
+                Logger.warn('otp-rate-limit', `Rate limit exceeded for phone`, { 
+                    phone: cleanPhone, 
+                    remaining, 
+                    ttl 
+                });
                 return res.status(429).json({
                     error: "Too many requests",
                     retryAfter: ttl,
@@ -50,11 +61,18 @@ function createOTPRateLimit(limit, windowSeconds) {
             // Set rate limit headers
             res.set("X-RateLimit-Remaining", remaining);
             res.set("X-RateLimit-Reset", ttl);
-            console.log(`✅ OTP Rate limit OK for phone ${cleanPhone}: ${remaining} remaining, reset in ${ttl}s`);
+            Logger.debug('otp-rate-limit', `Rate limit OK for phone`, { 
+                phone: cleanPhone, 
+                remaining, 
+                ttl 
+            });
             
             next();
         } catch (err) {
-            console.error("OTP rate limiter error:", err);
+            Logger.error('otp-rate-limit', 'Rate limiter error', { 
+                error: err.message, 
+                stack: err.stack 
+            });
             next(); // fail open if rate limiter fails
         }
     };

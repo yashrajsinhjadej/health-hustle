@@ -171,17 +171,22 @@ const validateUserFirstTime = [
 // Validation result handler middleware
 
 const handleValidationErrors = (req, res, next) => {
-    console.log(`🔍 [${req.requestId}] handleValidationErrors middleware called`);
+    const requestId = req.requestId || 'validation';
+    Logger.debug(requestId, 'handleValidationErrors middleware called');
     const errors = validationResult(req);
     
-    console.log(`🔍 [${req.requestId}] Validation check - Total errors found: ${errors.array().length}`);
+    Logger.debug(requestId, 'Validation check completed', { 
+        totalErrors: errors.array().length 
+    });
     
     if (!errors.isEmpty()) {
-        console.log(`❌ [${req.requestId}] Validation FAILED - Errors:`, JSON.stringify(errors.array(), null, 2));
+        Logger.warn(requestId, 'Validation FAILED', { 
+            errors: errors.array().map(e => ({ field: e.path, message: e.msg }))
+        });
         return ResponseHandler.validationError(res, errors);
     }
     
-    console.log(`✅ [${req.requestId}] Validation PASSED - No errors found`);
+    Logger.debug(requestId, 'Validation PASSED - No errors found');
     next();
 };
 

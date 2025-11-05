@@ -65,7 +65,10 @@ class OTPUtils {
         
         try {
             // TODO: Replace with actual SMS service (Twilio, AWS SNS, etc.)
-            console.log(`📱 OTP sent to ${phone}: ${otp}`);
+            Logger.debug('OTPUtils', 'sendOTP', `📱 Simulating OTP send`, { 
+                phone: phone ? `${phone.slice(0, 3)}***${phone.slice(-2)}` : 'null',
+                otp: otp ? `${otp.slice(0, 2)}****` : 'null'
+            });
             
             // Simulate SMS service response
             const result = {
@@ -90,7 +93,6 @@ class OTPUtils {
                 phone: phone ? `${phone.slice(0, 3)}***${phone.slice(-2)}` : 'null'
             });
             
-            console.error('SMS sending failed:', error);
             return {
                 success: false,
                 message: 'Failed to send OTP',

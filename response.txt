@@ -1,0 +1,600 @@
+{
+    "success": true,
+    "message": "Monthly health report retrieved successfully",
+    "data": {
+        "goalcompletions": false,
+        "streak": 0,
+        "goals": {
+            "stepsGoal": 10000,
+            "caloriesBurnGoal": 2000,
+            "waterIntakeGoal": 8,
+            "caloriesIntakeGoal": 2000,
+            "sleepGoal": {
+                "hours": 8
+            }
+        },
+        "monthPeriod": {
+            "startDate": "2025-10-01",
+            "endDate": "2025-10-31",
+            "month": 10,
+            "year": 2025,
+            "totalDays": 31
+        },
+        "monthSummary": {
+            "water": {
+                "totalGlasses": 45,
+                "totalConsumed": 9000
+            },
+            "calories": {
+                "totalConsumed": 1300,
+                "totalBurned": 40000
+            },
+            "sleep": {
+                "totalDuration": 4.6
+            },
+            "steps": {
+                "totalCount": 67234
+            }
+        },
+        "dailyBreakdown": [
+            {
+                "date": "2025-10-01",
+                "goalCompletion": true,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 20000
+                },
+                "steps": {
+                    "count": 12000
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-02",
+                "goalCompletion": true,
+                "water": {
+                    "ml": 5400,
+                    "glasses": 27
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 10792
+                },
+                "sleep": {
+                    "duration": 1
+                }
+            },
+            {
+                "date": "2025-10-03",
+                "goalCompletion": true,
+                "water": {
+                    "ml": 1200,
+                    "glasses": 6
+                },
+                "calories": {
+                    "consumed": 300,
+                    "burned": 20000
+                },
+                "steps": {
+                    "count": 13000
+                },
+                "sleep": {
+                    "duration": 2
+                }
+            },
+            {
+                "date": "2025-10-04",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 800,
+                    "glasses": 4
+                },
+                "calories": {
+                    "consumed": 200,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 716
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-05",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 128
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-06",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 225
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-07",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-08",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-09",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 400,
+                    "glasses": 2
+                },
+                "calories": {
+                    "consumed": 200,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 1465
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-10",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-11",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-12",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-13",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-14",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 400,
+                    "glasses": 2
+                },
+                "calories": {
+                    "consumed": 200,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 1595
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-15",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 668
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-16",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 552
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-17",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 200,
+                    "glasses": 1
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 1208
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-18",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-19",
+                "goalCompletion": true,
+                "water": {
+                    "ml": 200,
+                    "glasses": 1
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 10229
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-20",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 6712
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-21",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-22",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-23",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 3217
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-24",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-25",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 400,
+                    "glasses": 2
+                },
+                "calories": {
+                    "consumed": 200,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 174
+                },
+                "sleep": {
+                    "duration": 1.6
+                }
+            },
+            {
+                "date": "2025-10-26",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-27",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 200,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 347
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-28",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 1701
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-29",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 0
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-30",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 1668
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            },
+            {
+                "date": "2025-10-31",
+                "goalCompletion": false,
+                "water": {
+                    "ml": 0,
+                    "glasses": 0
+                },
+                "calories": {
+                    "consumed": 0,
+                    "burned": 0
+                },
+                "steps": {
+                    "count": 837
+                },
+                "sleep": {
+                    "duration": 0
+                }
+            }
+        ]
+    }
+}

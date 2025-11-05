@@ -5,6 +5,7 @@ const OTPUtils = require('../utils/otpUtils');
 const OTPService = require('../services/otpService');
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
+const Logger = require('../utils/logger');
 
 class AuthController {
     // Generate JWT token
@@ -23,80 +24,91 @@ class AuthController {
 
     // Send OTP to phone number
     async sendOTP(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = Logger.generateId('auth-send-otp');
+        
         try {
-            console.log(`📱 [${requestId}] AuthController.sendOTP START`);
-            console.log(`📱 [${requestId}] Request body:`, req.body);
-            console.log(`📱 [${requestId}] Request headers:`, req.headers);
-            console.log(`📱 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            Logger.info(requestId, '📱 AuthController.sendOTP - Request started');
+            Logger.logRequest(requestId, req);
             
             const { phone } = req.body;
-            console.log(`📱 [${requestId}] Extracted phone: ${phone} (type: ${typeof phone})`);
+            Logger.debug(requestId, `Extracted phone number`, { phone, type: typeof phone });
 
             // Use service for complete OTP workflow
-            console.log(`📱 [${requestId}] Calling OTPService.sendOTP...`);
+            Logger.info(requestId, 'Calling OTPService.sendOTP');
             const result = await OTPService.sendOTP(phone);
-            console.log(`📱 [${requestId}] OTPService.sendOTP result:`, result);
+            Logger.debug(requestId, 'OTPService.sendOTP result received', { success: result.success });
             
             if (!result.success) {
-                console.log(`📱 [${requestId}] OTP sending failed - Message: ${result.message}`);
+                Logger.warn(requestId, 'OTP sending failed', { message: result.message, phone });
                 
                 if (result.waitTime) {
                     return ResponseHandler.rateLimitError(res, result.waitTime);
                 }
                 
-                return ResponseHandler.error(res, "OTP sending failed", result.message);
+                return ResponseHandler.error(res, result.message, result.error, 400, result.code);
             }
 
-            console.log(`📱 [${requestId}] OTP sent successfully to ${phone}`);
+            Logger.success(requestId, `OTP sent successfully`, { phone });
             
-            // Include OTP in response for testing
-            return ResponseHandler.success(res, "OTP sent successfully", { otp: result.otp });
+            // Include OTP in response for testing/debugging
+            const responseData = {
+                messageId: result.messageId,
+                otp: result.otp
+            };
+            
+            return ResponseHandler.success(res, "OTP sent successfully", responseData);
 
         } catch (error) {
-            console.error(`📱 [${requestId}] Send OTP error:`, error);
-            console.error(`📱 [${requestId}] Error stack:`, error.stack);
+            Logger.error(requestId, 'Send OTP error', { 
+                error: error.message, 
+                stack: error.stack,
+                phone: req.body?.phone 
+            });
             return ResponseHandler.serverError(res, "Failed to send OTP");
         }
     }
 
     // Verify OTP and login/register user
     async verifyOTP(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = Logger.generateId('auth-verify-otp');
+        
         try {
-            console.log(`🔐 [${requestId}] AuthController.verifyOTP START`);
-            console.log(`🔐 [${requestId}] Request body:`, req.body);
-            console.log(`🔐 [${requestId}] Request headers:`, req.headers);
-            console.log(`🔐 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            Logger.info(requestId, '🔐 AuthController.verifyOTP - Request started');
+            Logger.logRequest(requestId, req);
             
             const { phone, otp } = req.body;
-            console.log(`🔐 [${requestId}] Extracted - Phone: ${phone}, OTP: ${otp}`);
+            Logger.debug(requestId, 'Extracted credentials', { phone, otp: '***' });
 
             // Use service for OTP verification
-            console.log(`🔐 [${requestId}] Calling OTPService.verifyOTP...`);
+            Logger.info(requestId, 'Calling OTPService.verifyOTP');
             const verificationResult = await OTPService.verifyOTP(phone, otp);
-            console.log(`🔐 [${requestId}] OTPService.verifyOTP result:`, verificationResult);
+            Logger.debug(requestId, 'OTPService.verifyOTP result received', { 
+                success: verificationResult.success 
+            });
 
-            if (!verificationResult.success ) {
-                console.log(`🔐 [${requestId}] OTP verification failed: ${verificationResult.message}`);
-                return ResponseHandler.error(res, "OTP verification failed", verificationResult.message);
+            if (!verificationResult.success) {
+                Logger.warn(requestId, 'OTP verification failed', { 
+                    message: verificationResult.message,
+                    phone 
+                });
+                return ResponseHandler.error(res, verificationResult.message, verificationResult.error, 400, verificationResult.code);
             }
             
             // Clean phone for user lookup
             const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
-            console.log(`🔐 [${requestId}] OTP verified successfully for ${cleanPhone}`);
+            Logger.success(requestId, 'OTP verified successfully', { phone: cleanPhone });
             
             // Ensure MongoDB connection is ready
-            console.log(`🔐 [${requestId}] Ensuring MongoDB connection...`);
+            Logger.debug(requestId, 'Ensuring MongoDB connection');
             await ConnectionHelper.ensureConnection();
             
             // Check if user exists, if not create new user
-            console.log(`🔐 [${requestId}] Looking for existing user with phone: ${cleanPhone}`);
+            Logger.info(requestId, 'Looking up user in database', { phone: cleanPhone });
             let user = await User.findOne({ phone: cleanPhone });
             
             if (!user) {
                 // Create new user with incomplete profile
-                console.log(`� [${requestId}] Creating new user for ${cleanPhone}`);
+                Logger.info(requestId, 'Creating new user', { phone: cleanPhone });
                 user = new User({
                     name: 'New User', // Temporary name
                     phone: cleanPhone,
@@ -105,26 +117,34 @@ class AuthController {
                     signupAt: new Date()
                 });
                 const savedUser = await user.save();
-                console.log(`🔐 [${requestId}] New user created with ID: ${savedUser._id}`);
+                Logger.success(requestId, 'New user created', { userId: savedUser._id });
             } else {
-                console.log(`� [${requestId}] User already exists: ${user.name} (ID: ${user._id})`);
+                Logger.info(requestId, 'Existing user found', { 
+                    userId: user._id, 
+                    name: user.name 
+                });
             }
 
             // Generate JWT token with user ID first to get the exact iat
-            console.log(`🔐 [${requestId}] Generating JWT token for user: ${user._id}`);
+            Logger.debug(requestId, 'Generating JWT token', { userId: user._id });
             const token = this.generateToken(user._id);
             
             // Extract the iat from the token to set lastLoginAt safely before it
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
-            console.log(`🔐 [${requestId}] Token issued at: ${tokenIssuedAt}`);
-            console.log(`🔐 [${requestId}] Setting lastLoginAt to: ${new Date(tokenIssuedAt.getTime() - 1000)}`);
+            Logger.debug(requestId, 'Token generated', { 
+                tokenIssuedAt,
+                expiresIn: decoded.exp - decoded.iat 
+            });
             
             user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 1000); // 1 second before
             await user.save();
           
-            console.log(`🔐 [${requestId}] JWT token generated: ${token.substring(0, 50)}...`);
+            Logger.success(requestId, 'User login successful', { 
+                userId: user._id,
+                profileCompleted: user.profileCompleted 
+            });
 
             // Set JWT token in Authorization header
             res.set('Authorization', `Bearer ${token}`);
@@ -142,14 +162,21 @@ class AuthController {
             });
 
         } catch (error) {
-            console.error('Verify OTP error:', error);
+            Logger.error(requestId, 'Verify OTP error', { 
+                error: error.message, 
+                stack: error.stack 
+            });
             return ResponseHandler.serverError(res, "Authentication failed");
         }
     }
 
     // Get current user profile
     async getProfile(req, res) {
+        const requestId = Logger.generateId('auth-profile');
+        
         try {
+            Logger.info(requestId, 'Fetching user profile', { userId: req.user._id });
+            
             // req.user is populated by the authenticateToken middleware
             return ResponseHandler.success(res, "Profile fetched successfully", {
                 user: {
@@ -161,7 +188,11 @@ class AuthController {
                 }
             });
         } catch (error) {
-            console.error('Get profile error:', error);
+            Logger.error(requestId, 'Get profile error', { 
+                error: error.message, 
+                stack: error.stack,
+                userId: req.user?._id 
+            });
             return ResponseHandler.serverError(res, "Failed to fetch profile");
         }
     }
@@ -270,7 +301,11 @@ class AuthController {
             Object.assign(user, updateData);
             await user.save();
 
-            console.log(`👤 Profile updated for user: ${user.phone}`);
+            Logger.success('auth-update-profile', `Profile updated successfully`, { 
+                userId: user._id,
+                phone: user.phone,
+                updatedFields: Object.keys(updateData) 
+            });
 
             return ResponseHandler.success(res, "Profile updated successfully", {
                 user: {
@@ -289,15 +324,26 @@ class AuthController {
             });
 
         } catch (error) {
-            console.error('Update profile error:', error);
+            Logger.error('auth-update-profile', 'Update profile error', { 
+                error: error.message, 
+                stack: error.stack,
+                userId: req.user?._id 
+            });
             return ResponseHandler.serverError(res, "Failed to update profile");
         }
     }
 
     // Logout user - invalidate current token
     async logout(req, res) {
+        const requestId = Logger.generateId('auth-logout');
+        
         try {
             const user = req.user;
+            
+            Logger.info(requestId, 'User logout initiated', { 
+                userId: user._id, 
+                phone: user.phone 
+            });
             
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
@@ -306,11 +352,18 @@ class AuthController {
             user.lastLoginAt = new Date();
             await user.save();
             
-            console.log(`🚪 User logged out: ${user.phone}`);
+            Logger.success(requestId, 'User logged out successfully', { 
+                userId: user._id, 
+                phone: user.phone 
+            });
             
             return ResponseHandler.success(res, "Logged out successfully");
         } catch (error) {
-            console.error('Logout error:', error);
+            Logger.error(requestId, 'Logout error', { 
+                error: error.message, 
+                stack: error.stack,
+                userId: req.user?._id 
+            });
             return ResponseHandler.serverError(res, "Logout failed");
         }
     }

@@ -2,6 +2,7 @@
 
 const mongoose = require('mongoose');
 const ResponseHandler = require('../../utils/ResponseHandler');
+const Logger = require('../../utils/logger');
 const workoutModel = require('../../models/Workout');
 const workoutvideoModel = require('../../models/workoutvideo');
 const s3Service = require('../../services/s3Service');
@@ -13,6 +14,7 @@ const CategoryModel = require('../../models/Category');
 class WorkoutAdminController {
 // controllers/workoutController.js (createWorkout)
 async  createWorkout(req, res) {
+  const requestId = `workout-create_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   let bannerKey = null;
   let thumbnailKey = null;
   let bannerUrl = null;
@@ -20,15 +22,21 @@ async  createWorkout(req, res) {
 
   try {
     const workoutData = req.body;
-    console.log('📦 Creating workout:', workoutData);
+    Logger.info('Create workout START', requestId, { 
+      name: workoutData.name, 
+      categoryIds: workoutData.categoryIds,
+      userId: req.user?._id 
+    });
 
     // -----------------------------
     // 1 Validate files first
     // -----------------------------
     if (!req.files || !req.files.banner || !req.files.banner[0]) {
+      Logger.warn('Create workout failed - missing banner', requestId);
       return ResponseHandler.badRequest(res, 'Workout banner image is required');
     }
     if (!req.files.thumbnail || !req.files.thumbnail[0]) {
+      Logger.warn('Create workout failed - missing thumbnail', requestId);
       return ResponseHandler.badRequest(res, 'Workout thumbnail image is required');
     }
 
@@ -49,12 +57,13 @@ async  createWorkout(req, res) {
     }
 
     categoryIds = [...new Set(categoryIds.map(id => id?.toString()))].filter(Boolean);
-    console.log('📂 Category IDs:', categoryIds);
+    Logger.info('Category IDs parsed', requestId, { categoryIds });
 
     // -----------------------------
     // 3 Validate workout name (among ACTIVE workouts)
     // -----------------------------
     if (!workoutData.name || !workoutData.name.trim()) {
+      Logger.warn('Create workout failed - missing name', requestId);
       return ResponseHandler.badRequest(res, 'Workout name is required');
     }
 
@@ -64,6 +73,7 @@ async  createWorkout(req, res) {
     });
 
     if (existingWorkout) {
+      Logger.warn('Create workout failed - duplicate name', requestId, { name: workoutData.name });
       return ResponseHandler.forbidden(res, 'Workout name already exists');
     }
 
@@ -80,6 +90,7 @@ async  createWorkout(req, res) {
       }).filter(Boolean);
 
       if (categoryObjectIds.length !== categoryIds.length) {
+        Logger.warn('Create workout failed - invalid category IDs', requestId);
         return ResponseHandler.badRequest(res, 'One or more category IDs are invalid');
       }
 
@@ -91,13 +102,14 @@ async  createWorkout(req, res) {
       if (validCategories.length !== categoryObjectIds.length) {
         const validIds = validCategories.map(c => c._id.toString());
         const invalidIds = categoryIds.filter(id => !validIds.includes(id));
+        Logger.warn('Create workout failed - inactive categories', requestId, { invalidIds });
         return ResponseHandler.badRequest(
           res,
           `Invalid or inactive category IDs: ${invalidIds.join(', ')}`
         );
       }
 
-      console.log('✅ All categories valid:', validCategories.map(c => c.name));
+      Logger.info('All categories validated', requestId, { categories: validCategories.map(c => c.name) });
     }
 
     // -----------------------------
@@ -112,7 +124,7 @@ async  createWorkout(req, res) {
       ? (Number(lastWorkout.sequence) || 0) + 1
       : 1;
 
-    console.log('🔢 Next workout sequence:', nextWorkoutSequence);
+    Logger.info('Next workout sequence calculated', requestId, { sequence: nextWorkoutSequence });
 
     // -----------------------------
     // 6 Upload images to S3 (using new s3Service API)
@@ -136,7 +148,7 @@ async  createWorkout(req, res) {
       bannerKey = bannerResult.key;
       bannerUrl = bannerResult.url;
       uploadedKeys.push(bannerKey);
-      console.log('✅ Banner uploaded:', bannerUrl || bannerKey);
+      Logger.info('Banner uploaded to S3', requestId, { key: bannerKey });
 
       // Upload thumbnail
       const thumbnailFile = req.files.thumbnail[0];
@@ -154,7 +166,7 @@ async  createWorkout(req, res) {
       thumbnailKey = thumbnailResult.key;
       thumbnailUrl = thumbnailResult.url;
       uploadedKeys.push(thumbnailKey);
-      console.log('✅ Thumbnail uploaded:', thumbnailUrl || thumbnailKey);
+      Logger.info('Thumbnail uploaded to S3', requestId, { key: thumbnailKey });
 
       // If your bucket is private and url is null, derive on demand via presigned URLs or use getS3PublicUrl
       if (!bannerUrl) {
@@ -164,19 +176,19 @@ async  createWorkout(req, res) {
         thumbnailUrl = s3Service.getS3PublicUrl(thumbnailKey);
       }
     } catch (uploadError) {
-      console.error('❌ S3 upload failed:', uploadError);
+      Logger.error('S3 upload failed', requestId, { error: uploadError.message });
 
       // Cleanup any uploaded files
       for (const key of uploadedKeys) {
         try {
           await s3Service.deleteFromS3(key);
-          console.log('🗑️ Cleaned up:', key);
+          Logger.info('Cleaned up S3 object', requestId, { key });
         } catch (cleanupErr) {
-          console.error('⚠️ Cleanup failed for:', key, cleanupErr);
+          Logger.error('S3 cleanup failed', requestId, { key, error: cleanupErr.message });
         }
       }
 
-      return ResponseHandler.serverError(res, 'Failed to upload images');
+      return ResponseHandler.serverError(res, 'Failed to upload images', 'WORKOUT_IMAGE_UPLOAD_FAILED');
     }
 
     // -----------------------------
@@ -199,7 +211,7 @@ async  createWorkout(req, res) {
       createdBy: req.user?._id,
     });
 
-    console.log('✅ Workout created:', workout._id);
+    Logger.info('Workout created in DB', requestId, { workoutId: workout._id });
 
     // -----------------------------
     // 8️⃣ Create CategoryWorkout associations (OPTIMIZED)
@@ -232,8 +244,6 @@ async  createWorkout(req, res) {
         const maxSeq = sequenceMap[idStr] || 0;
         const nextSeq = maxSeq + 1;
 
-        console.log(`📊 Category ${idStr}: sequence ${nextSeq}`);
-
         return {
           categoryId: categoryObjectId,
           workoutId: workout._id,
@@ -244,7 +254,7 @@ async  createWorkout(req, res) {
       });
 
       await categoryWorkout.insertMany(categoryWorkouts);
-      console.log(`✅ Created ${categoryWorkouts.length} category associations`);
+      Logger.info('Category associations created', requestId, { count: categoryWorkouts.length });
     }
 
     // -----------------------------
@@ -253,6 +263,7 @@ async  createWorkout(req, res) {
     const responseData = workout.toObject();
     responseData.categories = categoryIds;
 
+    Logger.info('Create workout SUCCESS', requestId, { workoutId: workout._id });
     return ResponseHandler.success(
       res,
       'Workout created successfully',
@@ -260,31 +271,34 @@ async  createWorkout(req, res) {
     );
 
   } catch (error) {
-    console.error('❌ createWorkout error:', error);
+    Logger.error('Create workout FAILED', requestId, { error: error.message, stack: error.stack });
 
     // Cleanup S3 uploads if workout creation failed
     const keysToCleanup = [bannerKey, thumbnailKey].filter(Boolean);
     if (keysToCleanup.length > 0) {
-      console.warn('⚠️ Error occurred after S3 upload. Cleaning up...');
+      Logger.warn('Cleaning up S3 uploads after error', requestId, { keys: keysToCleanup });
       for (const key of keysToCleanup) {
         try {
           await s3Service.deleteFromS3(key);
-          console.log('🗑 Cleaned up key:', key);
+          Logger.info('S3 cleanup successful', requestId, { key });
         } catch (cleanupErr) {
-          console.error('⚠️ Failed to cleanup key:', key, cleanupErr);
+          Logger.error('S3 cleanup failed', requestId, { key, error: cleanupErr.message });
         }
       }
     }
 
     return ResponseHandler.serverError(
       res,
-      'An error occurred while creating the workout'
+      'An error occurred while creating the workout',
+      'WORKOUT_CREATE_FAILED'
     );
   }
 }
 
 
 async deleteWorkout(req, res) {
+  const requestId = `workout-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     const workoutId = req.body.workoutId;
 
@@ -292,22 +306,25 @@ async deleteWorkout(req, res) {
     // 1️⃣ Validate and find workout
     // -----------------------------
     if (!workoutId) {
+      Logger.warn('Delete workout failed - missing ID', requestId);
       return ResponseHandler.badRequest(res, 'Workout ID is required');
     }
 
-    console.log('🗑️ Deleting workout:', workoutId);
+    Logger.info('Delete workout START', requestId, { workoutId });
 
     const workout = await workoutModel.findById(workoutId);
     if (!workout) {
+      Logger.warn('Delete workout failed - not found', requestId, { workoutId });
       return ResponseHandler.notFound(res, 'Workout not found');
     }
 
     // Already deleted
     if (!workout.isActive) {
+      Logger.info('Workout already deleted', requestId, { workoutId });
       return ResponseHandler.success(res, 'Workout is already deleted');
     }
 
-    console.log('✅ Workout found:', workout.name);
+    Logger.info('Workout found', requestId, { workoutId, name: workout.name });
 
     // -----------------------------
     // 2️⃣ Find all CategoryWorkout associations
@@ -317,7 +334,7 @@ async deleteWorkout(req, res) {
       isActive: true
     }).lean();
 
-    console.log(`📂 Found ${categoryAssociations.length} active category associations`);
+    Logger.info('Category associations found', requestId, { count: categoryAssociations.length });
 
     // -----------------------------
     // 3️⃣ Soft delete CategoryWorkout associations & reorder sequences
@@ -325,7 +342,7 @@ async deleteWorkout(req, res) {
     for (const association of categoryAssociations) {
       const { _id: associationId, categoryId, sequence: deletedSequence } = association;
 
-      console.log(`🔄 Processing category ${categoryId}, sequence ${deletedSequence}`);
+      Logger.info('Processing category association', requestId, { categoryId, sequence: deletedSequence });
 
       // Soft delete this association
       await categoryWorkout.updateOne(
@@ -349,7 +366,10 @@ async deleteWorkout(req, res) {
         }
       );
 
-      console.log(`  ✅ Shifted ${shiftResult.modifiedCount} workouts UP in category`);
+      Logger.info('Shifted workouts in category', requestId, { 
+        categoryId, 
+        shiftedCount: shiftResult.modifiedCount 
+      });
     }
 
     // -----------------------------
@@ -357,28 +377,28 @@ async deleteWorkout(req, res) {
     // -----------------------------
     
     // OPTION A: Keep images for potential restoration (RECOMMENDED for soft delete)
-    console.log('📦 Keeping S3 images for potential restoration');
+    Logger.info('Keeping S3 images for potential restoration', requestId);
     
     // OPTION B: Delete images from S3 (uncomment if you want hard delete)
     /*
-    console.log('🗑️ Deleting S3 images...');
+    Logger.info('Deleting S3 images', requestId);
     
     // Use stored keys for reliable deletion
     if (workout.bannerKey) {
       try {
         await s3Service.deleteFromS3(workout.bannerKey);
-        console.log('  ✅ Deleted banner from S3');
+        Logger.info('Banner deleted from S3', requestId, { key: workout.bannerKey });
       } catch (err) {
-        console.warn('  ⚠️ Failed to delete banner from S3:', err.message);
+        Logger.warn('Failed to delete banner from S3', requestId, { key: workout.bannerKey, error: err.message });
       }
     }
 
     if (workout.thumbnailKey) {
       try {
         await s3Service.deleteFromS3(workout.thumbnailKey);
-        console.log('  ✅ Deleted thumbnail from S3');
+        Logger.info('Thumbnail deleted from S3', requestId, { key: workout.thumbnailKey });
       } catch (err) {
-        console.warn('  ⚠️ Failed to delete thumbnail from S3:', err.message);
+        Logger.warn('Failed to delete thumbnail from S3', requestId, { key: workout.thumbnailKey, error: err.message });
       }
     }
     */
@@ -395,7 +415,7 @@ async deleteWorkout(req, res) {
           updatedAt: Date.now()
         }
       );
-      console.log(`🎥 Soft deleted ${videoResult.modifiedCount} workout videos`);
+      Logger.info('Workout videos soft deleted', requestId, { count: videoResult.modifiedCount });
     }
 
     // -----------------------------
@@ -411,7 +431,7 @@ async deleteWorkout(req, res) {
       }
     );
 
-    console.log('✅ Workout soft deleted successfully');
+    Logger.info('Delete workout SUCCESS', requestId, { workoutId });
 
     return ResponseHandler.success(
       res, 
@@ -419,15 +439,18 @@ async deleteWorkout(req, res) {
     );
 
   } catch (error) {
-    console.error('❌ Error deleting workout:', error);
+    Logger.error('Delete workout FAILED', requestId, { error: error.message, stack: error.stack });
     return ResponseHandler.serverError(
       res, 
-      'An error occurred while deleting the workout'
+      'An error occurred while deleting the workout',
+      'WORKOUT_DELETE_FAILED'
     );
   }
 }
 
 async updateWorkout(req, res) {
+  const requestId = `workout-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     const workoutId = req.params.workoutId;
     const updateData = req.body;
@@ -436,20 +459,23 @@ async updateWorkout(req, res) {
     // 1️⃣ Validate workout ID
     // -----------------------------
     if (!workoutId) {
+      Logger.warn('Update workout failed - missing ID', requestId);
       return ResponseHandler.badRequest(res, 'Workout ID is required');
     }
 
     const workout = await workoutModel.findById(workoutId);
     if (!workout) {
+      Logger.warn('Update workout failed - not found', requestId, { workoutId });
       return ResponseHandler.notFound(res, 'Workout not found');
     }
 
     // Don't allow updating inactive workouts
     if (!workout.isActive) {
+      Logger.warn('Update workout failed - inactive', requestId, { workoutId });
       return ResponseHandler.forbidden(res, 'Cannot update an inactive workout');
     }
 
-    console.log('📝 Updating workout:', workoutId);
+    Logger.info('Update workout START', requestId, { workoutId, name: workout.name });
 
     // -----------------------------
     // 2️⃣ Handle Category Membership Sync
@@ -472,7 +498,7 @@ async updateWorkout(req, res) {
       // Remove duplicates and normalize to strings
       categoryIds = [...new Set(categoryIds.map(id => id?.toString()))].filter(Boolean);
 
-      console.log('📂 Category IDs to sync:', categoryIds);
+      Logger.info('Category IDs to sync', requestId, { categoryIds });
 
       // Validate all categories exist and are ACTIVE
       if (categoryIds.length > 0) {
@@ -485,6 +511,7 @@ async updateWorkout(req, res) {
         }).filter(Boolean);
 
         if (categoryObjectIds.length !== categoryIds.length) {
+          Logger.warn('Update workout failed - invalid category IDs', requestId);
           return ResponseHandler.badRequest(res, 'One or more category IDs are invalid');
         }
 
@@ -496,13 +523,14 @@ async updateWorkout(req, res) {
         if (validCategories.length !== categoryObjectIds.length) {
           const validIds = validCategories.map(c => c._id.toString());
           const invalidIds = categoryIds.filter(id => !validIds.includes(id));
+          Logger.warn('Update workout failed - inactive categories', requestId, { invalidIds });
           return ResponseHandler.badRequest(
             res,
             `Invalid or inactive category IDs: ${invalidIds.join(', ')}`
           );
         }
 
-        console.log('✅ All categories valid:', validCategories.map(c => c.name));
+        Logger.info('All categories validated', requestId, { categories: validCategories.map(c => c.name) });
       }
 
       // Load current active associations
@@ -512,16 +540,18 @@ async updateWorkout(req, res) {
       }).lean();
 
       const currentCategoryIds = currentAssociations.map(a => a.categoryId.toString());
-      console.log('📋 Current active categories:', currentCategoryIds);
+      Logger.info('Current active categories', requestId, { currentCategoryIds });
 
       // Determine which categories to remove, keep, and add
       const categoriesToRemove = currentCategoryIds.filter(id => !categoryIds.includes(id));
       const categoriesToKeep = currentCategoryIds.filter(id => categoryIds.includes(id));
       const categoriesToAdd = categoryIds.filter(id => !currentCategoryIds.includes(id));
 
-      console.log('➖ Categories to remove:', categoriesToRemove);
-      console.log('✔️ Categories to keep:', categoriesToKeep);
-      console.log('➕ Categories to add:', categoriesToAdd);
+      Logger.info('Category sync plan', requestId, { 
+        toRemove: categoriesToRemove, 
+        toKeep: categoriesToKeep, 
+        toAdd: categoriesToAdd 
+      });
 
       // REMOVE: Deactivate associations and reorder sequences
       if (categoriesToRemove.length > 0) {
@@ -560,13 +590,16 @@ async updateWorkout(req, res) {
               }
             );
 
-            console.log(`🔴 Removed from category ${categoryId}, shifted ${shiftResult.modifiedCount} workouts UP`);
+            Logger.info('Removed from category and shifted workouts', requestId, { 
+              categoryId, 
+              shiftedCount: shiftResult.modifiedCount 
+            });
           }
         }
       }
 
       // KEEP: Do nothing - existing associations maintain their sequence
-      console.log(`✅ Keeping ${categoriesToKeep.length} existing associations with their sequences unchanged`);
+      Logger.info('Keeping existing associations unchanged', requestId, { count: categoriesToKeep.length });
 
       // ADD: Process ONLY new categories - add them to the end of EACH NEW category
       if (categoriesToAdd.length > 0) {
@@ -615,7 +648,7 @@ async updateWorkout(req, res) {
             existingAssociation.sequence = nextSeq;
             existingAssociation.updatedAt = Date.now();
             await existingAssociation.save();
-            console.log(`🔄 Reactivated association for NEW category ${idStr}: sequence ${nextSeq}`);
+            Logger.info('Reactivated category association', requestId, { categoryId: idStr, sequence: nextSeq });
           } else {
             // Create new association at the end of THIS category
             await categoryWorkout.create({
@@ -626,7 +659,7 @@ async updateWorkout(req, res) {
               createdAt: Date.now(),
               updatedAt: Date.now()
             });
-            console.log(`✅ Created new association for NEW category ${idStr}: sequence ${nextSeq}`);
+            Logger.info('Created new category association', requestId, { categoryId: idStr, sequence: nextSeq });
           }
 
           // Update sequenceMap for next iteration (in case of multiple new categories)
@@ -634,7 +667,7 @@ async updateWorkout(req, res) {
         }
       }
 
-      console.log('✅ Category membership synced - kept sequences maintain their position');
+      Logger.info('Category membership synced successfully', requestId);
     }
 
     // -----------------------------
@@ -644,7 +677,7 @@ async updateWorkout(req, res) {
 
     // -- Banner Image --
     if (files.banner && files.banner[0]) {
-      console.log('🖼️ Uploading new banner...');
+      Logger.info('Uploading new banner', requestId);
       
       const newBanner = files.banner[0];
       const bannerResult = await s3Service.uploadToS3(
@@ -662,21 +695,21 @@ async updateWorkout(req, res) {
       if (workout.bannerKey) {
         try {
           await s3Service.deleteFromS3(workout.bannerKey);
-          console.log('🗑️ Old banner deleted from S3');
+          Logger.info('Old banner deleted from S3', requestId, { key: workout.bannerKey });
         } catch (err) {
-          console.warn('⚠️ Failed to delete old banner:', err.message);
+          Logger.warn('Failed to delete old banner from S3', requestId, { key: workout.bannerKey, error: err.message });
         }
       }
 
       // Update DB with new URL and key
       workout.bannerUrl = bannerResult.url || s3Service.getS3PublicUrl(bannerResult.key);
       workout.bannerKey = bannerResult.key;
-      console.log('✅ Banner updated');
+      Logger.info('Banner updated successfully', requestId);
     }
 
     // -- Thumbnail Image --
     if (files.thumbnail && files.thumbnail[0]) {
-      console.log('🖼️ Uploading new thumbnail...');
+      Logger.info('Uploading new thumbnail', requestId);
       
       const newThumbnail = files.thumbnail[0];
       const thumbnailResult = await s3Service.uploadToS3(
@@ -694,16 +727,16 @@ async updateWorkout(req, res) {
       if (workout.thumbnailKey) {
         try {
           await s3Service.deleteFromS3(workout.thumbnailKey);
-          console.log('🗑️ Old thumbnail deleted from S3');
+          Logger.info('Old thumbnail deleted from S3', requestId, { key: workout.thumbnailKey });
         } catch (err) {
-          console.warn('⚠️ Failed to delete old thumbnail:', err.message);
+          Logger.warn('Failed to delete old thumbnail from S3', requestId, { key: workout.thumbnailKey, error: err.message });
         }
       }
 
       // Update DB with new URL and key
       workout.thumbnailUrl = thumbnailResult.url || s3Service.getS3PublicUrl(thumbnailResult.key);
       workout.thumbnailKey = thumbnailResult.key;
-      console.log('✅ Thumbnail updated');
+      Logger.info('Thumbnail updated successfully', requestId);
     }
 
     // -----------------------------
@@ -719,7 +752,7 @@ async updateWorkout(req, res) {
     ];
     
     fieldsToExclude.forEach(field => delete updateData[field]);
-    console.log('🔧 Updating workout fields:', updateData);
+    Logger.info('Updating workout fields', requestId, { fields: Object.keys(updateData) });
     
     // Update allowed fields
     if (updateData.name) workout.name = updateData.name.trim();
@@ -734,7 +767,7 @@ async updateWorkout(req, res) {
 
     await workout.save();
 
-    console.log('✅ Workout updated successfully');
+    Logger.info('Workout saved successfully', requestId);
 
     // -----------------------------
     // 5️⃣ Get updated category associations for response
@@ -749,10 +782,11 @@ async updateWorkout(req, res) {
     const responseData = workout.toObject();
     responseData.categories = activeCategoryIds;
 
+    Logger.info('Update workout SUCCESS', requestId, { workoutId });
     return ResponseHandler.success(res, 'Workout updated successfully', responseData);
 
   } catch (error) {
-    console.error('❌ Error updating workout:', error);
+    Logger.error('Update workout FAILED', requestId, { error: error.message, stack: error.stack });
     
     // Handle duplicate name error
     if (error.code === 11000 && error.keyPattern && error.keyPattern.name) {
@@ -761,20 +795,26 @@ async updateWorkout(req, res) {
     
     return ResponseHandler.serverError(
       res, 
-      'An error occurred while updating the workout'
+      'An error occurred while updating the workout',
+      'WORKOUT_UPDATE_FAILED'
     );
   }
 }
 
 async getworkoutbyid(req, res) {
+  const requestId = `workout-get_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     const workoutId = req.params.workoutId;
+    Logger.info('Get workout by ID START', requestId, { workoutId });
 
     // 1) Validate ID
     if (!workoutId) {
+      Logger.warn('Workout ID missing', requestId);
       return ResponseHandler.badRequest(res, "Workout ID is required");
     }
     if (!mongoose.Types.ObjectId.isValid(workoutId)) {
+      Logger.warn('Invalid workout ID format', requestId, { workoutId });
       return ResponseHandler.badRequest(res, "Invalid Workout ID");
     }
 
@@ -789,8 +829,11 @@ async getworkoutbyid(req, res) {
       .lean();
 
     if (!workout) {
+      Logger.warn('Workout not found', requestId, { workoutId });
       return ResponseHandler.notFound(res, "Workout not found");
     }
+
+    Logger.info('Workout found, processing data', requestId, { videoCount: workout.videos?.length || 0 });
 
     // 3) Sort videos by sequence and drop entries with missing populated docs
     const sortedVideos = Array.isArray(workout.videos)
@@ -826,6 +869,7 @@ async getworkoutbyid(req, res) {
         : [];
 
     workout.category = categories;
+    Logger.info('Categories attached', requestId, { categoryCount: categories.length });
 
     // 5) Attach all active categories (sorted by categorySequence)
     const allCategoriesRaw = await CategoryModel.find({ isActive: true })
@@ -846,10 +890,15 @@ async getworkoutbyid(req, res) {
       sequence: item.sequence,
     }));
 
+    Logger.info('Get workout by ID SUCCESS', requestId);
     return ResponseHandler.success(res, "Workout retrieved successfully", workout);
   } catch (error) {
-    console.error("❌ Error retrieving workout by ID:", error);
-    return ResponseHandler.serverError(res, "An error occurred while retrieving the workout");
+    Logger.error('Get workout by ID FAILED', requestId, { error: error.message, stack: error.stack });
+    return ResponseHandler.serverError(
+      res, 
+      "An error occurred while retrieving the workout",
+      'WORKOUT_GET_BY_ID_FAILED'
+    );
   }
 }
 
@@ -871,16 +920,16 @@ async getworkoutbyid(req, res) {
  * - Uses index hints in comments; ensure you create indexes in your model.
  */
 async  updateWorkoutSequence(req, res) {
+  const requestId = `workout-reorder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const session = await mongoose.startSession();
 
   try {
     const { workoutId, categoryId, workoutsequence } = req.body;
-
-    console.log('🔄 Updating workout sequence:', req.body)
-    console.log(workoutsequence)
+    Logger.info('Update workout sequence START', requestId, { workoutId, categoryId, workoutsequence });
 
     // Validate required fields (the original code had a logic bug)
     if (!workoutId || !categoryId || workoutsequence === undefined || workoutsequence === null) {
+      Logger.warn('Missing required fields for sequence update', requestId, { workoutId, categoryId, workoutsequence });
       return ResponseHandler.badRequest(
         res,
         "workoutId, categoryId and workoutsequence are required"
@@ -890,10 +939,12 @@ async  updateWorkoutSequence(req, res) {
     // Ensure sequence is a positive integer
     const newSequence = Number(workoutsequence);
     if (!Number.isInteger(newSequence) || newSequence < 1) {
+      Logger.warn('Invalid sequence value', requestId, { workoutsequence, parsed: newSequence });
       return ResponseHandler.badRequest(res, "workoutsequence must be a positive integer");
     }
 
     await session.startTransaction();
+    Logger.info('Transaction started', requestId);
 
     // 1) Find the existing record to get its current sequence
     const current = await categoryWorkout.findOne(
@@ -903,10 +954,12 @@ async  updateWorkoutSequence(req, res) {
 
     if (!current) {
       await session.abortTransaction();
+      Logger.warn('Workout not found in category', requestId, { workoutId, categoryId });
       return ResponseHandler.notFound(res, "Workout not found in this category");
     }
 
     const oldSequence = current.sequence;
+    Logger.info('Current sequence found', requestId, { oldSequence, newSequence });
 
     // Optional: find max sequence in the category to clamp newSequence
     const maxDoc = await categoryWorkout
@@ -919,15 +972,18 @@ async  updateWorkoutSequence(req, res) {
     if (maxSequence === 0) {
       // Should not happen because we found 'current', but guard anyway
       await session.abortTransaction();
+      Logger.error('Invalid category sequence state', requestId, { maxSequence });
       return ResponseHandler.serverError(res, "Invalid category sequence state");
     }
 
     // Clamp newSequence to valid range [1, maxSequence]
     const targetSequence = Math.max(1, Math.min(newSequence, maxSequence));
+    Logger.info('Target sequence calculated', requestId, { requested: newSequence, clamped: targetSequence, max: maxSequence });
 
     // 2) No-op if target equals current
     if (targetSequence === oldSequence) {
       await session.commitTransaction();
+      Logger.info('Sequence unchanged (no-op)', requestId, { sequence: targetSequence });
       return ResponseHandler.success(res, "Workout sequence unchanged", {
         workoutId,
         categoryId,
@@ -938,7 +994,7 @@ async  updateWorkoutSequence(req, res) {
     // 3) Shift other items in affected range
     if (oldSequence < targetSequence) {
       // Moving down: shift items between (oldSequence+1 .. targetSequence) up by -1
-      await categoryWorkout.updateMany(
+      const result = await categoryWorkout.updateMany(
         {
           categoryId,
           sequence: { $gt: oldSequence, $lte: targetSequence },
@@ -947,9 +1003,10 @@ async  updateWorkoutSequence(req, res) {
         { $inc: { sequence: -1 } },
         { session }
       );
+      Logger.info('Shifted workouts UP (moving down)', requestId, { range: `${oldSequence + 1}-${targetSequence}`, affected: result.modifiedCount });
     } else {
       // Moving up: shift items between (targetSequence .. oldSequence-1) down by +1
-      await categoryWorkout.updateMany(
+      const result = await categoryWorkout.updateMany(
         {
           categoryId,
           sequence: { $gte: targetSequence, $lt: oldSequence },
@@ -958,6 +1015,7 @@ async  updateWorkoutSequence(req, res) {
         { $inc: { sequence: 1 } },
         { session }
       );
+      Logger.info('Shifted workouts DOWN (moving up)', requestId, { range: `${targetSequence}-${oldSequence - 1}`, affected: result.modifiedCount });
     }
 
     // 4) Set the workout to its target position
@@ -968,6 +1026,7 @@ async  updateWorkoutSequence(req, res) {
     );
 
     await session.commitTransaction();
+    Logger.info('Update workout sequence SUCCESS', requestId, { oldSequence, newSequence: targetSequence });
 
     return ResponseHandler.success(res, "Workout sequence updated successfully", {
       workoutId,
@@ -975,11 +1034,16 @@ async  updateWorkoutSequence(req, res) {
       sequence: targetSequence
     });
   } catch (error) {
-    console.error("❌ Error updating workout sequence:", error);
+    Logger.error('Update workout sequence FAILED', requestId, { error: error.message, stack: error.stack });
     try {
       await session.abortTransaction();
+      Logger.info('Transaction aborted', requestId);
     } catch (_) {}
-    return ResponseHandler.serverError(res, "An error occurred while updating workout sequence");
+    return ResponseHandler.serverError(
+      res, 
+      "An error occurred while updating workout sequence",
+      'WORKOUT_SEQUENCE_UPDATE_FAILED'
+    );
   } finally {
     session.endSession();
   }

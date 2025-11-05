@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const SMSProviderFactory = require('../../services/sms/SMSProviderFactory');
 
 
 // Debug route for MongoDB connection testing
@@ -183,6 +184,106 @@ router.get('/mongo-diagnostic', async (req, res) => {
 		};
 	}
 	res.json(diagnostic);
+});
+
+// SMS Provider Debug Route
+router.get('/sms-provider', async (req, res) => {
+	try {
+		const providerInfo = SMSProviderFactory.getProviderInfo();
+		const health = await SMSProviderFactory.healthCheck();
+		
+		res.json({
+			success: true,
+			message: 'SMS Provider Information',
+			timestamp: new Date().toISOString(),
+			currentProvider: {
+				name: SMSProviderFactory.getProviderName(),
+				configured: process.env.SMS_PROVIDER || 'not set (using default)',
+				...providerInfo
+			},
+			health: health,
+			environment: {
+				SMS_PROVIDER: process.env.SMS_PROVIDER || 'not set',
+				// MSG91
+				MSG91_AUTH_KEY: process.env.MSG91_AUTH_KEY ? 'configured' : 'missing',
+				MSG91_SENDER_ID: process.env.MSG91_SENDER_ID || 'missing',
+				MSG91_TEMPLATE_ID: process.env.MSG91_TEMPLATE_ID ? 'configured' : 'missing',
+				// Twilio
+				TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? 'configured' : 'missing',
+				TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? 'configured' : 'missing',
+				TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || 'missing'
+			},
+			availableProviders: ['simulation', 'msg91', 'twilio'],
+			instructions: {
+				switchProvider: 'Set SMS_PROVIDER environment variable to: simulation, msg91, or twilio',
+				currentlyUsing: SMSProviderFactory.getProviderName(),
+				isProduction: process.env.NODE_ENV === 'production'
+			}
+		});
+	} catch (error) {
+		res.status(500).json({
+			success: false,
+			message: 'Failed to get SMS provider info',
+			error: error.message,
+			timestamp: new Date().toISOString()
+		});
+	}
+});
+
+// SMS Provider Health Check Route
+router.get('/sms-health', async (req, res) => {
+	try {
+		const health = await SMSProviderFactory.healthCheck();
+		
+		res.json({
+			success: true,
+			message: 'SMS Provider Health Check',
+			timestamp: new Date().toISOString(),
+			...health
+		});
+	} catch (error) {
+		res.status(500).json({
+			success: false,
+			message: 'Health check failed',
+			error: error.message,
+			timestamp: new Date().toISOString()
+		});
+	}
+});
+
+// Test SMS Send Route (Simulation only for safety)
+router.post('/test-sms', async (req, res) => {
+	try {
+		const { phone } = req.body;
+		
+		if (!phone) {
+			return res.status(400).json({
+				success: false,
+				message: 'Phone number is required'
+			});
+		}
+		
+		// Force simulation mode for testing
+		const SimulationProvider = require('../../services/sms/providers/SimulationProvider');
+		const provider = new SimulationProvider();
+		
+		const result = await provider.sendOTP(phone, '123456');
+		
+		res.json({
+			success: true,
+			message: 'Test SMS sent (simulation mode)',
+			timestamp: new Date().toISOString(),
+			result: result,
+			note: 'This endpoint always uses simulation mode for safety'
+		});
+	} catch (error) {
+		res.status(500).json({
+			success: false,
+			message: 'Test SMS failed',
+			error: error.message,
+			timestamp: new Date().toISOString()
+		});
+	}
 });
 
 module.exports = router;

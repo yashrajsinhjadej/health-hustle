@@ -1,25 +1,29 @@
 // controllers/cmsController.js
 const CMSPage = require('../models/CMSPage');
 const ResponseHandler = require('../utils/ResponseHandler');
+const Logger = require('../utils/logger');
 
 /**
  * Admin: Create or Update CMS Page
  * POST /api/cms/admin/create
  */
 exports.upsertCMSPage = async (req, res) => {
+  const requestId = Logger.generateId('cms-upsert');
+  
   try {
+    Logger.info(requestId, 'CMS page upsert started');
+    
     const { slug, title, htmlContent } = req.body;
 
     // Validation
     if (!slug || !title || !htmlContent) {
-      return res.status(400).json({
-        success: false,
-        message: 'slug, title, and htmlContent are required'
-      });
+      Logger.warn(requestId, 'Validation failed - missing required fields');
+      return ResponseHandler.error(res, 'Validation failed', 'slug, title, and htmlContent are required', 400, 'CMS_MISSING_FIELDS');
     }
 
     // Sanitize slug
     const sanitizedSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
+    Logger.debug(requestId, 'Slug sanitized', { original: slug, sanitized: sanitizedSlug });
 
     // Find and update or create new
     const cmsPage = await CMSPage.findOneAndUpdate(
@@ -37,74 +41,71 @@ exports.upsertCMSPage = async (req, res) => {
       }
     );
 
-    return res.status(200).json({
-      success: true,
-      message: 'CMS page saved successfully',
-      data: cmsPage
-    });
+    Logger.success(requestId, 'CMS page saved successfully', { slug: sanitizedSlug });
+    return ResponseHandler.success(res, 'CMS page saved successfully', cmsPage);
 
   } catch (error) {
-    console.error('CMS Upsert Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to save CMS page',
-      error: error.message
+    Logger.error(requestId, 'CMS upsert error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to save CMS page');
   }
 };
 
 /**
  * Admin: Get CMS Page for Editing
- * GET /api/admin/cms/:slug
+ * GET /api/cms/admin/:slug
  */
 exports.getCMSPageForEdit = async (req, res) => {
+  const requestId = Logger.generateId('cms-get-edit');
+  
   try {
-    const cmsPage = await CMSPage.findOne({ slug: req.params.slug });
+    const { slug } = req.params;
+    Logger.info(requestId, 'Fetching CMS page for edit', { slug });
+    
+    const cmsPage = await CMSPage.findOne({ slug });
     
     if (!cmsPage) {
-      return res.status(404).json({
-        success: false,
-        message: 'CMS page not found'
-      });
+      Logger.warn(requestId, 'CMS page not found', { slug });
+      return ResponseHandler.notFound(res, 'CMS page not found', 'CMS_PAGE_NOT_FOUND');
     }
 
-    return res.status(200).json({
-      success: true,
-      data: cmsPage
-    });
+    Logger.success(requestId, 'CMS page fetched successfully', { slug });
+    return ResponseHandler.success(res, 'CMS page fetched successfully', cmsPage);
 
   } catch (error) {
-    console.error('CMS Fetch Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch CMS page',
-      error: error.message
+    Logger.error(requestId, 'CMS fetch error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to fetch CMS page');
   }
 };
 
 /**
  * Admin: List all CMS Pages
- * GET /api/admin/cms
+ * GET /api/cms/admin/cms
  */
 exports.listCMSPages = async (req, res) => {
+  const requestId = Logger.generateId('cms-list');
+  
   try {
+    Logger.info(requestId, 'Listing all CMS pages');
+    
     const pages = await CMSPage.find()
       .select('slug title updatedAt')
       .sort({ updatedAt: -1 });
 
-    return res.status(200).json({
-      success: true,
-      data: pages
-    });
+    Logger.success(requestId, 'CMS pages listed successfully', { count: pages.length });
+    return ResponseHandler.success(res, 'CMS pages retrieved successfully', pages);
 
   } catch (error) {
-    console.error('CMS List Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to list CMS pages',
-      error: error.message
+    Logger.error(requestId, 'CMS list error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to list CMS pages');
   }
 };
 
@@ -113,11 +114,17 @@ exports.listCMSPages = async (req, res) => {
  * GET /api/cms/:slug
  */
 exports.getPublicCMSPageHTML = async (req, res) => {
+  const requestId = Logger.generateId('cms-public');
+  
   try {
-    const cmsPage = await CMSPage.findOne({ slug: req.params.slug })
+    const { slug } = req.params;
+    Logger.info(requestId, 'Fetching public CMS page', { slug });
+    
+    const cmsPage = await CMSPage.findOne({ slug })
       .select('title htmlContent');
     
     if (!cmsPage) {
+      Logger.warn(requestId, 'Public CMS page not found', { slug });
       return res
         .status(404)
         .set('Content-Type', 'text/html; charset=utf-8')
@@ -127,6 +134,7 @@ exports.getPublicCMSPageHTML = async (req, res) => {
     // Generate full HTML document for mobile WebView
     const fullHTML = generateFullHTML(cmsPage.title, cmsPage.htmlContent);
 
+    Logger.success(requestId, 'Public CMS page served', { slug });
     return res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
@@ -135,7 +143,10 @@ exports.getPublicCMSPageHTML = async (req, res) => {
       .send(fullHTML);
 
   } catch (error) {
-    console.error('Public CMS Fetch Error:', error);
+    Logger.error(requestId, 'Public CMS fetch error', { 
+      error: error.message, 
+      stack: error.stack 
+    });
     return res
       .status(500)
       .set('Content-Type', 'text/html; charset=utf-8')
@@ -145,31 +156,31 @@ exports.getPublicCMSPageHTML = async (req, res) => {
 
 /**
  * Admin: Delete CMS Page
- * DELETE /api/admin/cms/:slug
+ * DELETE /api/cms/admin/:slug
  */
 exports.deleteCMSPage = async (req, res) => {
+  const requestId = Logger.generateId('cms-delete');
+  
   try {
-    const result = await CMSPage.findOneAndDelete({ slug: req.params.slug });
+    const { slug } = req.params;
+    Logger.info(requestId, 'Deleting CMS page', { slug });
+    
+    const result = await CMSPage.findOneAndDelete({ slug });
     
     if (!result) {
-      return res.status(404).json({
-        success: false,
-        message: 'CMS page not found'
-      });
+      Logger.warn(requestId, 'CMS page not found for deletion', { slug });
+      return ResponseHandler.notFound(res, 'CMS page not found', 'CMS_PAGE_NOT_FOUND');
     }
 
-    return res.status(200).json({
-      success: true,
-      message: 'CMS page deleted successfully'
-    });
+    Logger.success(requestId, 'CMS page deleted successfully', { slug });
+    return ResponseHandler.success(res, 'CMS page deleted successfully');
 
   } catch (error) {
-    console.error('CMS Delete Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to delete CMS page',
-      error: error.message
+    Logger.error(requestId, 'CMS delete error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to delete CMS page');
   }
 };
 

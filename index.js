@@ -170,9 +170,9 @@ app.get('/health', async (req, res) => {
             dbStatus = 'disconnected';
         }
         
-        // Check Twilio status
-        const TwilioSMSService = require('./src/services/twilioSMSService');
-        const twilioStatus = await TwilioSMSService.healthCheck();
+        // Check SMS Provider status
+        const SMSProviderFactory = require('./src/services/sms/SMSProviderFactory');
+        const smsStatus = await SMSProviderFactory.healthCheck();
 
         //check aws s3 status 
         const s3 = require('./src/services/s3Service');
@@ -193,7 +193,7 @@ app.get('/health', async (req, res) => {
                 readyState: mongoose.connection.readyState,
                 host: dbHost
             },
-            twilio: twilioStatus,
+            sms: smsStatus,
             s3: s3Status,
             environment: process.env.NODE_ENV || 'development'
         };

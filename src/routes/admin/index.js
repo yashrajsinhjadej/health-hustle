@@ -6,6 +6,7 @@ const { authenticateToken, adminOnly } = require('../../middleware/auth');
 const AdminAuthController = require('../../controllers/AdminAuthController');
 const AuthController = require('../../controllers/AuthController');
 const ResponseHandler = require('../../utils/ResponseHandler');
+const Logger = require('../../utils/logger');
 const createCustomRateLimit = require('../../middleware/customRateLimit');
 const { 
     validateAdminSignup, 
@@ -17,35 +18,28 @@ const {
 
 // Global admin route logging middleware
 router.use((req, res, next) => {
-    const requestId = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `admin-route_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     req.requestId = requestId;
     
-    console.log(`🔥 [ADMIN ROUTE] ================================`);
-    console.log(`🔥 [ADMIN ROUTE] REQUEST ID: ${requestId}`);
-    console.log(`🔥 [ADMIN ROUTE] ${req.method} ${req.originalUrl}`);
-    console.log(`🔥 [ADMIN ROUTE] Timestamp: ${new Date().toISOString()}`);
-    console.log(`🔥 [ADMIN ROUTE] IP: ${req.ip || req.connection.remoteAddress}`);
-    console.log(`🔥 [ADMIN ROUTE] User-Agent: ${req.get('User-Agent')}`);
-    console.log(`🔥 [ADMIN ROUTE] Body:`, JSON.stringify(req.body, null, 2));
-    console.log(`🔥 [ADMIN ROUTE] Query:`, JSON.stringify(req.query, null, 2));
-    console.log(`🔥 [ADMIN ROUTE] Params:`, JSON.stringify(req.params, null, 2));
-    console.log(`🔥 [ADMIN ROUTE] Headers:`, JSON.stringify({
-        'content-type': req.get('Content-Type'),
-        'authorization': req.get('Authorization') ? 'Bearer ***' : 'None',
-        'referer': req.get('Referer')
-    }, null, 2));
-    console.log(`🔥 [ADMIN ROUTE] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-    console.log(`🔥 [ADMIN ROUTE] ================================`);
+    Logger.info('Admin route request', requestId, {
+        method: req.method,
+        url: req.originalUrl,
+        ip: req.ip || req.connection.remoteAddress,
+        hasAuth: !!req.get('Authorization'),
+        bodyKeys: Object.keys(req.body || {}),
+        queryKeys: Object.keys(req.query || {}),
+        params: req.params
+    });
     
     // Log response
     const originalSend = res.send;
     res.send = function(data) {
-        console.log(`✅ [ADMIN RESPONSE] ================================`);
-        console.log(`✅ [ADMIN RESPONSE] REQUEST ID: ${requestId}`);
-        console.log(`✅ [ADMIN RESPONSE] Status: ${res.statusCode}`);
-        console.log(`✅ [ADMIN RESPONSE] ${req.method} ${req.originalUrl}`);
-        console.log(`✅ [ADMIN RESPONSE] Response Length: ${data ? data.length : 0} bytes`);
-        console.log(`✅ [ADMIN RESPONSE] ================================`);
+        Logger.info('Admin route response', requestId, {
+            method: req.method,
+            url: req.originalUrl,
+            status: res.statusCode,
+            responseLength: data ? data.length : 0
+        });
         originalSend.call(this, data);
     };
     
@@ -65,33 +59,15 @@ const adminAuthLimit = createCustomRateLimit(
 
 
 // Public admin auth routes (no authentication required)
-router.post('/signup', adminAuthLimit, (req, res, next) => {
-    console.log(`📝 [ADMIN SIGNUP] Starting admin signup process...`);
-    console.log(`📝 [ADMIN SIGNUP] Email: ${req.body.email}`);
-    console.log(`📝 [ADMIN SIGNUP] Name: ${req.body.name}`);
-    next();
-}, validateAdminSignup, handleValidationErrors, AdminAuthController.signup);
+router.post('/signup', adminAuthLimit, validateAdminSignup, handleValidationErrors, AdminAuthController.signup);
 
-router.post('/login', adminAuthLimit, (req, res, next) => {
-    console.log(`🔑 [ADMIN LOGIN] Starting admin login process...`);
-    console.log(`🔑 [ADMIN LOGIN] Email: ${req.body.email}`);
-    next();
-}, validateAdminLogin, handleValidationErrors, AdminAuthController.login);
+router.post('/login', adminAuthLimit, validateAdminLogin, handleValidationErrors, AdminAuthController.login);
 
 // POST /admin/forgot-password - Request password reset for admin via email with reset link
-router.post('/forgot-password', adminRateLimit, (req, res, next) => {
-    console.log(`🔒 [FORGOT PASSWORD] Starting password reset process...`);
-    console.log(`🔒 [FORGOT PASSWORD] Email: ${req.body.email}`);
-    next();
-}, validateAdminEmail, handleValidationErrors, AdminAuthController.forgotPassword);
-
+router.post('/forgot-password', adminRateLimit, validateAdminEmail, handleValidationErrors, AdminAuthController.forgotPassword);
 
 // POST /admin/reset-password - Process password reset with token
-router.post('/reset-password', adminRateLimit, (req, res, next) => {
-    console.log(`🔄 [RESET PASSWORD] Processing password reset...`);
-    console.log(`🔄 [RESET PASSWORD] Token: ${req.body.token ? 'Present' : 'Missing'}`);
-    next();
-}, validateAdminPasswordReset, handleValidationErrors, AdminAuthController.resetPassword);
+router.post('/reset-password', adminRateLimit, validateAdminPasswordReset, handleValidationErrors, AdminAuthController.resetPassword);
 
     
 // Protected admin routes (authentication required)

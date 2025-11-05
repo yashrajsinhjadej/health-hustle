@@ -1,4 +1,5 @@
 const ResponseHandler = require('../../utils/ResponseHandler');
+const Logger = require('../../utils/logger');
 const categoryModel = require('../../models/Category');
 const CategoryWorkout = require('../../models/CategoryWorkout');
 
@@ -9,16 +10,22 @@ class CategoryController {
    * Logic: Find max sequence among ACTIVE categories only, then add 1
    */
   async createCategory(req, res) {
+    const requestId = `category-create_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
       const { name, designId } = req.body;
   
       // Basic validation: ensure name is provided
       if (!name || typeof name !== 'string' || !name.trim()) {
+        Logger.warn('Category create validation failed - missing name', requestId);
         return ResponseHandler.badRequest(res, 'Category name is required');
       }
   
-      console.log('Creating category with name:', name);
-      console.log('Design ID:', designId);
+      Logger.info('Create category START', requestId, { 
+        name: name.trim(), 
+        designId,
+        userId: req.user?._id 
+      });
   
       // Ensure no active category exists with the same name
       const existingCategory = await categoryModel.findOne({ 
@@ -27,6 +34,7 @@ class CategoryController {
       });
       
       if (existingCategory) {
+        Logger.warn('Category create failed - duplicate name', requestId, { name: name.trim() });
         return ResponseHandler.forbidden(res, 'Category with this name already exists');
       }
   
@@ -40,7 +48,7 @@ class CategoryController {
         ? (Number(lastActiveCategory.categorySequence) || 0) + 1 
         : 1;
       
-      console.log('Computed next category sequence:', nextSequence);
+      Logger.info('Computed next category sequence', requestId, { nextSequence });
   
       const newCategory = new categoryModel({
         name: name.trim(),
@@ -51,10 +59,11 @@ class CategoryController {
   
       await newCategory.save();
   
+      Logger.info('Create category SUCCESS', requestId, { categoryId: newCategory._id });
       return ResponseHandler.success(res, 'Category created successfully', newCategory);
     } catch (error) {
-      console.error('Error creating category:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while creating the category');
+      Logger.error('Create category FAILED', requestId, { error: error.message, stack: error.stack });
+      return ResponseHandler.serverError(res, 'An error occurred while creating the category', 'CATEGORY_CREATE_FAILED');
     }
   }
   
@@ -64,17 +73,23 @@ class CategoryController {
    * Inactive categories are ignored in sequence calculations
    */
   async updateCategory(req, res) {
+    const requestId = `category-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
       const categoryId = req.params.id;
       const { name, designId, categorySequence } = req.body;
   
+      Logger.info('Update category START', requestId, { categoryId, updates: { name, designId, categorySequence } });
+  
       const category = await categoryModel.findById(categoryId);
       if (!category) {
+        Logger.warn('Update category failed - not found', requestId, { categoryId });
         return ResponseHandler.notFound(res, 'Category not found');
       }
 
       // Don't allow updating inactive categories
       if (!category.isActive) {
+        Logger.warn('Update category failed - inactive', requestId, { categoryId });
         return ResponseHandler.forbidden(res, 'Cannot update an inactive category');
       }
   
@@ -87,6 +102,7 @@ class CategoryController {
         });
         
         if (existingCategory) {
+          Logger.warn('Update category failed - duplicate name', requestId, { name: name.trim() });
           return ResponseHandler.forbidden(res, 'Another category with this name already exists');
         }
       }
@@ -98,6 +114,7 @@ class CategoryController {
       if (newSequence && !isNaN(newSequence) && newSequence !== oldSequence) {
         // Validate sequence is a positive integer
         if (newSequence < 1) {
+          Logger.warn('Update category failed - invalid sequence', requestId, { newSequence });
           return ResponseHandler.badRequest(res, 'Category sequence must be at least 1');
         }
 
@@ -109,7 +126,11 @@ class CategoryController {
 
         // Inform user if sequence was clamped
         if (validNewSeq !== newSequence) {
-          console.log(`Sequence ${newSequence} was clamped to ${validNewSeq} (max: ${totalActiveCategories})`);
+          Logger.info('Sequence clamped to valid range', requestId, { 
+            requested: newSequence, 
+            clamped: validNewSeq, 
+            max: totalActiveCategories 
+          });
         }
   
         if (validNewSeq < oldSequence) {
@@ -123,6 +144,7 @@ class CategoryController {
             },
             { $inc: { categorySequence: 1 } }
           );
+          Logger.info('Reordered categories - moved UP', requestId, { from: oldSequence, to: validNewSeq });
         } else if (validNewSeq > oldSequence) {
           // Moving DOWN (e.g., from position 2 → 5)
           // Shift categories between old and new position UP by 1
@@ -134,6 +156,7 @@ class CategoryController {
             },
             { $inc: { categorySequence: -1 } }
           );
+          Logger.info('Reordered categories - moved DOWN', requestId, { from: oldSequence, to: validNewSeq });
         }
   
         category.categorySequence = validNewSeq;
@@ -148,11 +171,12 @@ class CategoryController {
   
       await category.save();
   
+      Logger.info('Update category SUCCESS', requestId, { categoryId });
       return ResponseHandler.success(res, 'Category updated successfully', category);
   
     } catch (error) {
-      console.error('Error updating category:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while updating the category');
+      Logger.error('Update category FAILED', requestId, { error: error.message, stack: error.stack });
+      return ResponseHandler.serverError(res, 'An error occurred while updating the category', 'CATEGORY_UPDATE_FAILED');
     }
   }
 
@@ -161,7 +185,11 @@ class CategoryController {
    * Logic: Only fetch ACTIVE categories and sort by sequence
    */
   async getAllCategories(req, res) {
+    const requestId = `category-list_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
+      Logger.info('Get all categories START', requestId);
+      
     const categories = await categoryModel.aggregate([
   { $match: { isActive: true } },
   {
@@ -199,10 +227,11 @@ class CategoryController {
   { $sort: { categorySequence: 1 } }
 ]);
     
+      Logger.info('Get all categories SUCCESS', requestId, { count: categories.length });
       return ResponseHandler.success(res, 'Categories retrieved successfully', categories);
     } catch (error) {
-      console.error('Error retrieving categories:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while retrieving categories');
+      Logger.error('Get all categories FAILED', requestId, { error: error.message, stack: error.stack });
+      return ResponseHandler.serverError(res, 'An error occurred while retrieving categories', 'CATEGORY_GET_ALL_FAILED');
     }
   }
     
@@ -214,16 +243,22 @@ class CategoryController {
    * This keeps the active sequence continuous: 1, 2, 3, 4... (no gaps)
    */
   async deleteCategory(req, res) {
+    const requestId = `category-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
       const categoryId = req.params.id;
 
+      Logger.info('Delete category START', requestId, { categoryId });
+
       const category = await categoryModel.findById(categoryId);
       if (!category) {
+        Logger.warn('Delete category failed - not found', requestId, { categoryId });
         return ResponseHandler.notFound(res, 'Category not found');
       }
 
       // Already deleted
       if (!category.isActive) {
+        Logger.info('Category already deleted', requestId, { categoryId });
         return ResponseHandler.success(res, 'Category is already deleted');
       }
 
@@ -234,6 +269,7 @@ class CategoryController {
     });
 
     if (blockingCount > 0) {
+      Logger.warn('Delete category blocked - has active workouts', requestId, { categoryId, workoutCount: blockingCount });
       // Optionally also return a small sample of blocking workoutIds
       return ResponseHandler.forbidden(res, 'Category cannot be deleted while it has active workouts. Delete or unlink workouts first.', { 
       });
@@ -264,10 +300,11 @@ class CategoryController {
         { $inc: { categorySequence: -1 } }
       );
 
+      Logger.info('Delete category SUCCESS', requestId, { categoryId, deletedSequence });
       return ResponseHandler.success(res, 'Category deleted successfully');
     } catch (error) {
-      console.error('Error deleting category:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while deleting the category');
+      Logger.error('Delete category FAILED', requestId, { error: error.message, stack: error.stack });
+      return ResponseHandler.serverError(res, 'An error occurred while deleting the category', 'CATEGORY_DELETE_FAILED');
     }
   }
 
@@ -275,22 +312,29 @@ class CategoryController {
    * GET CATEGORY BY ID
    */
   async getCategoryById(req, res) {
+    const requestId = `category-getbyid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     try {
       const categoryId = req.params.id;
 
       if (!categoryId) {
+        Logger.warn('Get category by ID failed - missing ID', requestId);
         return ResponseHandler.badRequest(res, 'Category ID is required');
       }
 
+      Logger.info('Get category by ID START', requestId, { categoryId });
+
       const category = await categoryModel.findById(categoryId);
       if (!category) {
+        Logger.warn('Get category by ID failed - not found', requestId, { categoryId });
         return ResponseHandler.notFound(res, 'Category not found');
       }
 
+      Logger.info('Get category by ID SUCCESS', requestId, { categoryId });
       return ResponseHandler.success(res, 'Category fetched successfully', category);
     } catch (error) {
-      console.error('Error fetching category by ID:', error);
-      return ResponseHandler.serverError(res, 'An error occurred while fetching the category');
+      Logger.error('Get category by ID FAILED', requestId, { error: error.message, stack: error.stack });
+      return ResponseHandler.serverError(res, 'An error occurred while fetching the category', 'CATEGORY_GET_BY_ID_FAILED');
     }
   }
 

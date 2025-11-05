@@ -2,6 +2,8 @@
 // Provides the same functionality as Redis rate limiting but in-memory
 // Now configurable via environment variables
 
+const Logger = require('../utils/logger');
+
 class CustomRateLimiter {
     constructor() {
         this.requests = new Map(); // Store request counts: key -> {count, firstRequest, windowStart}
@@ -15,8 +17,6 @@ class CustomRateLimiter {
         const now = Date.now();
         const windowMs = windowSeconds * 1000;
         const windowStart = now - windowMs;
-        
-        console.log(`Custom rate limiter called for key: ${key}, limit: ${limit}, window: ${windowSeconds}s`);
         
         // Get or create request history for this key
         if (!this.requests.has(key)) {
@@ -47,8 +47,6 @@ class CustomRateLimiter {
         // Calculate TTL (time until window resets)
         const ttl = Math.ceil((windowMs - (now - requestData.windowStart)) / 1000);
         
-        console.log(`Rate limit check: count=${requestData.count}, limit=${limit}, allowed=${allowed}, remaining=${remaining}, ttl=${ttl}`);
-        
         return {
             allowed: allowed,
             remaining: remaining,
@@ -70,7 +68,7 @@ class CustomRateLimiter {
         }
         
         if (cleanedCount > 0) {
-            console.log(`🧹 Cleaned up ${cleanedCount} old rate limit entries`);
+            Logger.debug('rate-limiter', 'Cleaned up old entries', { cleanedCount });
         }
     }
 
@@ -89,6 +87,8 @@ const rateLimiter = new CustomRateLimiter();
 // Middleware factory - now configurable via environment variables
 function createCustomRateLimit(limit, windowSeconds) {
     return async function (req, res, next) {
+        const requestId = Logger.generateId('rate-limit');
+        
         try {
             // Use IP + route path so each route has separate counter (same as Redis version)
             const key = `${req.ip}:${req.path}`;
@@ -100,7 +100,11 @@ function createCustomRateLimit(limit, windowSeconds) {
             const { allowed, remaining, ttl } = await rateLimiter.isAllowed(key, effectiveLimit, effectiveWindow);
 
             if (!allowed) {
-                console.log(`🚫 Rate limit exceeded for ${key}: ${remaining} remaining, reset in ${ttl}s`);
+                Logger.warn(requestId, 'Rate limit exceeded', { 
+                    key, 
+                    remaining, 
+                    resetIn: ttl 
+                });
                 return res.status(429).json({
                     error: "Too many requests",
                     retryAfter: ttl,
@@ -111,11 +115,13 @@ function createCustomRateLimit(limit, windowSeconds) {
             // Set rate limit headers (same as Redis version)
             res.set("X-RateLimit-Remaining", remaining);
             res.set("X-RateLimit-Reset", ttl);
-            console.log(`✅ Rate limit OK for ${key}: ${remaining} remaining, reset in ${ttl}s`);
             
             next();
         } catch (err) {
-            console.error("Custom rate limiter error:", err);
+            Logger.error(requestId, 'Rate limiter error', { 
+                error: err.message, 
+                stack: err.stack 
+            });
             next(); // fail open if rate limiter fails (same as Redis version)
         }
     };

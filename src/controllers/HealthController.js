@@ -5,7 +5,6 @@ const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
 const goalcounter = require('../utils/goalcounter');
-const { EsimProfilePage } = require('twilio/lib/rest/supersim/v1/esimProfile');
 const sleepduration = require('../utils/sleepduration');
 const calorieService = require('../services/calorieService');
 
@@ -49,11 +48,11 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 class HealthController {
 
     async monthlyreport(req, res) {
+        const requestId = `health-monthlyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
             const userId = req.user._id;
             const { date } = req.body;
-            
-            
             
             // Calculate month boundaries
             const inputDate = new Date(date);
@@ -67,7 +66,12 @@ class HealthController {
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             const monthEndString = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
             
-            console.log('Month boundaries:', { monthStartString, monthEndString, daysInMonth });
+            Logger.info('Monthly report START', requestId, { 
+                userId, 
+                monthStartString, 
+                monthEndString, 
+                daysInMonth 
+            });
             
             // Get user goals
             let userGoals = await Goals.findOne({ userId });
@@ -81,6 +85,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
             
             // MongoDB Aggregation Query for Monthly Data
@@ -104,6 +109,7 @@ class HealthController {
                         water: 1,
                         calories: 1,
                         sleep: 1,
+                        goalcomplete: 1,  // Include goalcomplete field
                         _id: 0
                     }
                 }
@@ -133,6 +139,7 @@ class HealthController {
                 
                 dailyBreakdown.push({
                     date: dateString,
+                    goalCompletion: existingData?.goalcomplete || false,  // Add goalCompletion for each day
                     water: {
                         ml: existingData?.water?.consumed || 0,
                         glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
@@ -149,6 +156,18 @@ class HealthController {
                     }
                 });
             }
+            
+            // Calculate monthly totals
+            const totalWaterIntake = monthlyData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
+            const totalCaloriesConsumed = monthlyData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
+            const totalCaloriesBurned = monthlyData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
+            const totalSleepDuration = monthlyData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
+            const totalSteps = monthlyData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+            
+            Logger.info('Monthly report SUCCESS', requestId, { 
+                recordsFound: monthlyData.length,
+                totalDays: daysInMonth 
+            });
             
             return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
                 goalcompletions: todayHealth?.goalcomplete || false,
@@ -167,29 +186,49 @@ class HealthController {
                     year: year,
                     totalDays: daysInMonth
                 },
+                monthSummary: {
+                    water: {
+                        totalGlasses: WaterConverter.mlToGlasses(totalWaterIntake),
+                        totalConsumed: totalWaterIntake
+                    },
+                    calories: {
+                        totalConsumed: totalCaloriesConsumed,
+                        totalBurned: totalCaloriesBurned
+                    },
+                    sleep: {
+                        totalDuration: totalSleepDuration
+                    },
+                    steps: {
+                        totalCount: totalSteps
+                    }
+                },
                 dailyBreakdown: dailyBreakdown
             });
             
         } catch (error) {
-            console.log(error);
-            return ResponseHandler.serverError(res, 'Failed to get monthly report');
+            Logger.error('Monthly report FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to get monthly report', 'HEALTH_MONTHLY_REPORT_FAILED');
         }
     }
 
     // Get specific day health data
     async weeklyreport(req, res) {
+        const requestId = `health-weeklyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
             const userId=req.user._id;
             const {date} = req.body;
             
             // Input validation
             if (!date) {
+                Logger.warn('Weekly report missing date', requestId);
                 return ResponseHandler.badRequest(res, 'Date is required in request body');
             }
             
             // Validate date format (YYYY-MM-DD)
             const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
             if (!dateRegex.test(date)) {
+                Logger.warn('Weekly report invalid date format', requestId, { date });
                 return ResponseHandler.badRequest(res, 'Invalid date format. Please use YYYY-MM-DD format');
             }
             
@@ -197,8 +236,11 @@ class HealthController {
             
             // Check if date is valid
             if (isNaN(inputDate.getTime())) {
+                Logger.warn('Weekly report invalid date', requestId, { date });
                 return ResponseHandler.badRequest(res, 'Invalid date provided');
             }
+            
+            Logger.info('Weekly report START', requestId, { userId, date });
             
             inputDate.setUTCHours(0, 0, 0, 0);
 
@@ -218,9 +260,6 @@ class HealthController {
             // Convert Date objects to YYYY-MM-DD strings for database query
             const weekStartString = weekStart.toISOString().split('T')[0];
             const weekEndString = weekEnd.toISOString().split('T')[0];
-            
-            console.log('Week start string:', weekStartString);
-            console.log('Week end string:', weekEndString);
 
             // Get user goals first
             const userGoals = await Goals.findOne({ userId })
@@ -295,6 +334,13 @@ class HealthController {
                 date: today.toISOString().split('T')[0]
             });
             const streak = dailyHealth ? dailyHealth.streak : 0;
+            
+            Logger.info('Weekly report SUCCESS', requestId, { 
+                weekStartString, 
+                weekEndString,
+                recordsFound: weeklyHealthData.length 
+            });
+            
             return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
                 weekInfo:{
                     "inputDate": date,
@@ -326,23 +372,35 @@ class HealthController {
 
         }
         catch(error){
-            console.error('Get weekly water report error:', error);
-            return ResponseHandler.serverError(res, 'Failed to get weekly water report');
+            Logger.error('Weekly report FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to get weekly water report', 'HEALTH_WEEKLY_REPORT_FAILED');
         }
     }
 
 
     async estimateCalories(req,res){
+        const requestId = `health-estimate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
             // req.file.buffer contains the image data in memory
             const imageBuffer = req.file.buffer;
             const mimeType = req.file.mimetype;
+        
+            Logger.info('Estimate calories START', requestId, { 
+                userId: req.user._id,
+                imageSize: imageBuffer.length, 
+                mimeType 
+            });
         
             // Call service to get calorie estimation
             const result = await calorieService.estimateCaloriesFromImage(
               imageBuffer,
               mimeType
             );
+        
+            Logger.info('Estimate calories SUCCESS', requestId, { 
+                estimatedCalories: result.estimatedCalories 
+            });
         
             // Image buffer will be garbage collected automatically
             return res.status(200).json({
@@ -355,14 +413,16 @@ class HealthController {
             });
         }
         catch(error){   
-            console.error('Estimate calories error:', error);
-            return ResponseHandler.serverError(res, 'Failed to estimate calories');
+            Logger.error('Estimate calories FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to estimate calories', 'HEALTH_ESTIMATE_CALORIES_FAILED');
         }
     }
 
 
 
     async addsleep(req,res){
+        const requestId = `health-sleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
             const { duration } = req.body.sleep;
             // Use duration directly from frontend
@@ -370,12 +430,15 @@ class HealthController {
             const userId = req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
 
+            Logger.info('Add sleep START', requestId, { userId, duration: sleepDuration, date: todayDate });
+
             let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
 
             if(healthdatatoday){
                 // Ensure sleep duration is a valid number, default to 0 if undefined/null
                 const currentDuration = healthdatatoday.sleep?.duration || 0;
                 if(currentDuration + sleepDuration > 12){
+                    Logger.warn('Sleep duration exceeds 12 hours', requestId, { currentDuration, newDuration: sleepDuration });
                     return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
                 }
                 if (!healthdatatoday.sleep) {
@@ -390,6 +453,7 @@ class HealthController {
                 });
                 healthdatatoday.sleep.duration = Number((currentDuration + sleepDuration).toFixed(2));
                 await healthdatatoday.save();
+                Logger.info('Sleep updated in existing health data', requestId);
             }
             else{
                 healthdatatoday = new DailyHealthData({
@@ -404,6 +468,7 @@ class HealthController {
                     }
                 });
                 await healthdatatoday.save();
+                Logger.info('Created new health data with sleep', requestId);
             }
 
             // Get user goals
@@ -418,6 +483,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
 
             // Build last 7 days array (today and previous 6 days) and fill missing days with zeros
@@ -451,6 +517,7 @@ class HealthController {
             // Get today's updated health data for goals and streak
             const updatedTodayData = await DailyHealthData.findOne({ userId, date: todayDate });
             
+            Logger.info('Add sleep SUCCESS', requestId);
             return ResponseHandler.success(res, 'Sleep consumption updated successfully', { 
                 goalcompletions: updatedTodayData.goalcomplete,
                 streak: updatedTodayData.streak,
@@ -467,17 +534,21 @@ class HealthController {
             });
         }
         catch(error){
-            console.error('Add sleep error:', error);
-            return ResponseHandler.serverError(res, 'Failed to update sleep consumption');
+            Logger.error('Add sleep FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to update sleep consumption', 'HEALTH_ADD_SLEEP_FAILED');
         }
     }
 
 
     
     async getwater(req,res){
+        const requestId = `health-getwater_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
             const userId=req.user._id;
             const date = req.body.date;
+            
+            Logger.info('Get water START', requestId, { userId, date });
             
             // Get user goals
             let userGoals = await Goals.findOne({ userId });
@@ -491,6 +562,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
             
             // Get water data for requested date
@@ -505,6 +577,7 @@ class HealthController {
             
             if(waterdata){
                 waterdata.water.consumed = WaterConverter.mlToGlasses(waterdata.water.consumed || 0);
+                Logger.info('Get water SUCCESS - Data found', requestId);
                 return ResponseHandler.success(res, 'Water data retrieved successfully', {
                     goalcompletions: todayHealth?.goalcomplete || false,
                     streak: todayHealth?.streak || 0,
@@ -521,6 +594,7 @@ class HealthController {
                     date: waterdata.date
                 });
             }
+            Logger.info('Get water SUCCESS - No data found', requestId);
             return ResponseHandler.success(res,'No water data found for the specified date',{
                 goalcompletions: todayHealth?.goalcomplete || false,
                 streak: todayHealth?.streak || 0,
@@ -536,17 +610,23 @@ class HealthController {
                 date: date
             });
         }
-        catch(error){return ResponseHandler.serverError(res,'Failed to get water data');}
+        catch(error){
+            Logger.error('Get water FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res,'Failed to get water data', 'HEALTH_GET_WATER_FAILED');
+        }
     }
 
      async getsleep(req,res){
+        const requestId = `health-getsleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
-            console.log('get sleep method called')
             const userId=req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
             const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            
+            Logger.info('Get sleep START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}` });
             
             // Get user goals
             let userGoals = await Goals.findOne({ userId });
@@ -560,6 +640,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
 
             const last7DaysData = await DailyHealthData.find({
@@ -588,6 +669,7 @@ class HealthController {
             // Get today's health data for goals and streak (from the constructed array)
             const todayHealthData = sleepHistory.find(d => d.date === todayDate) || { totalDuration: 0, entries: [] };
             
+            Logger.info('Get sleep SUCCESS', requestId);
             return ResponseHandler.success(res, 'Sleep data retrieved successfully', {
                 goalcompletions: todayHealthData?.goalcomplete,
                 streak: todayHealthData?.streak,
@@ -604,19 +686,23 @@ class HealthController {
             });
         }
         catch(error){
-            console.error('Get sleep error:', error);
-            return ResponseHandler.serverError(res,'Failed to get sleep data');
+            Logger.error('Get sleep FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res,'Failed to get sleep data', 'HEALTH_GET_SLEEP_FAILED');
         }
     }
 
     async getsteps(req,res){
+        const requestId = `health-getsteps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
-            console.log('get steps method called')
             const userId=req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
             const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+            
+            Logger.info('Get steps START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}` });
+            
             const last7DaysData = await DailyHealthData.find({
                 userId,
                 date: { $gte: sevenDaysAgoString, $lte: todayDate }
@@ -666,21 +752,25 @@ class HealthController {
                 });
             }
             
+            Logger.info('Get steps SUCCESS', requestId);
             return ResponseHandler.success(res, 'Steps data retrieved successfully', {
                 last7Days: stepsHistory
             });
         }
         catch(error){
-            console.log(error)
-            return ResponseHandler.serverError(res,'Failed to get steps data');
+            Logger.error('Get steps FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res,'Failed to get steps data', 'HEALTH_GET_STEPS_FAILED');
         }
     }
 
     async getcalories(req,res){
+        const requestId = `health-getcalories_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try{
-            console.log('caloreis method caled')
             const userId=req.user._id;
             const date = req.body.date;
+            
+            Logger.info('Get calories START', requestId, { userId, date });
             
             // Get user goals
             let userGoals = await Goals.findOne({ userId });
@@ -694,6 +784,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
             
             // Get calories data for requested date
@@ -707,6 +798,7 @@ class HealthController {
             }).select('goalcomplete streak -_id');
             
             if(caloriesdata){
+                Logger.info('Get calories SUCCESS - Data found', requestId);
                 return ResponseHandler.success(res, 'Calories data retrieved successfully', {
                     goalcompletions: todayHealth?.goalcomplete || false,
                     streak: todayHealth?.streak || 0,
@@ -723,6 +815,7 @@ class HealthController {
                     date: caloriesdata.date
                 });
             }
+            Logger.info('Get calories SUCCESS - No data found', requestId);
             return ResponseHandler.success(res,'No calories data found for the specified date',{
                 goalcompletions: todayHealth?.goalcomplete || false,
                 streak: todayHealth?.streak || 0,
@@ -739,14 +832,24 @@ class HealthController {
             });
         }
         catch(error){
-            console.log(error)
-            return ResponseHandler.serverError(res,'Failed to get calories data');}   
+            Logger.error('Get calories FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res,'Failed to get calories data', 'HEALTH_GET_CALORIES_FAILED');
+        }   
     }
+
     async addwater(req, res) {
+        const requestId = `health-water_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
             const waterconsumedinglasses = req.body.water.consumed;
             const userId = req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
+
+            Logger.info('Add water START', requestId, { 
+                userId, 
+                waterGlasses: waterconsumedinglasses, 
+                date: todayDate 
+            });
 
             const waterInMl = WaterConverter.glassesToMl(waterconsumedinglasses);
             let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
@@ -759,6 +862,7 @@ class HealthController {
                     at: new Date()
                 });
                 await healthdatatoday.save();
+                Logger.info('Water updated in existing health data', requestId);
             } else {
                 // If no health data for today, create a new record
                 healthdatatoday = new DailyHealthData({
@@ -774,6 +878,7 @@ class HealthController {
                     }
                 });
                 await healthdatatoday.save();
+                Logger.info('Created new health data with water', requestId);
             }
 
             // Fetch user goals
@@ -788,6 +893,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
 
             // Clean/format health data for response
@@ -839,25 +945,26 @@ class HealthController {
                 goals: cleanGoals
             };
 
+            Logger.info('Add water SUCCESS', requestId);
             return ResponseHandler.success(res, 'Water consumption updated successfully', { todayData });
 
         } catch (error) {
-            console.error('Add water error:', error);
-            return ResponseHandler.serverError(res, 'Failed to update water consumption');
+            Logger.error('Add water FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to update water consumption', 'HEALTH_ADD_WATER_FAILED');
         }
     }
     
     async getDailyHealth(req, res) {
-        const requestId = `get_health_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `health-date_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         try {
-            console.log(`📊 [${requestId}] HealthController.getDailyHealth START`);
-            console.log(`📊 [${requestId}] Request body:`, req.body);
-            console.log(`📊 [${requestId}] Request headers:`, req.headers);
-            console.log(`📊 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+            Logger.info('Get daily health START', requestId, { 
+                userId: req.user._id,
+                requestedDate: req.body.date,
+                ip: req.ip || req.connection.remoteAddress
+            });
             
             // Ensure MongoDB connection for serverless
-            console.log(`📊 [${requestId}] Ensuring MongoDB connection...`);
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
@@ -870,14 +977,25 @@ class HealthController {
             inputDate.setHours(0, 0, 0, 0);
             
             if (inputDate > today) {
-                console.log(`❌ [${requestId}] Rejecting future date ${date} for user ${userId}`);
-                return ResponseHandler.error(res, `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`);
+                Logger.warn('Rejecting future date request', requestId, { 
+                    userId,
+                    requestedDate: date 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    'Validation failed',
+                    `Date ${date} cannot be in the future. Only today's date or past dates are allowed.`, 
+                    400,
+                    'HEALTH_FUTURE_DATE_NOT_ALLOWED'
+                );
             }
 
-            console.log(`📊 [${requestId}] Processing - User: ${userId}, Date: ${date}`);
+            Logger.info('Fetching health data for date', requestId, { 
+                userId,
+                date 
+            });
 
             // Find health data for specific date
-            console.log(`📊 [${requestId}] Looking for health record...`);
             const dailyHealth = await DailyHealthData.findOne({ 
                 userId: userId, 
                 date: date 
@@ -893,6 +1011,7 @@ class HealthController {
             // Always fetch user goals
             let userGoals = await Goals.findOne({ userId: userId });
             if (!userGoals) {
+                Logger.info('Creating default goals for user', requestId, { userId });
                 userGoals = new Goals({
                     userId: userId,
                     stepsGoal: 10000,
@@ -971,25 +1090,47 @@ class HealthController {
                 }
             };
 
-            console.log(`📊 [${requestId}] Retrieved health data and goals for user ${userId} on ${date}`);
+            Logger.info('Daily health data retrieved successfully', requestId, { 
+                userId,
+                date,
+                hasData: !!dailyHealth 
+            });
 
             ResponseHandler.success(res, 'Daily health data and goals retrieved successfully', responseData);
 
         } catch (error) {
-            console.error(`❌ [${requestId}] Get daily health error:`, error);
-            ResponseHandler.serverError(res, 'Failed to retrieve daily health data');
+            Logger.error('Get daily health error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            ResponseHandler.error(
+                res, 
+                'Server error', 
+                'Failed to retrieve daily health data', 
+                500,
+                'HEALTH_GET_DAILY_FAILED'
+            );
         }
     }
 
     // Get today's health data (convenience endpoint)
     async getTodayHealth(req, res) {
+        const requestId = `health-today_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
+            Logger.info('Get today health START', requestId, { 
+                userId: req.user._id 
+            });
+            
             // Ensure MongoDB connection before proceeding
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
             
+            Logger.info('Fetching today health data', requestId, { 
+                userId,
+                date: today 
+            });
 
             // Find today's health data
             const dailyHealth = await DailyHealthData.findOne({ 
@@ -1001,12 +1142,11 @@ class HealthController {
             let userGoals = await Goals.findOne({ userId: userId });
             
             if (!userGoals) {
-                console.log(`🎯 Creating default goals for new user ${userId}`);
+                Logger.info('Creating default goals for new user', requestId, { userId });
                 
                 // Create default goals for the user
                 userGoals = new Goals({
                     userId: userId,
-                    // Default values are already set in the schema
                     stepsGoal: 10000,
                     caloriesBurnGoal: 2000,
                     waterIntakeGoal: 8,
@@ -1017,7 +1157,7 @@ class HealthController {
                 });
                 
                 await userGoals.save();
-                console.log(`✅ Default goals created for user ${userId}`);
+                Logger.info('Default goals created successfully', requestId, { userId });
             }
 
             // Prepare response data
@@ -1059,7 +1199,7 @@ class HealthController {
                         entries: formattedHealthData.sleep.entries || []
                     } : undefined,
                     date: formattedHealthData.date,
-                    goalcompletions: formattedHealthData.goalcomplete,  // Map DB field to API response for frontend UI logic
+                    goalcompletions: formattedHealthData.goalcomplete,
                     streak: formattedHealthData.streak
                 };
                 
@@ -1080,25 +1220,40 @@ class HealthController {
             };
 
             if (!dailyHealth) {
+                Logger.info('No health data found for today, returning goals only', requestId);
                 return ResponseHandler.success(res, 'No health data found for today, but goals are ready', responseData);
             } 
 
-            console.log(`📊 Retrieved today's health data and goals for user ${userId}`);
+            Logger.info('Today health data retrieved successfully', requestId, { 
+                hasHealthData: !!dailyHealth,
+                hasGoals: !!userGoals 
+            });
 
             ResponseHandler.success(res, 'Today\'s health data and goals retrieved successfully', responseData);
 
         } catch (error) {
-            console.error('Get today health error:', error);
-            ResponseHandler.serverError(res, 'Failed to retrieve today\'s health data and goals');
+            Logger.error('Get today health error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            ResponseHandler.error(
+                res, 
+                'Server error', 
+                'Failed to retrieve today\'s health data and goals', 
+                500,
+                'HEALTH_TODAY_FAILED'
+            );
         }
     }
 
     // Bulk update health data for multiple dates - ULTRA OPTIMIZED VERSION
     async bulkUpdateHealthData(req, res) {
-        const requestId = `bulk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `health-bulk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         try {
-            console.log(`🚀 [${requestId}] Starting ULTRA OPTIMIZED bulk update`);
+            Logger.info('Bulk update health data START', requestId, { 
+                userId: req.user._id 
+            });
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
@@ -1116,23 +1271,38 @@ class HealthController {
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
 
             if (sortedData.length === 0) {
-                return ResponseHandler.error(res, 'No valid data to process');
+                Logger.warn('No valid data to process', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    'Validation failed', 
+                    'No valid data to process', 
+                    400,
+                    'HEALTH_NO_VALID_DATA'
+                );
             }
 
             const allDates = sortedData.map(d => d.date);
             const firstDate = sortedData[0].date;
 
-            console.log(`📊 [${requestId}] Processing ${sortedData.length} records`);
+            Logger.info('Processing bulk records', requestId, { 
+                totalRecords: sortedData.length,
+                dateRange: `${sortedData[0].date} to ${sortedData[sortedData.length - 1].date}`
+            });
 
             // CONDITIONAL STREAK STRATEGY: Only calculate streaks for ≤2 days
             const isStreakMode = sortedData.length <= 2;
             const isBulkMode = sortedData.length > 2;
 
-            console.log(`📊 [${requestId}] Mode: ${isStreakMode ? 'STREAK (≤2 days)' : 'BULK (>2 days)'}`);
+            Logger.info('Bulk update mode determined', requestId, { 
+                mode: isStreakMode ? 'STREAK' : 'BULK',
+                recordCount: sortedData.length 
+            });
 
             if (isStreakMode) {
                 // STREAK MODE: Calculate streaks for 1-2 days
-                console.log(`📊 [${requestId}] STREAK MODE: Processing ${sortedData.length} records with streak calculation`);
+                Logger.info('STREAK MODE: Processing with streak calculation', requestId, { 
+                    recordCount: sortedData.length 
+                });
                 
                 // Get all data needed for streak calculation
                 const [existingRecords, userGoals, prevRecord] = await Promise.all([
@@ -1177,13 +1347,13 @@ class HealthController {
                         const totalGoalsCompleted = streakResults.completedGoals.length;
                         const goalcompletions = streakResults.allCompleted;
                         
-                        console.log(`🎯 [${requestId}] Goals for ${date}:`, {
-                            steps: goalResults.steps ? '✅' : '❌',
-                            sleep: goalResults.sleep ? '✅' : '❌', 
-                            caloriesBurn: goalResults.caloriesBurn ? '✅' : '❌',
-                            water: goalResults.water ? '✅' : '❌',
-                            caloriesIntake: goalResults.caloriesIntake ? '✅' : '❌',
-                            streakGoals: STREAK_GOALS,
+                        Logger.info('Goals calculated for date', requestId, {
+                            date,
+                            steps: goalResults.steps ? 'completed' : 'not completed',
+                            sleep: goalResults.sleep ? 'completed' : 'not completed',
+                            caloriesBurn: goalResults.caloriesBurn ? 'completed' : 'not completed',
+                            water: goalResults.water ? 'completed' : 'not completed',
+                            caloriesIntake: goalResults.caloriesIntake ? 'completed' : 'not completed',
                             completedCount: `${totalGoalsCompleted}/${streakResults.totalStreakGoals}`
                         });
                 
@@ -1217,22 +1387,38 @@ class HealthController {
                 if (goalcompletions && prevGoalCompleted) {
                     // If today completes goals and yesterday also completed goals, streak should increment
                     if (streak !== prevStreak + 1) {
-                        console.error(`❌ [${requestId}] Streak increment error for ${date}: expected ${prevStreak + 1}, got ${streak}`);
+                        Logger.error('Streak increment error', requestId, { 
+                            date,
+                            expected: prevStreak + 1,
+                            got: streak 
+                        });
                     }
                 } else if (!goalcompletions && prevGoalCompleted) {
                     // If today doesn't complete goals but yesterday did, streak should maintain yesterday's value
                     if (streak !== prevStreak) {
-                        console.error(`❌ [${requestId}] Streak maintenance error for ${date}: expected ${prevStreak}, got ${streak}`);
+                        Logger.error('Streak maintenance error', requestId, { 
+                            date,
+                            expected: prevStreak,
+                            got: streak 
+                        });
                     }
                 } else if (goalcompletions && !prevGoalCompleted) {
                     // If today completes goals but yesterday didn't, streak should start at 1
                     if (streak !== 1) {
-                        console.error(`❌ [${requestId}] New streak start error for ${date}: expected 1, got ${streak}`);
+                        Logger.error('New streak start error', requestId, { 
+                            date,
+                            expected: 1,
+                            got: streak 
+                        });
                     }
                 } else if (!goalcompletions && !prevGoalCompleted) {
                     // If today doesn't complete goals and yesterday didn't, streak should be 0
                     if (streak !== 0) {
-                        console.error(`❌ [${requestId}] No streak error for ${date}: expected 0, got ${streak}`);
+                        Logger.error('No streak error', requestId, { 
+                            date,
+                            expected: 0,
+                            got: streak 
+                        });
                     }
                 }
 
@@ -1241,65 +1427,46 @@ class HealthController {
                             userId,
                             date,
                             streak,
-                            goalcomplete: goalcompletions  // Use consistent database field name
+                            goalcomplete: goalcompletions
                         };
-
-                        console.log(`🔍 [${requestId}] Processing date ${date} - Input data:`, JSON.stringify(data, null, 2));
 
                         // Process each field individually, excluding additive fields
                         if (data.steps) {
                             updateData.steps = data.steps;
-                            console.log(`📊 [${requestId}] Including steps:`, data.steps);
                         }
                         if (data.sleep) {
                             updateData.sleep = data.sleep;
-                            console.log(`😴 [${requestId}] Including sleep:`, data.sleep);
                         }
                         if (data.heartRate) {
                             updateData.heartRate = data.heartRate;
-                            console.log(`❤️ [${requestId}] Including heartRate:`, data.heartRate);
                         }
                         
                         // Handle calories - ONLY calories.burned, NOT calories.consumed
                         if (data.calories) {
-                            console.log(`🍔 [${requestId}] Input calories data:`, data.calories);
                             updateData.calories = {};
                             if (data.calories.burned !== undefined) {
                                 updateData.calories.burned = data.calories.burned;
-                                console.log(`🔥 [${requestId}] Including calories.burned:`, data.calories.burned);
-                            }
-                            if (data.calories.consumed !== undefined) {
-                                console.log(`🚫 [${requestId}] EXCLUDING calories.consumed from bulk update:`, data.calories.consumed);
                             }
                             // If no valid calories fields, don't include calories
                             if (Object.keys(updateData.calories).length === 0) {
                                 delete updateData.calories;
-                                console.log(`❌ [${requestId}] No valid calories fields, removing calories object`);
                             }
                         }
                         
                         // Handle water - exclude consumed, allow other fields if any
                         if (data.water) {
-                            console.log(`💧 [${requestId}] Input water data:`, data.water);
                             updateData.water = {};
                             // Only include non-consumed water fields if they exist
                             Object.keys(data.water).forEach(key => {
                                 if (key !== 'consumed') {
                                     updateData.water[key] = data.water[key];
-                                    console.log(`💧 [${requestId}] Including water.${key}:`, data.water[key]);
                                 }
                             });
-                            if (data.water.consumed !== undefined) {
-                                console.log(`🚫 [${requestId}] EXCLUDING water.consumed from bulk update:`, data.water.consumed);
-                            }
                             // If no non-consumed fields, don't include water at all
                             if (Object.keys(updateData.water).length === 0) {
                                 delete updateData.water;
-                                console.log(`❌ [${requestId}] No valid water fields, removing water object`);
                             }
                         }
-
-                        console.log(`📝 [${requestId}] Final updateData for ${date}:`, JSON.stringify(updateData, null, 2));
 
                       
                         
@@ -1340,8 +1507,6 @@ class HealthController {
                             setOnInsertDoc['calories.burned'] = 0;
                         }
 
-                        console.log(`🧪 [${requestId}] (STREAK MODE) Upsert setDoc for ${date}:`, setDoc);
-                        console.log(`🧪 [${requestId}] (STREAK MODE) Upsert setOnInsertDoc for ${date}:`, setOnInsertDoc);
                         bulkOps.push({
                             updateOne: {
                                 filter: { userId, date },
@@ -1350,12 +1515,18 @@ class HealthController {
                             }
                         });
 
-                                        // Update tracking
-                prevStreak = streak;
-                prevGoalCompleted = goalcompletions;
+                        // Update tracking
+                        prevStreak = streak;
+                        prevGoalCompleted = goalcompletions;
                 
-                const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
-                console.log(`📊 [${requestId}] Day ${date}: goals ${totalGoalsCompleted}/${streakResults.totalStreakGoals}, completed: ${goalcompletions}, streak: ${prevStreak} → ${streak} (${streakStatus})`);
+                        const streakStatus = goalcompletions ? (prevGoalCompleted ? 'INCREMENTED' : 'NEW_STREAK') : (prevGoalCompleted ? 'MAINTAINED' : 'NO_STREAK');
+                        Logger.info('Day processed in STREAK MODE', requestId, {
+                            date,
+                            goalsCompleted: `${totalGoalsCompleted}/${streakResults.totalStreakGoals}`,
+                            completed: goalcompletions,
+                            streak: `${prevStreak} → ${streak}`,
+                            status: streakStatus
+                        });
                         results.push({ 
                             date, 
                             status: existing ? 'updated' : 'created', 
@@ -1375,7 +1546,10 @@ class HealthController {
                         });
 
                     } catch (err) {
-                        console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
+                        Logger.error('Error processing date in STREAK MODE', requestId, { 
+                            date,
+                            errorMessage: err.message 
+                        });
                     }
                 }
 
@@ -1455,12 +1629,16 @@ class HealthController {
                 const responseData = {
                     todayData: todayData
                 };
-                console.log(`✅ [${requestId}] STREAK MODE complete: ${results.length} records processed with streak calculation`);
+                Logger.info('STREAK MODE complete', requestId, { 
+                    recordsProcessed: results.length 
+                });
                 ResponseHandler.success(res, 'Health data processed with streak calculation', responseData);
 
             } else {
                 // BULK MODE: Skip streak calculation for maximum speed
-                console.log(`📊 [${requestId}] BULK MODE: Processing ${sortedData.length} records without streak calculation`);
+                Logger.info('BULK MODE: Processing without streak calculation', requestId, { 
+                    recordCount: sortedData.length 
+                });
                 
                 // Only get existing records (no goals, no previous streak data)
                 const existingRecords = await DailyHealthData.find({ userId, date: { $in: allDates } }).lean();
@@ -1548,8 +1726,6 @@ class HealthController {
                             setOnInsertDoc['calories.burned'] = 0; // seed only if not being set
                         }
 
-                        console.log(`🧪 [${requestId}] (BULK MODE) Upsert setDoc for ${date}:`, setDoc);
-                        console.log(`🧪 [${requestId}] (BULK MODE) Upsert setOnInsertDoc for ${date}:`, setOnInsertDoc);
                         bulkOps.push({
                             updateOne: {
                                 filter: { userId, date },
@@ -1561,7 +1737,10 @@ class HealthController {
                         results.push({ date, status: existing ? 'updated' : 'created', mode: 'bulk' });
 
                     } catch (err) {
-                        console.error(`❌ [${requestId}] Error processing ${date}:`, err.message);
+                        Logger.error('Error processing date in BULK MODE', requestId, { 
+                            date,
+                            errorMessage: err.message 
+                        });
                     }
                 }
 
@@ -1644,21 +1823,36 @@ class HealthController {
                 const responseData = {
                     todayData: todayData
                 };
-                console.log(`✅ [${requestId}] BULK MODE complete: ${results.length} records processed (streaks skipped for performance)`);
+                Logger.info('BULK MODE complete', requestId, { 
+                    recordsProcessed: results.length 
+                });
                 ResponseHandler.success(res, 'Bulk health data processed (streaks skipped for performance)', responseData);
             }
 
         } catch (error) {
-            console.error(`❌ [${requestId}] Bulk update error:`, error);
-            ResponseHandler.serverError(res, 'Failed to process bulk health data');
+            Logger.error('Bulk update error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            ResponseHandler.error(
+                res, 
+                'Server error', 
+                'Failed to process bulk health data', 
+                500,
+                'HEALTH_BULK_UPDATE_FAILED'
+            );
         }
     }
 
     async addCalories(req, res) {
+        const requestId = `health-calories_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
         try {
             const caloriesConsumed = req.body.calories.consumed;
             const userId = req.user._id;
             const todayDate = new Date().toISOString().split('T')[0];
+
+            Logger.info('Add calories START', requestId, { userId, calories: caloriesConsumed, date: todayDate });
 
             let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
 
@@ -1672,6 +1866,7 @@ class HealthController {
                 }
                 healthdatatoday.calories.entries.push({ consumed: caloriesConsumed, at: new Date() });
                 await healthdatatoday.save();
+                Logger.info('Calories updated in existing health data', requestId);
             } else {
                 // If no health data for today, create a new record
                 healthdatatoday = new DailyHealthData({
@@ -1684,6 +1879,7 @@ class HealthController {
                     }
                 });
                 await healthdatatoday.save();
+                Logger.info('Created new health data with calories', requestId);
             }
 
             // Fetch user goals
@@ -1698,6 +1894,7 @@ class HealthController {
                     sleepGoal: { hours: 8 }
                 });
                 await userGoals.save();
+                Logger.info('Created default goals', requestId);
             }
 
             // Clean/format health data for response
@@ -1748,11 +1945,12 @@ class HealthController {
                 goals: cleanGoals
             };
 
+            Logger.info('Add calories SUCCESS', requestId);
             return ResponseHandler.success(res, 'Calories consumed updated successfully', { todayData });
 
         } catch (error) {
-            console.error('Add calories error:', error);
-            return ResponseHandler.serverError(res, 'Failed to update calories consumed');
+            Logger.error('Add calories FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to update calories consumed', 'HEALTH_ADD_CALORIES_FAILED');
         }
     }
 }

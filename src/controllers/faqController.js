@@ -1,42 +1,45 @@
 // controllers/faqController.js
 const FAQ = require('../models/FAQ');
+const Logger = require('../utils/logger');
+const ResponseHandler = require('../utils/ResponseHandler');
 
 /**
  * Admin: Get all FAQ items
- * GET /api/faq/admin
+ * GET /api/cms/admin/faq
  */
 exports.getAllFaqs = async (req, res) => {
+  const requestId = Logger.generateId('faq-get-all');
+  
   try {
+    Logger.info(requestId, 'Fetching all FAQ items');
+    
     const faqs = await FAQ.find().sort({ order: 1 });
 
-    return res.status(200).json({
-      success: true,
-      message: 'FAQ items retrieved successfully',
-      data: faqs
-    });
+    Logger.success(requestId, 'FAQ items retrieved successfully', { count: faqs.length });
+    return ResponseHandler.success(res, 'FAQ items retrieved successfully', faqs);
+    
   } catch (error) {
-    console.error('❌ Get FAQs Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve FAQ items',
-      error: error.message
+    Logger.error(requestId, 'Get FAQs error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to retrieve FAQ items');
   }
 };
 
 /**
  * Admin: Add new FAQ item
- * POST /api/faq/admin
+ * POST /api/cms/admin/faq
  */
 exports.addFaq = async (req, res) => {
+  const requestId = Logger.generateId('faq-add');
+  
   try {
     const { question, answer } = req.body;
 
     if (!question || !answer) {
-      return res.status(400).json({
-        success: false,
-        message: 'Question and answer are required'
-      });
+      Logger.warn(requestId, 'Validation failed - missing required fields');
+      return ResponseHandler.error(res, 'Validation failed', 'Question and answer are required', 400, 'FAQ_MISSING_FIELDS');
     }
 
     // Get the highest order number
@@ -52,37 +55,36 @@ exports.addFaq = async (req, res) => {
 
     await faq.save();
 
-    return res.status(201).json({
-      success: true,
-      message: 'FAQ item added successfully',
-      data: faq
-    });
+    Logger.success(requestId, 'FAQ item added successfully', { order: newOrder });
+    return ResponseHandler.created(res, 'FAQ item added successfully', faq);
+    
   } catch (error) {
-    console.error('❌ Add FAQ Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to add FAQ item',
-      error: error.message
+    Logger.error(requestId, 'Add FAQ error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to add FAQ item');
   }
 };
 
 /**
  * Admin: Update FAQ item
- * PUT /api/faq/admin/:id
+ * PUT /api/cms/admin/faq/:id
  */
 exports.updateFaq = async (req, res) => {
+  const requestId = Logger.generateId('faq-update');
+  
   try {
     const { id } = req.params;
     const { question, answer, isActive } = req.body;
 
+    Logger.info(requestId, 'Updating FAQ item', { id });
+
     const faq = await FAQ.findById(id);
 
     if (!faq) {
-      return res.status(404).json({
-        success: false,
-        message: 'FAQ item not found'
-      });
+      Logger.warn(requestId, 'FAQ item not found', { id });
+      return ResponseHandler.notFound(res, 'FAQ item not found', 'FAQ_NOT_FOUND');
     }
 
     // Update fields
@@ -93,37 +95,36 @@ exports.updateFaq = async (req, res) => {
 
     await faq.save();
 
-    return res.status(200).json({
-      success: true,
-      message: 'FAQ item updated successfully',
-      data: faq
-    });
+    Logger.success(requestId, 'FAQ item updated successfully', { id });
+    return ResponseHandler.success(res, 'FAQ item updated successfully', faq);
+    
   } catch (error) {
-    console.error('❌ Update FAQ Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to update FAQ item',
-      error: error.message
+    Logger.error(requestId, 'Update FAQ error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to update FAQ item');
   }
 };
 
 /**
  * Admin: Delete FAQ item
- * DELETE /api/faq/admin/:id
+ * DELETE /api/cms/admin/faq/:id
  */
 exports.deleteFaq = async (req, res) => {
+  const requestId = Logger.generateId('faq-delete');
+  
   try {
     const { id } = req.params;
+
+    Logger.info(requestId, 'Deleting FAQ item', { id });
 
     // Find the FAQ to get its order
     const faq = await FAQ.findById(id);
 
     if (!faq) {
-      return res.status(404).json({
-        success: false,
-        message: 'FAQ item not found'
-      });
+      Logger.warn(requestId, 'FAQ item not found', { id });
+      return ResponseHandler.notFound(res, 'FAQ item not found', 'FAQ_NOT_FOUND');
     }
 
     const deletedOrder = faq.order;
@@ -137,36 +138,38 @@ exports.deleteFaq = async (req, res) => {
       { $inc: { order: -1 } }
     );
 
-    console.log(`✅ FAQ deleted and order updated for items after position ${deletedOrder}`);
+    Logger.success(requestId, 'FAQ deleted and order updated', { 
+      id, 
+      deletedOrder 
+    });
 
-    return res.status(200).json({
-      success: true,
-      message: 'FAQ item deleted successfully'
-    });
+    return ResponseHandler.success(res, 'FAQ item deleted successfully');
+    
   } catch (error) {
-    console.error('❌ Delete FAQ Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to delete FAQ item',
-      error: error.message
+    Logger.error(requestId, 'Delete FAQ error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to delete FAQ item');
   }
 };
 
 /**
  * Admin: Reorder FAQ items
- * PUT /api/faq/admin/reorder
+ * PUT /api/cms/admin/faq/reorder
  */
 exports.reorderFaqs = async (req, res) => {
+  const requestId = Logger.generateId('faq-reorder');
+  
   try {
     const { orderedIds } = req.body;
 
     if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'orderedIds array is required'
-      });
+      Logger.warn(requestId, 'Validation failed - invalid orderedIds');
+      return ResponseHandler.error(res, 'Validation failed', 'orderedIds array is required', 400, 'FAQ_INVALID_ORDER');
     }
+
+    Logger.info(requestId, 'Reordering FAQ items', { count: orderedIds.length });
 
     // Update order for each FAQ
     const updatePromises = orderedIds.map((id, index) =>
@@ -177,32 +180,35 @@ exports.reorderFaqs = async (req, res) => {
 
     const faqs = await FAQ.find().sort({ order: 1 });
 
-    return res.status(200).json({
-      success: true,
-      message: 'FAQ items reordered successfully',
-      data: faqs
-    });
+    Logger.success(requestId, 'FAQ items reordered successfully');
+    return ResponseHandler.success(res, 'FAQ items reordered successfully', faqs);
+    
   } catch (error) {
-    console.error('❌ Reorder FAQs Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to reorder FAQ items',
-      error: error.message
+    Logger.error(requestId, 'Reorder FAQs error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to reorder FAQ items');
   }
 };
 
 /**
  * Public: Get FAQ as HTML (for mobile WebView)
- * GET /api/cms/faq/public
+ * GET /api/cms/faq
  */
 exports.getPublicFaqHtml = async (req, res) => {
+  const requestId = Logger.generateId('faq-public-html');
+  
   try {
+    Logger.info(requestId, 'Fetching public FAQ as HTML');
+    
     const faqs = await FAQ.find({ isActive: true }).sort({ order: 1 });
 
     // Generate compact HTML with inline styles
     const htmlContent = generateFaqHTML(faqs);
 
+    Logger.success(requestId, 'Public FAQ HTML served', { count: faqs.length });
+    
     // Return HTML directly with proper CSP for inline events
     return res
       .status(200)
@@ -210,8 +216,12 @@ exports.getPublicFaqHtml = async (req, res) => {
       .set('Cache-Control', 'no-cache')
       .set('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline' 'unsafe-eval'; script-src-attr 'unsafe-inline'; style-src 'unsafe-inline';")
       .send(htmlContent);
+      
   } catch (error) {
-    console.error('❌ Get Public FAQ Error:', error);
+    Logger.error(requestId, 'Get public FAQ HTML error', { 
+      error: error.message, 
+      stack: error.stack 
+    });
     return res
       .status(500)
       .set('Content-Type', 'text/html; charset=utf-8')
@@ -221,25 +231,27 @@ exports.getPublicFaqHtml = async (req, res) => {
 
 /**
  * Public: Get FAQ as JSON (for mobile app native UI)
- * GET /api/faq/public/json
+ * GET /api/cms/faq/public/json
  */
 exports.getPublicFaqJson = async (req, res) => {
+  const requestId = Logger.generateId('faq-public-json');
+  
   try {
+    Logger.info(requestId, 'Fetching public FAQ as JSON');
+    
     const faqs = await FAQ.find({ isActive: true })
       .sort({ order: 1 })
       .select('question answer order');
 
-    return res.status(200).json({
-      success: true,
-      data: faqs
-    });
+    Logger.success(requestId, 'Public FAQ JSON served', { count: faqs.length });
+    return ResponseHandler.success(res, 'FAQ items retrieved successfully', faqs);
+    
   } catch (error) {
-    console.error('❌ Get Public FAQ JSON Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve FAQ items',
-      error: error.message
+    Logger.error(requestId, 'Get public FAQ JSON error', { 
+      error: error.message, 
+      stack: error.stack 
     });
+    return ResponseHandler.serverError(res, 'Failed to retrieve FAQ items');
   }
 };
 

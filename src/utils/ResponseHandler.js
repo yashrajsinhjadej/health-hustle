@@ -26,7 +26,10 @@ class ResponseHandler {
      * @param {number} statusCode - HTTP status code (default: 200)
      */
     static success(res, message, data = null, statusCode = 200) {
-        const response = { message };
+        const response = { 
+            success: true,
+            message 
+        };
         
         if (data !== null && data !== undefined) {
             response.data = data;
@@ -53,12 +56,19 @@ class ResponseHandler {
      * @param {string} message - Error message
      * @param {string} error - Detailed error description
      * @param {number} statusCode - HTTP status code (default: 400)
+     * @param {string} code - Error code for programmatic handling (optional)
      */
-    static error(res, message, error, statusCode = 400) {
-        return res.status(statusCode).json({
+    static error(res, message, error, statusCode = 400, code = null) {
+        const response = {
             message,
             error
-        });
+        };
+        
+        if (code) {
+            response.code = code;
+        }
+        
+        return res.status(statusCode).json(response);
     }
 
     /**
@@ -78,23 +88,32 @@ class ResponseHandler {
 
     /**
      * Unauthorized error (401)
+     * @param {Object} res - Express response object
+     * @param {string} message - Error message
+     * @param {string} code - Error code for programmatic handling (optional)
      */
-    static unauthorized(res, message = "Authentication required") {
-        return this.error(res, "Unauthorized", message, 401);
+    static unauthorized(res, message = "Authentication required", code = null) {
+        return this.error(res, "Unauthorized", message, 401, code);
     }
 
     /**
      * Forbidden error (403)
+     * @param {Object} res - Express response object
+     * @param {string} message - Error message
+     * @param {string} code - Error code for programmatic handling (optional)
      */
-    static forbidden(res, message = "Access denied") {
-        return this.error(res, "Forbidden", message, 403);
+    static forbidden(res, message = "Access denied", code = null) {
+        return this.error(res, "Forbidden", message, 403, code);
     }
 
     /**
      * Not found error (404)
+     * @param {Object} res - Express response object
+     * @param {string} message - Error message
+     * @param {string} code - Error code for programmatic handling (optional)
      */
-    static notFound(res, message = "Resource not found") {
-        return this.error(res, "Not found", message, 404);
+    static notFound(res, message = "Resource not found", code = null) {
+        return this.error(res, "Not found", message, 404, code);
     }
 
     /**

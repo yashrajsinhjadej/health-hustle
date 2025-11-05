@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const EmailService = require('../services/emailService');
 const ResponseHandler = require('../utils/ResponseHandler');
+const Logger = require('../utils/logger');
 const {Parser}=require('json2csv');
 const otpmodel = require('../models/OTP');
 const dailyHealthData = require('../models/DailyHealthData');
@@ -15,9 +16,10 @@ const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 
 async function fetchUsers(queryParams) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`🔍 [fetchUsers ${requestId}] ========== FUNCTION CALLED ==========`);
-    console.log(`🔍 [fetchUsers ${requestId}] Received params:`, JSON.stringify(queryParams, null, 2));
+    const requestId = `admin-fetchusers_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    Logger.info('FetchUsers helper START', requestId, { 
+        hasFilters: Object.keys(queryParams).length > 0 
+    });
 
     await ConnectionHelper.ensureConnection();
 
@@ -28,12 +30,13 @@ async function fetchUsers(queryParams) {
     const age_max = parseInt(queryParams.age_max);
     const searchTerm = queryParams.search;
 
-    console.log(`🔍 [fetchUsers ${requestId}] Extracted values:`);
-    console.log(`   - profileCompleted: ${profileCompleted}`);
-    console.log(`   - gender: ${gender}`);
-    console.log(`   - age_min: ${age_min}`);
-    console.log(`   - age_max: ${age_max}`);
-    console.log(`   - searchTerm: "${searchTerm}"`);
+    Logger.info('Filter parameters extracted', requestId, {
+        profileCompleted,
+        gender,
+        age_min,
+        age_max,
+        searchTerm: searchTerm ? 'provided' : 'none'
+    });
 
     // Build MongoDB query
     const userQuery = { role: 'user' };
@@ -41,16 +44,16 @@ async function fetchUsers(queryParams) {
     // Profile completed filter
     if (profileCompleted === 'true') {
         userQuery.profileCompleted = true;
-        console.log(`✅ [fetchUsers ${requestId}] Added filter: profileCompleted = true`);
+        Logger.info('Applied filter: profileCompleted = true', requestId);
     } else if (profileCompleted === 'false') {
         userQuery.profileCompleted = false;
-        console.log(`✅ [fetchUsers ${requestId}] Added filter: profileCompleted = false`);
+        Logger.info('Applied filter: profileCompleted = false', requestId);
     }
 
     // Gender filter
     if (gender && ['male', 'female', 'other'].includes(gender.toLowerCase())) {
         userQuery.gender = gender.toLowerCase();
-        console.log(`✅ [fetchUsers ${requestId}] Added filter: gender = ${gender.toLowerCase()}`);
+        Logger.info('Applied filter: gender', requestId, { gender: gender.toLowerCase() });
     }
 
     // Age range filter
@@ -58,29 +61,24 @@ async function fetchUsers(queryParams) {
         userQuery.age = {};
         if (!isNaN(age_min)) {
             userQuery.age.$gte = age_min;
-            console.log(`✅ [fetchUsers ${requestId}] Added filter: age >= ${age_min}`);
+            Logger.info('Applied filter: age min', requestId, { age_min });
         }
         if (!isNaN(age_max)) {
             userQuery.age.$lte = age_max;
-            console.log(`✅ [fetchUsers ${requestId}] Added filter: age <= ${age_max}`);
+            Logger.info('Applied filter: age max', requestId, { age_max });
         }
     }
 
-    // SEARCH FILTER - This is the critical part
+    // Search filter
     if (searchTerm && searchTerm.trim() !== '') {
-        console.log(`🔍 [fetchUsers ${requestId}] ✅✅✅ SEARCH TERM DETECTED: "${searchTerm}" ✅✅✅`);
+        Logger.info('Applied search filter', requestId, { searchTerm });
         const searchRegex = new RegExp(searchTerm.trim(), 'i');
         userQuery.$or = [
             { name: searchRegex },
             { email: searchRegex },
             { phone: searchRegex }
         ];
-        console.log(`🔍 [fetchUsers ${requestId}] Added $or search clause:`, userQuery.$or);
-    } else {
-        console.log(`⚠️ [fetchUsers ${requestId}] NO SEARCH TERM - Returning all users (with other filters)`);
     }
-
-    console.log(`🔍 [fetchUsers ${requestId}] FINAL MongoDB Query:`, JSON.stringify(userQuery, null, 2));
 
     // Execute the query
     const users = await User.find(userQuery)
@@ -88,18 +86,9 @@ async function fetchUsers(queryParams) {
         .sort({ signupAt: -1 })
         .lean();
 
-    console.log(`🔍 [fetchUsers ${requestId}] ========== QUERY EXECUTED ==========`);
-    console.log(`🔍 [fetchUsers ${requestId}] Found ${users.length} users`);
-    
-    if (users.length > 0 && users.length <= 5) {
-        console.log(`🔍 [fetchUsers ${requestId}] Sample results:`, users.map(u => ({
-            name: u.name,
-            email: u.email,
-            phone: u.phone
-        })));
-    }
-    
-    console.log(`🔍 [fetchUsers ${requestId}] ========== FUNCTION COMPLETE ==========`);
+    Logger.info('FetchUsers helper COMPLETE', requestId, { 
+        foundUsers: users.length 
+    });
     
     return users;
 }
@@ -123,24 +112,25 @@ class AdminAuthController {
 
     // Admin Signup
     async signup(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-signup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`� [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: SIGNUP`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`�🔐 [${requestId}] AdminAuthController.signup START`);
-            console.log(`🔐 [${requestId}] Request body:`, req.body);
+            Logger.info('Admin signup START', requestId, { 
+                url: req.originalUrl,
+                ip: req.ip || req.connection.remoteAddress 
+            });
             
             const { name, email, password } = req.body;
             
             // Basic validation
             if (!name || !email || !password) {
-                return ResponseHandler.error(res, "Validation failed", "Name, email, and password are required");
+                Logger.warn('Missing required fields', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Name, email, and password are required",
+                    400,
+                    'ADMIN_MISSING_FIELDS'
+                );
             }
 
             // Validate name format
@@ -149,45 +139,86 @@ class AdminAuthController {
             const hasLetter = /[a-zA-Z]/.test(trimmedName); // Must contain at least one letter
             
             if (!nameRegex.test(trimmedName)) {
-                return ResponseHandler.error(res, "Validation failed", "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 400);
+                Logger.warn('Invalid name format', requestId, { name: trimmedName });
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 
+                    400,
+                    'ADMIN_INVALID_NAME_FORMAT'
+                );
             }
             
             if (!hasLetter) {
-                return ResponseHandler.error(res, "Validation failed", "Name must contain at least one letter", 400);
+                Logger.warn('Name must contain letters', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Name must contain at least one letter", 
+                    400,
+                    'ADMIN_NAME_NO_LETTERS'
+                );
             }
             
             if (trimmedName.length < 2) {
-                return ResponseHandler.error(res, "Validation failed", "Name must be at least 2 characters long", 400);
+                Logger.warn('Name too short', requestId, { length: trimmedName.length });
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Name must be at least 2 characters long", 
+                    400,
+                    'ADMIN_NAME_TOO_SHORT'
+                );
             }
             
             if (trimmedName.length > 50) {
-                return ResponseHandler.error(res, "Validation failed", "Name must be less than 50 characters", 400);
+                Logger.warn('Name too long', requestId, { length: trimmedName.length });
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Name must be less than 50 characters", 
+                    400,
+                    'ADMIN_NAME_TOO_LONG'
+                );
             }
 
-            if (password.length < 6) {
-                return ResponseHandler.error(res, "Validation failed", "Password must be at least 6 characters long");
+            if (password.length < (parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6)) {
+                Logger.warn('Password too short', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    `Password must be at least ${parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6} characters long`,
+                    400,
+                    'ADMIN_PASSWORD_TOO_SHORT'
+                );
             }
 
             // Ensure MongoDB connection is ready
-            console.log(`🔐 [${requestId}] Ensuring MongoDB connection...`);
+            Logger.info('Ensuring MongoDB connection', requestId);
             await ConnectionHelper.ensureConnection();
 
             // Check if admin with this email already exists
-            console.log(`🔐 [${requestId}] Checking for existing admin with email: ${email}`);
+            Logger.info('Checking for existing admin', requestId, { email });
             const existingAdmin = await User.findOne({ email: email.toLowerCase(), role: 'admin' });
             
             if (existingAdmin) {
-                console.log(`🔐 [${requestId}] Admin with email ${email} already exists`);
-                return ResponseHandler.error(res, "Registration failed", "Admin with this email already exists");
+                Logger.warn('Admin already exists', requestId, { email });
+                return ResponseHandler.error(
+                    res, 
+                    "Registration failed", 
+                    "Admin with this email already exists",
+                    400,
+                    'ADMIN_EMAIL_EXISTS'
+                );
             }
 
             // Hash password
-            console.log(`🔐 [${requestId}] Hashing password...`);
-            const saltRounds = 12;
+            Logger.info('Hashing password', requestId);
+            const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
             const hashedPassword = await bcrypt.hash(password, saltRounds);
 
             // Create new admin user
-            console.log(`🔐 [${requestId}] Creating new admin user...`);
+            Logger.info('Creating new admin user', requestId);
             const newAdmin = new User({
                 name: name.trim(),
                 email: email.toLowerCase().trim(),
@@ -198,10 +229,13 @@ class AdminAuthController {
             });
 
             const savedAdmin = await newAdmin.save();
-            console.log(`🔐 [${requestId}] New admin created with ID: ${savedAdmin._id}`);
+            Logger.info('New admin created successfully', requestId, { 
+                adminId: savedAdmin._id,
+                email: savedAdmin.email 
+            });
 
             // Generate JWT token
-            console.log(`🔐 [${requestId}] Generating JWT token...`);
+            Logger.info('Generating JWT token', requestId);
             const adminController = new AdminAuthController();
             const token = adminController.generateToken(savedAdmin._id);
 
@@ -217,48 +251,54 @@ class AdminAuthController {
             });
 
         } catch (error) {
-            console.error(`🔐 [${requestId}] Admin signup error:`, error);
-            return ResponseHandler.serverError(res, "Registration failed");
+            Logger.error('Admin signup error', requestId, { 
+                errorName: error.name, 
+                errorMessage: error.message 
+            });
+            return ResponseHandler.serverError(res, "Registration failed", 'ADMIN_SIGNUP_FAILED');
         }
     }
 
     // Admin Login
     async login(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-login_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`� [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: LOGIN`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`�🔐 [${requestId}] AdminAuthController.login START`);
-            console.log(`🔐 [${requestId}] Request body:`, { 
-                email: req.body.email, 
-                password: '***HIDDEN***' 
+            Logger.info('Admin login START', requestId, { 
+                url: req.originalUrl,
+                ip: req.ip || req.connection.remoteAddress 
             });
             
             const { email, password } = req.body;
             
             // Basic validation
             if (!email || !password) {
-                console.log(`🔐 [${requestId}] Missing required fields`);
-                return ResponseHandler.error(res, "Validation failed", "Email and password are required", 400);
+                Logger.warn('Missing required fields', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Email and password are required", 
+                    400,
+                    'ADMIN_LOGIN_MISSING_FIELDS'
+                );
             }
 
             // Ensure MongoDB connection is ready
-            console.log(`🔐 [${requestId}] Ensuring MongoDB connection...`);
+            Logger.info('Ensuring MongoDB connection', requestId);
             try {
                 await ConnectionHelper.ensureConnection();
             } catch (connectionError) {
-                console.error(`🔐 [${requestId}] Database connection failed:`, connectionError);
-                return ResponseHandler.error(res, "Server error", "Database connection failed. Please try again later.", 503);
+                Logger.error('Database connection failed', requestId, { error: connectionError.message });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Database connection failed. Please try again later.", 
+                    503,
+                    'ADMIN_DB_CONNECTION_FAILED'
+                );
             }
 
             // Find admin user
-            console.log(`🔐 [${requestId}] Looking for admin with email: ${email}`);
+            Logger.info('Looking for admin user', requestId, { email });
             let admin;
             try {
                 admin = await User.findOne({ 
@@ -266,39 +306,69 @@ class AdminAuthController {
                     role: 'admin' 
                 });
             } catch (dbError) {
-                console.error(`🔐 [${requestId}] Database query failed:`, dbError);
-                return ResponseHandler.error(res, "Server error", "Database query failed. Please try again later.", 500);
+                Logger.error('Database query failed', requestId, { error: dbError.message });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Database query failed. Please try again later.", 
+                    500,
+                    'ADMIN_DB_QUERY_FAILED'
+                );
             }
 
             if (!admin) {
-                console.log(`🔐 [${requestId}] Admin not found with email: ${email}`);
-                return ResponseHandler.error(res, "Login failed", "Invalid email or password", 401);
+                Logger.warn('Admin not found', requestId, { email });
+                return ResponseHandler.error(
+                    res, 
+                    "Login failed", 
+                    "Invalid email or password", 
+                    401,
+                    'ADMIN_INVALID_CREDENTIALS'
+                );
             }
 
             // Verify password
-            console.log(`🔐 [${requestId}] Verifying password...`);
+            Logger.info('Verifying password', requestId);
             let isPasswordValid;
             try {
                 isPasswordValid = await bcrypt.compare(password, admin.password);
             } catch (bcryptError) {
-                console.error(`🔐 [${requestId}] Password verification failed:`, bcryptError);
-                return ResponseHandler.error(res, "Server error", "Password verification failed. Please try again later.", 500);
+                Logger.error('Password verification failed', requestId, { error: bcryptError.message });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Password verification failed. Please try again later.", 
+                    500,
+                    'ADMIN_PASSWORD_VERIFY_FAILED'
+                );
             }
 
             if (!isPasswordValid) {
-                console.log(`🔐 [${requestId}] Invalid password for admin: ${email}`);
-                return ResponseHandler.error(res, "Login failed", "Invalid email or password", 401);
+                Logger.warn('Invalid password', requestId, { email });
+                return ResponseHandler.error(
+                    res, 
+                    "Login failed", 
+                    "Invalid email or password", 
+                    401,
+                    'ADMIN_INVALID_CREDENTIALS'
+                );
             }
 
             // Generate JWT token with admin ID first to get the exact iat
-            console.log(`🔐 [${requestId}] Generating JWT token for admin: ${admin._id}`);
+            Logger.info('Generating JWT token', requestId, { adminId: admin._id });
             let token;
             try {
                 const adminController = new AdminAuthController();
                 token = adminController.generateToken(admin._id);
             } catch (jwtError) {
-                console.error(`🔐 [${requestId}] JWT generation failed:`, jwtError);
-                return ResponseHandler.error(res, "Server error", "Token generation failed. Please check server configuration.", 500);
+                Logger.error('JWT generation failed', requestId, { error: jwtError.message });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Token generation failed. Please check server configuration.", 
+                    500,
+                    'ADMIN_JWT_GENERATION_FAILED'
+                );
             }
             
             // Extract the iat from the token to set lastLoginAt safely before it
@@ -306,14 +376,21 @@ class AdminAuthController {
             try {
                 decoded = jwt.verify(token, process.env.JWT_SECRET);
             } catch (jwtVerifyError) {
-                console.error(`🔐 [${requestId}] JWT verification failed:`, jwtVerifyError);
-                return ResponseHandler.error(res, "Server error", "Token verification failed. Please try again later.", 500);
+                Logger.error('JWT verification failed', requestId, { error: jwtVerifyError.message });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Token verification failed. Please try again later.", 
+                    500,
+                    'ADMIN_JWT_VERIFY_FAILED'
+                );
             }
             
             const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
             
-            console.log(`🔐 [${requestId}] Token issued at: ${tokenIssuedAt}`);
-            console.log(`🔐 [${requestId}] Setting lastLoginAt to: ${new Date(tokenIssuedAt.getTime() - 1000)}`);
+            Logger.info('Updating lastLoginAt', requestId, { 
+                tokenIssuedAt: tokenIssuedAt.toISOString() 
+            });
             
             admin.lastLoginAt = new Date(tokenIssuedAt.getTime() - 1000); // 1 second before
             
@@ -321,12 +398,14 @@ class AdminAuthController {
             try {
                 await admin.save();
             } catch (saveError) {
-                console.error(`🔐 [${requestId}] Failed to save admin lastLoginAt:`, saveError);
+                Logger.warn('Failed to save admin lastLoginAt', requestId, { error: saveError.message });
                 // Don't fail the login for this - just log the error
-                console.log(`🔐 [${requestId}] Login will proceed despite save failure`);
             }
 
-            console.log(`🔐 [${requestId}] Admin login successful for: ${email}`);
+            Logger.info('Admin login successful', requestId, { 
+                adminId: admin._id,
+                email: admin.email 
+            });
 
             return ResponseHandler.success(res, "Login successful", {
                 token: token,
@@ -340,43 +419,83 @@ class AdminAuthController {
             });
 
         } catch (error) {
-            console.error(`🔐 [${requestId}] Admin login error:`, error);
+            Logger.error('Admin login error', requestId, { 
+                errorName: error.name, 
+                errorMessage: error.message 
+            });
             
             // Handle specific error types
             if (error.name === 'ValidationError') {
-                return ResponseHandler.error(res, "Validation failed", "Invalid input data provided", 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Invalid input data provided", 
+                    400,
+                    'ADMIN_VALIDATION_ERROR'
+                );
             }
             
             if (error.name === 'MongoNetworkError' || error.name === 'MongoServerError') {
-                return ResponseHandler.error(res, "Server error", "Database connection issue. Please try again later.", 503);
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Database connection issue. Please try again later.", 
+                    503,
+                    'ADMIN_MONGO_ERROR'
+                );
             }
             
             if (error.name === 'JsonWebTokenError') {
-                return ResponseHandler.error(res, "Server error", "Authentication token error. Please try again later.", 500);
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Authentication token error. Please try again later.", 
+                    500,
+                    'ADMIN_JWT_ERROR'
+                );
             }
             
             // Generic server error for unhandled cases
-            return ResponseHandler.error(res, "Server error", "Login failed. Please try again later.", 500);
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Login failed. Please try again later.", 
+                500,
+                'ADMIN_LOGIN_FAILED'
+            );
         }
     }
 
-    // Get admin profile - Enhanced with request tracking and comprehensive error handling
+    // Get admin profile
     async getProfile(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`👤 [${requestId}] AdminAuthController.getProfile START`);
-            console.log(`👤 [${requestId}] Admin profile request from IP: ${req.ip || req.connection.remoteAddress}`);
+            Logger.info('Get admin profile START', requestId, { 
+                ip: req.ip || req.connection.remoteAddress 
+            });
             
             const admin = req.user;
-            console.log(`👤 [${requestId}] Fetching profile for admin: ${admin.email} (ID: ${admin._id})`);
+            Logger.info('Fetching profile for admin', requestId, { 
+                adminId: admin._id,
+                email: admin.email 
+            });
             
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
             
             // Validate admin exists and has proper role
             if (!admin || admin.role !== 'admin') {
-                console.log(`👤 [${requestId}] Invalid admin access attempt - User: ${admin ? admin.email : 'null'}, Role: ${admin ? admin.role : 'null'}`);
-                return ResponseHandler.error(res, "Access denied", "Invalid admin credentials", 403);
+                Logger.warn('Invalid admin access attempt', requestId, { 
+                    userId: admin ? admin._id : 'null', 
+                    role: admin ? admin.role : 'null' 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Access denied", 
+                    "Invalid admin credentials", 
+                    403,
+                    'ADMIN_ACCESS_DENIED'
+                );
             }
             
             const profileData = {
@@ -391,44 +510,54 @@ class AdminAuthController {
                 }
             };
             
-            console.log(`👤 [${requestId}] Admin profile fetched successfully for: ${admin.email}`);
+            Logger.info('Admin profile fetched successfully', requestId, { 
+                adminId: admin._id 
+            });
             
             return ResponseHandler.success(res, "Admin profile fetched successfully", profileData);
             
         } catch (error) {
-            console.error(`👤 [${requestId}] Get admin profile error:`, error);
+            Logger.error('Get admin profile error', requestId, { 
+                errorName: error.name, 
+                errorMessage: error.message 
+            });
             
             // Handle specific error types
             if (error.name === 'CastError') {
-                return ResponseHandler.error(res, "Invalid request", "Invalid admin ID format", 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid request", 
+                    "Invalid admin ID format", 
+                    400,
+                    'ADMIN_INVALID_ID'
+                );
             }
             
-            return ResponseHandler.serverError(res, "Failed to fetch admin profile");
+            return ResponseHandler.serverError(res, "Failed to fetch admin profile", 'ADMIN_PROFILE_FETCH_FAILED');
         }
     }
 
     // Request password reset for admin (POST /admin/forgot-password)
     async forgotPassword(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-forgot-password_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`� [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: FORGOT PASSWORD`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] FRONTEND_URL: ${process.env.FRONTEND_URL}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`�🔑 [${requestId}] AdminAuthController.forgotPassword START`);
-            console.log(`🔑 [${requestId}] Request body:`, req.body);
+            Logger.info('Admin forgot password START', requestId, { 
+                ip: req.ip || req.connection.remoteAddress,
+                frontendUrl: process.env.FRONTEND_URL 
+            });
 
             const { email } = req.body;
 
             // Validate email
             if (!email) {
-                console.log(`🔑 [${requestId}] Email is required`);
-                return ResponseHandler.badRequest(res, "Email is required");
+                Logger.warn('Email required for password reset', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Email is required", 
+                    400,
+                    'ADMIN_EMAIL_REQUIRED'
+                );
             }
 
             // Ensure MongoDB connection
@@ -437,20 +566,23 @@ class AdminAuthController {
             // Only allow admin users to reset password
             const admin = await User.findOne({ 
                 email: email.toLowerCase().trim(),
-                role: 'admin' // Only check for admin users
+                role: 'admin'
             });
             
             // For security reasons, we'll always return success even if admin doesn't exist
             // This prevents email enumeration attacks
             if (!admin) {
-                console.log(`🔑 [${requestId}] Admin not found for email: ${email}`);
+                Logger.info('Admin not found for password reset', requestId, { email });
                 // Still return success to prevent email enumeration
                 return ResponseHandler.success(res, "If an admin account with this email exists, we'll send you a password reset link. The link will expire in 24 hours. Please also check your spam folder if you don't see the email.");
             }
 
             // Generate unique token
             const resetToken = uuidv4();
-            console.log(`🔑 [${requestId}] Generated reset token: ${resetToken.substring(0, 8)}...`);
+            Logger.info('Generated reset token', requestId, { 
+                adminId: admin._id,
+                tokenPrefix: resetToken.substring(0, 8) 
+            });
 
             // Set token to expire in 24 hours
             const expiresAt = new Date();
@@ -458,7 +590,7 @@ class AdminAuthController {
 
             // Delete any existing password reset tokens for this admin
             await PasswordReset.deleteMany({ userId: admin._id });
-            console.log(`🔑 [${requestId}] Deleted existing reset tokens for admin: ${admin._id}`);
+            Logger.info('Deleted existing reset tokens', requestId, { adminId: admin._id });
 
             // Save new token in PasswordReset collection
             const passwordReset = new PasswordReset({
@@ -468,12 +600,12 @@ class AdminAuthController {
             });
 
             await passwordReset.save();
-            console.log(`🔑 [${requestId}] Password reset token saved with expiry: ${expiresAt}`);
+            Logger.info('Password reset token saved', requestId, { expiresAt });
 
             // Generate reset link for frontend (environment-based URL)
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
             const resetLink = `${frontendUrl}/admin/reset-password?token=${resetToken}`;
-            console.log(`🔑 [${requestId}] Generated reset link: ${resetLink}`);
+            Logger.info('Generated reset link', requestId, { frontendUrl });
 
             // Initialize email service
             const emailService = new EmailService();
@@ -482,12 +614,26 @@ class AdminAuthController {
             try {
                 const isEmailConfigured = await emailService.testConnection();
                 if (!isEmailConfigured) {
-                    console.log(`🔑 [${requestId}] Email service not configured properly`);
-                    return ResponseHandler.serverError(res, "Email service is not configured. Please contact the system administrator.");
+                    Logger.error('Email service not configured', requestId);
+                    return ResponseHandler.error(
+                        res, 
+                        "Server error", 
+                        "Email service is not configured. Please contact the system administrator.", 
+                        503,
+                        'ADMIN_EMAIL_NOT_CONFIGURED'
+                    );
                 }
             } catch (testError) {
-                console.error(`🔑 [${requestId}] Email connection test failed:`, testError);
-                return ResponseHandler.serverError(res, "Email service connection failed. Please contact the system administrator.");
+                Logger.error('Email connection test failed', requestId, { 
+                    errorMessage: testError.message 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Server error", 
+                    "Email service connection failed. Please contact the system administrator.", 
+                    503,
+                    'ADMIN_EMAIL_CONNECTION_FAILED'
+                );
             }
 
             // Send admin password reset email with actual link
@@ -497,49 +643,73 @@ class AdminAuthController {
                     admin.name || 'Admin',
                     resetLink
                 );
-                console.log(`🔑 [${requestId}] Admin password reset email sent successfully:`, emailResult.messageId);
+                Logger.info('Admin password reset email sent', requestId, { 
+                    messageId: emailResult.messageId 
+                });
             } catch (emailError) {
-                console.error(`🔑 [${requestId}] Email sending failed:`, emailError);
+                Logger.error('Email sending failed', requestId, { 
+                    errorMessage: emailError.message 
+                });
                 // Delete the token if email fails
                 await PasswordReset.deleteOne({ token: resetToken });
-                // Still return success to prevent email enumeration, but log the error
-                console.log(`🔑 [${requestId}] Token deleted due to email failure, returning success response for security`);
+                Logger.info('Token deleted due to email failure', requestId);
+                // Still return success to prevent email enumeration
             }
 
             return ResponseHandler.success(res, "If an admin account with this email exists, we'll send you a password reset link. The link will expire in 24 hours. Please also check your spam folder if you don't see the email.");
 
         } catch (error) {
-            console.error(`🔑 [${requestId}] Admin forgot password error:`, error);
-            return ResponseHandler.serverError(res, "Failed to process password reset request. Please try again later.");
+            Logger.error('Admin forgot password error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to process password reset request. Please try again later.", 
+                500,
+                'ADMIN_PASSWORD_RESET_FAILED'
+            );
         }
     }
 
     // Reset password with token (POST /admin/reset-password)
     async resetPassword(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-reset-password_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`� [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: RESET PASSWORD`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`�🔑 [${requestId}] AdminAuthController.resetPassword START`);
-            console.log(`🔑 [${requestId}] Request body:`, { token: req.body.token ? 'PROVIDED' : 'MISSING', password: req.body.password ? 'PROVIDED' : 'MISSING' });
+            Logger.info('Admin reset password START', requestId, { 
+                ip: req.ip || req.connection.remoteAddress,
+                tokenProvided: !!req.body.token,
+                passwordProvided: !!req.body.password
+            });
 
             const { token, password } = req.body;
 
             // Validate input
             if (!token || !password) {
-                console.log(`🔑 [${requestId}] Missing required fields`);
-                return ResponseHandler.error(res, "Validation failed", "Token and password are required", 400);
+                Logger.warn('Missing required fields for password reset', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    "Token and password are required", 
+                    400,
+                    'ADMIN_RESET_MISSING_FIELDS'
+                );
             }
 
-            if (password.length < 6) {
-                console.log(`🔑 [${requestId}] Password too short`);
-                return ResponseHandler.error(res, "Validation failed", "Password must be at least 6 characters long", 400);
+            const minPasswordLength = parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6;
+            if (password.length < minPasswordLength) {
+                Logger.warn('Password too short', requestId, { 
+                    providedLength: password.length,
+                    requiredLength: minPasswordLength 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    `Password must be at least ${minPasswordLength} characters long`, 
+                    400,
+                    'ADMIN_PASSWORD_TOO_SHORT'
+                );
             }
 
             // Ensure MongoDB connection
@@ -549,57 +719,84 @@ class AdminAuthController {
             const passwordReset = await PasswordReset.findOne({ 
                 token: token,
                 used: false,
-                expiresAt: { $gt: new Date() } // Token must not be expired
+                expiresAt: { $gt: new Date() }
             }).populate('userId');
 
             if (!passwordReset) {
-                console.log(`🔑 [${requestId}] Invalid or expired token: ${token.substring(0, 8)}...`);
-                return ResponseHandler.error(res, "Invalid token", "Invalid or expired reset token", 400);
+                Logger.warn('Invalid or expired reset token', requestId, { 
+                    tokenPrefix: token.substring(0, 8) 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid token", 
+                    "Invalid or expired reset token", 
+                    400,
+                    'ADMIN_RESET_INVALID_TOKEN'
+                );
             }
 
             const admin = passwordReset.userId;
 
             // Verify it's an admin user
             if (!admin || admin.role !== 'admin') {
-                console.log(`🔑 [${requestId}] Token not associated with admin user`);
-                return ResponseHandler.error(res, "Invalid token", "Invalid reset token", 400);
+                Logger.warn('Reset token not associated with admin user', requestId, { 
+                    userId: admin ? admin._id : 'null',
+                    role: admin ? admin.role : 'null' 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid token", 
+                    "Invalid reset token", 
+                    400,
+                    'ADMIN_RESET_INVALID_TOKEN'
+                );
             }
 
             // Hash new password
-            console.log(`🔑 [${requestId}] Hashing new password for admin: ${admin._id}`);
-            const saltRounds = 12;
+            Logger.info('Hashing new password', requestId, { adminId: admin._id });
+            const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
             const hashedPassword = await bcrypt.hash(password, saltRounds);
 
             // Update admin password
             admin.password = hashedPassword;
-            // Only invalidate sessions for security (this is actually good practice)
-            // The user will need to login again after password reset
             admin.lastLoginAt = new Date(); // Invalidate existing sessions for security
             await admin.save();
 
             // Mark token as used and delete it
             await PasswordReset.deleteOne({ _id: passwordReset._id });
-            console.log(`🔑 [${requestId}] Password reset completed for admin: ${admin.email}`);
+            Logger.info('Password reset completed successfully', requestId, { 
+                adminId: admin._id,
+                email: admin.email 
+            });
 
             return ResponseHandler.success(res, "Password has been reset successfully. You can now login with your new password.");
 
         } catch (error) {
-            console.error(`🔑 [${requestId}] Admin reset password error:`, error);
-            return ResponseHandler.serverError(res, "Failed to reset password. Please try again later.");
+            Logger.error('Admin reset password error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to reset password. Please try again later.", 
+                500,
+                'ADMIN_RESET_PASSWORD_FAILED'
+            );
         }
     }
 
    
     // Delete User and return updated list with pagination
     async deleteUser(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-delete-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🗑️  [${requestId}] AdminAuthController.deleteUser START`);
-            console.log(`🗑️  [${requestId}] Request params:`, req.params);
-            console.log(`🗑️  [${requestId}] Request body:`, req.body);
+            Logger.info('Admin delete user START', requestId, { 
+                userId: req.params.userId,
+                ip: req.ip || req.connection.remoteAddress
+            });
             
             // Ensure database connection
-            console.log(`🗑️  [${requestId}] Ensuring MongoDB connection...`);
             await ConnectionHelper.ensureConnection();
 
             const { userId } = req.params;
@@ -610,23 +807,38 @@ class AdminAuthController {
                 status = '' 
             } = req.body;
 
-            console.log(`🗑️  [${requestId}] Deleting user with ID: ${userId}`);
+            Logger.info('Deleting user', requestId, { userId });
             
             // 1. Check if user exists and is not an admin
             const userToDelete = await User.findById(userId);
             if (!userToDelete) {
-                console.log(`🗑️  [${requestId}] User not found: ${userId}`);
-                return ResponseHandler.error(res, "User not found", "The specified user does not exist", 404);
+                Logger.warn('User not found for deletion', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "User not found", 
+                    "The specified user does not exist", 
+                    404,
+                    'ADMIN_USER_NOT_FOUND'
+                );
             }
 
             if (userToDelete.role === 'admin') {
-                console.log(`🗑️  [${requestId}] Attempted to delete admin user: ${userId}`);
-                return ResponseHandler.error(res, "Cannot delete admin", "Admin users cannot be deleted", 403);
+                Logger.warn('Attempted to delete admin user', requestId, { 
+                    userId,
+                    email: userToDelete.email 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Cannot delete admin", 
+                    "Admin users cannot be deleted", 
+                    403,
+                    'ADMIN_CANNOT_DELETE_ADMIN'
+                );
             }
 
             // 2. Delete the user from database
             await User.findByIdAndDelete(userId);
-            console.log(`🗑️  [${requestId}] User deleted successfully: ${userId}`);
+            Logger.info('User deleted successfully', requestId, { userId });
 
             // delete related data if any (e.g., password resets,healthdata,workoutdata,goals,otp)
             await PasswordReset.deleteMany({ userId: userId });
@@ -634,14 +846,16 @@ class AdminAuthController {
             await otpmodel.deleteMany({ userId: userId });
             await Goals.deleteMany({ userId: userId });
 
-            console.log(`🗑️  [${requestId}] Related data for user deleted: ${userId}`);
+            Logger.info('Related user data deleted', requestId, { userId });
 
             // 3. Fetch all users (exclude admins from the list)
             let users = await User.find({ role: { $ne: 'admin' } })
                 .select('name email phone gender age profileCompleted status signupAt lastLoginAt')
                 .lean();
 
-            console.log(`🗑️  [${requestId}] Total users found: ${users.length}`);
+            Logger.info('Fetched users for updated list', requestId, { 
+                totalUsers: users.length 
+            });
 
             // 4. Apply search filtering
             if (search && search.trim()) {
@@ -651,13 +865,19 @@ class AdminAuthController {
                     user.email?.toLowerCase().includes(searchLower) ||
                     user.phone?.includes(search.trim())
                 );
-                console.log(`🗑️  [${requestId}] Users after search filter: ${users.length}`);
+                Logger.info('Applied search filter', requestId, { 
+                    searchTerm: search,
+                    filteredCount: users.length 
+                });
             }
 
             // 5. Apply status filtering
             if (status && status.trim()) {
                 users = users.filter(user => user.status === status);
-                console.log(`🗑️  [${requestId}] Users after status filter: ${users.length}`);
+                Logger.info('Applied status filter', requestId, { 
+                    status,
+                    filteredCount: users.length 
+                });
             }
 
             // 6. Calculate pagination
@@ -704,48 +924,65 @@ class AdminAuthController {
                 stats: stats
             };
 
-            console.log(`🗑️  [${requestId}] Response pagination:`, responseData.pagination);
-            console.log(`🗑️  [${requestId}] Response stats:`, responseData.stats);
-            console.log(`🗑️  [${requestId}] AdminAuthController.deleteUser SUCCESS`);
+            Logger.info('User deletion completed', requestId, { 
+                returnedUsers: formattedUsers.length,
+                totalUsers: totalUsers,
+                currentPage: currentPage 
+            });
             
             return ResponseHandler.success(res, "User deleted successfully", responseData);
 
         } catch (error) {
-            console.error(`🗑️  [${requestId}] Admin delete user error:`, error);
+            Logger.error('Admin delete user error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
             
             // Handle specific error types
             if (error.name === 'CastError') {
-                return ResponseHandler.error(res, "Invalid request", "Invalid user ID format", 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid request", 
+                    "Invalid user ID format", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
             
-            return ResponseHandler.error(res, "Server error", "Failed to delete user. Please try again later.", 500);
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to delete user. Please try again later.", 
+                500,
+                'ADMIN_DELETE_USER_FAILED'
+            );
         }
     } 
  
 
     // ============================================
-    // Dashboard Function - Use this.fetchUsers()
+    // Dashboard Function - Use fetchUsers()
     // ============================================
     async dashboard(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-dashboard_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        console.log('='.repeat(80));
-        console.log(`🔥 [${requestId}] DASHBOARD API CALLED`);
-        console.log(`📊 [${requestId}] Full URL: ${req.originalUrl}`);
-        console.log(`📊 [${requestId}] Query params:`, JSON.stringify(req.query, null, 2));
-        console.log('='.repeat(80));
+        Logger.info('Admin dashboard START', requestId, { 
+            ip: req.ip || req.connection.remoteAddress,
+            queryParams: req.query
+        });
 
         try {
             const page = parseInt(req.query.page) || 1;
             const limit = Math.min(parseInt(req.query.limit) || 10, 50);
 
-            console.log(`📊 [${requestId}] Pagination: page=${page}, limit=${limit}`);
-            console.log(`📊 [${requestId}] Calling this.fetchUsers()...`);
+            Logger.info('Dashboard pagination', requestId, { page, limit });
 
-            // ✅ Use this.fetchUsers() because it's a class method
+            // Use fetchUsers helper to get filtered users
             const allFilteredUsers = await fetchUsers(req.query);
             
-            console.log(`📊 [${requestId}] *** this.fetchUsers() returned ${allFilteredUsers.length} users ***`);
+            Logger.info('FetchUsers completed', requestId, { 
+                totalFilteredUsers: allFilteredUsers.length 
+            });
 
             // Calculate pagination
             const totalFilteredUsers = allFilteredUsers.length;
@@ -753,7 +990,10 @@ class AdminAuthController {
             const skip = (page - 1) * limit;
             const usersForCurrentPage = allFilteredUsers.slice(skip, skip + limit);
 
-            console.log(`📊 [${requestId}] Paginated: showing ${usersForCurrentPage.length} users`);
+            Logger.info('Pagination calculated', requestId, { 
+                currentPageUsers: usersForCurrentPage.length,
+                totalPages 
+            });
 
             // Format users
             const formattedUsers = usersForCurrentPage.map(user => ({
@@ -796,34 +1036,54 @@ class AdminAuthController {
                 }
             };
 
-            console.log(`✅ [${requestId}] Response ready - ${formattedUsers.length} users`);
-            console.log('='.repeat(80));
+            Logger.info('Dashboard data ready', requestId, { 
+                returnedUsers: formattedUsers.length 
+            });
             
             return ResponseHandler.success(res, "Dashboard data retrieved successfully", responseData);
 
         } catch (error) {
-            console.error(`❌ [${requestId}] Dashboard error:`, error);
-            console.error(`❌ [${requestId}] Stack:`, error.stack);
-            return ResponseHandler.error(res, "Server error", "Failed to load dashboard data", 500);
+            Logger.error('Dashboard error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to load dashboard data", 
+                500,
+                'ADMIN_DASHBOARD_FAILED'
+            );
         }
     }
 
     // ============================================
-    // Export Dashboard Data - Use this.fetchUsers()
+    // Export Dashboard Data - Use fetchUsers()
     // ============================================
     async exportDashboardData(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`📥 [${requestId}] Export CSV START`);
-        console.log(`📊 [${requestId}] Query params:`, req.query);
+        const requestId = `admin-export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        Logger.info('Export dashboard data START', requestId, { 
+            ip: req.ip || req.connection.remoteAddress,
+            queryParams: req.query 
+        });
 
         try {
-            // ✅ Use this.fetchUsers() because it's a class method
+            // Use fetchUsers helper to get filtered users
             const users = await fetchUsers(req.query);
 
-            console.log(`📥 [${requestId}] Exporting ${users.length} users`);
+            Logger.info('Users fetched for export', requestId, { 
+                totalUsers: users.length 
+            });
 
             if (!users || users.length === 0) {
-                return ResponseHandler.error(res, 'No data available', 'No users found matching your filters', 404);
+                Logger.warn('No users found for export', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    'No data available', 
+                    'No users found matching your filters', 
+                    404,
+                    'ADMIN_NO_EXPORT_DATA'
+                );
             }
 
             const fields = [
@@ -839,29 +1099,45 @@ class AdminAuthController {
             const json2csv = new Parser({ fields });
             const csv = json2csv.parse(users);
 
-            console.log(`✅ [${requestId}] CSV generated successfully`);
+            Logger.info('CSV generated successfully', requestId, { 
+                exportedUsers: users.length 
+            });
 
             res.header('Content-Type', 'text/csv');
             res.attachment('dashboard_export.csv');
             res.send(csv);
 
         } catch (error) {
-            console.error(`❌ [${requestId}] Export error:`, error);
-            return ResponseHandler.error(res, 'Server error', 'Failed to export CSV', 500);
+            Logger.error('Export dashboard error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            return ResponseHandler.error(
+                res, 
+                'Server error', 
+                'Failed to export CSV', 
+                500,
+                'ADMIN_EXPORT_FAILED'
+            );
         }
     }
 
 
 // Admin Logout - Enhanced with admin-specific tracking and security monitoring
     async logout(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-logout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🚪 [${requestId}] AdminAuthController.logout START`);
-            console.log(`🚪 [${requestId}] Admin logout initiated from IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚪 [${requestId}] User-Agent: ${req.headers['user-agent']}`);
+            Logger.info('Admin logout START', requestId, { 
+                ip: req.ip || req.connection.remoteAddress,
+                adminId: req.user._id
+            });
             
             const admin = req.user;
-            console.log(`🚪 [${requestId}] Admin details: ID=${admin._id}, Email=${admin.email}, Role=${admin.role}`);
+            Logger.info('Admin logout initiated', requestId, { 
+                adminId: admin._id,
+                email: admin.email,
+                role: admin.role 
+            });
             
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
@@ -871,11 +1147,11 @@ class AdminAuthController {
             admin.lastLoginAt = logoutTime;
             await admin.save();
             
-            console.log(`🚪 [${requestId}] Admin session invalidated successfully`);
-            console.log(`🚪 [${requestId}] Admin logged out: ${admin.email} (ID: ${admin._id}) at ${logoutTime.toISOString()}`);
-            
-            // Log admin logout for security monitoring
-            console.log(`🛡️ [${requestId}] ADMIN LOGOUT EVENT - Email: ${admin.email}, IP: ${req.ip || req.connection.remoteAddress}, Timestamp: ${logoutTime.toISOString()}`);
+            Logger.info('Admin session invalidated', requestId, { 
+                adminId: admin._id,
+                email: admin.email,
+                logoutTime: logoutTime.toISOString() 
+            });
             
             return ResponseHandler.success(res, "Admin logged out successfully", {
                 logoutTime: logoutTime.toISOString(),
@@ -883,19 +1159,29 @@ class AdminAuthController {
             });
             
         } catch (error) {
-            console.error(`🚪 [${requestId}] Admin logout error:`, error);
-            return ResponseHandler.serverError(res, "Admin logout failed");
+            Logger.error('Admin logout error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Admin logout failed", 
+                500,
+                'ADMIN_LOGOUT_FAILED'
+            );
         }
     }
 
     // Get Individual User Details - Enhanced with comprehensive validation and security
     async getUser(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-getuser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`👤 [${requestId}] AdminAuthController.getUser START`);
-            console.log(`👤 [${requestId}] Admin requesting: ${req.user.email} (ID: ${req.user._id})`);
-            console.log(`👤 [${requestId}] Target user ID: ${req.params.userId}`);
-            console.log(`👤 [${requestId}] Request from IP: ${req.ip || req.connection.remoteAddress}`);
+            Logger.info('Admin get user START', requestId, { 
+                adminId: req.user._id,
+                targetUserId: req.params.userId,
+                ip: req.ip || req.connection.remoteAddress
+            });
 
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
@@ -904,23 +1190,38 @@ class AdminAuthController {
 
             // Validate userId format
             if (!userId || userId.length !== 24) {
-                console.log(`👤 [${requestId}] Invalid user ID format: ${userId}`);
-                return ResponseHandler.error(res, "Invalid user ID", "User ID must be a valid 24-character MongoDB ObjectId", 400);
+                Logger.warn('Invalid user ID format', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid user ID", 
+                    "User ID must be a valid 24-character MongoDB ObjectId", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
 
             // Find user by ID (exclude admin users from regular user lookup)
-            console.log(`👤 [${requestId}] Looking for user in database...`);
+            Logger.info('Looking for user in database', requestId, { userId });
             const user = await User.findOne({ 
                 _id: userId, 
                 role: { $ne: 'admin' } // Exclude admin users for security
             }).lean();
 
             if (!user) {
-                console.log(`👤 [${requestId}] User not found: ${userId}`);
-                return ResponseHandler.error(res, "User not found", "The specified user does not exist", 404);
+                Logger.warn('User not found', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "User not found", 
+                    "The specified user does not exist", 
+                    404,
+                    'ADMIN_USER_NOT_FOUND'
+                );
             }
 
-            console.log(`👤 [${requestId}] Found user: ${user.name} (${user.email || user.phone})`);
+            Logger.info('User found', requestId, { 
+                userId: user._id,
+                userName: user.name 
+            });
 
             // Format user data (exclude sensitive fields)
             const userData = {
@@ -939,8 +1240,9 @@ class AdminAuthController {
                 updatedAt: user.updatedAt
             };
 
-            console.log(`👤 [${requestId}] User details retrieved successfully for: ${user.name}`);
-            console.log(`👤 [${requestId}] AdminAuthController.getUser SUCCESS`);
+            Logger.info('User details retrieved successfully', requestId, { 
+                userId: user._id 
+            });
 
             return ResponseHandler.success(res, "User details retrieved successfully", {
                 user: userData,
@@ -952,32 +1254,40 @@ class AdminAuthController {
             });
 
         } catch (error) {
-            console.error(`👤 [${requestId}] Get user error:`, error);
+            Logger.error('Get user error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
             
             if (error.name === 'CastError') {
-                return ResponseHandler.error(res, "Invalid request", "Invalid user ID format", 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid request", 
+                    "Invalid user ID format", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
             
-            return ResponseHandler.serverError(res, "Failed to retrieve user details");
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to retrieve user details", 
+                500,
+                'ADMIN_GET_USER_FAILED'
+            );
         }
     }
 
     // Update User - Enhanced with comprehensive validation and duplicate checks
     async updateUser(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `admin-update-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
-            console.log(`🚀 [ADMIN API CALLED] ================================`);
-            console.log(`🚀 [ADMIN API] Method: UPDATE USER`);
-            console.log(`🚀 [ADMIN API] URL: ${req.originalUrl}`);
-            console.log(`🚀 [ADMIN API] User-Agent: ${req.get('User-Agent')}`);
-            console.log(`🚀 [ADMIN API] IP: ${req.ip || req.connection.remoteAddress}`);
-            console.log(`🚀 [ADMIN API] Deployment: ${process.env.VERCEL_URL || 'LOCAL'}`);
-            console.log(`🚀 [ADMIN API] Request ID: ${requestId}`);
-            console.log(`🚀 [ADMIN API] ================================`);
-            console.log(`✏️ [${requestId}] AdminAuthController.updateUser START`);
-            console.log(`✏️ [${requestId}] Admin: ${req.user._id} (${req.user.email})`);
-            console.log(`✏️ [${requestId}] Target user ID: ${req.params.userId}`);
-            console.log(`✏️ [${requestId}] Update data:`, req.body);
+            Logger.info('Admin update user START', requestId, { 
+                adminId: req.user._id,
+                targetUserId: req.params.userId,
+                ip: req.ip || req.connection.remoteAddress
+            });
 
             // Ensure MongoDB connection is ready
             await ConnectionHelper.ensureConnection();
@@ -987,32 +1297,62 @@ class AdminAuthController {
 
             // Validate userId format
             if (!userId || userId.length !== 24) {
-                console.log(`✏️ [${requestId}] Invalid user ID format: ${userId}`);
-                return ResponseHandler.error(res, "Invalid user ID", "User ID must be a valid 24-character MongoDB ObjectId", 400);
+                Logger.warn('Invalid user ID format', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid user ID", 
+                    "User ID must be a valid 24-character MongoDB ObjectId", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
             
             // Validate ObjectId format
             if (!mongoose.Types.ObjectId.isValid(userId)) {
-                console.log(`✏️ [${requestId}] Invalid ObjectId format: ${userId}`);
-                return ResponseHandler.error(res, "Invalid user ID", "User ID must be a valid MongoDB ObjectId", 400);
+                Logger.warn('Invalid ObjectId format', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid user ID", 
+                    "User ID must be a valid MongoDB ObjectId", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
 
             // Find the user to update
-            console.log(`✏️ [${requestId}] Looking for user in database...`);
+            Logger.info('Looking for user to update', requestId, { userId });
             const userToUpdate = await User.findById(userId);
 
             if (!userToUpdate) {
-                console.log(`✏️ [${requestId}] User not found: ${userId}`);
-                return ResponseHandler.error(res, "User not found", "The specified user does not exist", 404);
+                Logger.warn('User not found for update', requestId, { userId });
+                return ResponseHandler.error(
+                    res, 
+                    "User not found", 
+                    "The specified user does not exist", 
+                    404,
+                    'ADMIN_USER_NOT_FOUND'
+                );
             }
 
             // Prevent updating other admins
             if (userToUpdate.role === 'admin') {
-                console.log(`✏️ [${requestId}] Attempting to update another admin: ${userToUpdate.email}`);
-                return ResponseHandler.error(res, "Action not allowed", "Cannot update admin accounts", 403);
+                Logger.warn('Attempted to update admin account', requestId, { 
+                    targetUserId: userId,
+                    targetEmail: userToUpdate.email 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Action not allowed", 
+                    "Cannot update admin accounts", 
+                    403,
+                    'ADMIN_CANNOT_UPDATE_ADMIN'
+                );
             }
 
-            console.log(`✏️ [${requestId}] Found user to update: ${userToUpdate.name} (${userToUpdate.email || userToUpdate.phone})`);
+            Logger.info('User found for update', requestId, { 
+                userId: userToUpdate._id,
+                userName: userToUpdate.name 
+            });
 
             // Prepare update data
             const updateData = {};
@@ -1023,45 +1363,80 @@ class AdminAuthController {
                 const trimmedName = name.trim();
                 
                 // Validate name format - should contain at least one letter
-                const nameRegex = /^[a-zA-Z\s\-\.\']+$/; // Allow letters, spaces, hyphens, dots, apostrophes
-                const hasLetter = /[a-zA-Z]/.test(trimmedName); // Must contain at least one letter
+                const nameRegex = /^[a-zA-Z\s\-\.\']+$/;
+                const hasLetter = /[a-zA-Z]/.test(trimmedName);
                 
                 if (!nameRegex.test(trimmedName)) {
-                    return ResponseHandler.error(res, "Validation failed", "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 
+                        400,
+                        'ADMIN_INVALID_NAME_FORMAT'
+                    );
                 }
                 
                 if (!hasLetter) {
-                    return ResponseHandler.error(res, "Validation failed", "Name must contain at least one letter", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Name must contain at least one letter", 
+                        400,
+                        'ADMIN_NAME_NO_LETTERS'
+                    );
                 }
                 
                 if (trimmedName.length < 2) {
-                    return ResponseHandler.error(res, "Validation failed", "Name must be at least 2 characters long", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Name must be at least 2 characters long", 
+                        400,
+                        'ADMIN_NAME_TOO_SHORT'
+                    );
                 }
                 
                 if (trimmedName.length > 50) {
-                    return ResponseHandler.error(res, "Validation failed", "Name must be less than 50 characters", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Name must be less than 50 characters", 
+                        400,
+                        'ADMIN_NAME_TOO_LONG'
+                    );
                 }
                 
                 updateData.name = trimmedName;
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating name: ${userToUpdate.name} → ${trimmedName}`);
+                Logger.info('Updating name field', requestId, { 
+                    oldName: userToUpdate.name,
+                    newName: trimmedName 
+                });
             }
 
             // Update email if provided
             if (email !== undefined) {
                 if (email.trim() === '') {
-                    updateData.email = null; // Allow removing email
+                    updateData.email = null;
                 } else {
                     // Basic email validation
                     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                     if (!emailRegex.test(email)) {
-                        return ResponseHandler.error(res, "Validation failed", "Invalid email format", 400);
+                        return ResponseHandler.error(
+                            res, 
+                            "Validation failed", 
+                            "Invalid email format", 
+                            400,
+                            'ADMIN_INVALID_EMAIL_FORMAT'
+                        );
                     }
                     
                     const cleanEmail = email.toLowerCase().trim();
                     
                     // Check for duplicate email (exclude current user)
-                    console.log(`✏️ [${requestId}] Checking email duplicate for: ${cleanEmail}, excluding user: ${userId}`);
+                    Logger.info('Checking email uniqueness', requestId, { 
+                        email: cleanEmail 
+                    });
                     
                     try {
                         const existingUser = await User.findOne({ 
@@ -1070,29 +1445,55 @@ class AdminAuthController {
                         });
                         
                         if (existingUser) {
-                            console.log(`✏️ [${requestId}] Duplicate email found: ${cleanEmail} used by user: ${existingUser._id}`);
-                            return ResponseHandler.error(res, "Validation failed", "Email is already in use by another user", 400);
+                            Logger.warn('Duplicate email found', requestId, { 
+                                email: cleanEmail,
+                                existingUserId: existingUser._id 
+                            });
+                            return ResponseHandler.error(
+                                res, 
+                                "Validation failed", 
+                                "Email is already in use by another user", 
+                                400,
+                                'ADMIN_EMAIL_DUPLICATE'
+                            );
                         }
                         
-                        console.log(`✏️ [${requestId}] Email available: ${cleanEmail}`);
+                        Logger.info('Email available', requestId);
                     } catch (mongoError) {
-                        console.error(`✏️ [${requestId}] MongoDB error during email check:`, mongoError);
-                        return ResponseHandler.error(res, "Database error", "Failed to validate email uniqueness", 500);
+                        Logger.error('MongoDB error during email check', requestId, { 
+                            errorMessage: mongoError.message 
+                        });
+                        return ResponseHandler.error(
+                            res, 
+                            "Database error", 
+                            "Failed to validate email uniqueness", 
+                            500,
+                            'ADMIN_DB_ERROR'
+                        );
                     }
                     
                     updateData.email = cleanEmail;
                 }
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating email: ${userToUpdate.email} → ${updateData.email}`);
+                Logger.info('Updating email field', requestId, { 
+                    oldEmail: userToUpdate.email,
+                    newEmail: updateData.email 
+                });
             }
 
             // Update phone if provided
             if (phone !== undefined && phone.trim() !== '') {
                 // Basic phone validation (10-15 digits)
                 const phoneRegex = /^[0-9]{10,15}$/;
-                const cleanPhone = phone.replace(/\D/g, ''); // Remove non-digits
+                const cleanPhone = phone.replace(/\D/g, '');
                 if (!phoneRegex.test(cleanPhone)) {
-                    return ResponseHandler.error(res, "Validation failed", "Phone number must be 10-15 digits", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Phone number must be 10-15 digits", 
+                        400,
+                        'ADMIN_INVALID_PHONE_FORMAT'
+                    );
                 }
                 
                 // Check for duplicate phone (exclude current user)
@@ -1102,66 +1503,114 @@ class AdminAuthController {
                 });
                 
                 if (existingUser) {
-                    console.log(`✏️ [${requestId}] Duplicate phone found: ${cleanPhone}`);
-                    return ResponseHandler.error(res, "Validation failed", "Phone number is already in use by another user", 400);
+                    Logger.warn('Duplicate phone found', requestId, { 
+                        phone: cleanPhone 
+                    });
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Phone number is already in use by another user", 
+                        400,
+                        'ADMIN_PHONE_DUPLICATE'
+                    );
                 }
                 
                 updateData.phone = cleanPhone;
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating phone: ${userToUpdate.phone} → ${cleanPhone}`);
+                Logger.info('Updating phone field', requestId, { 
+                    oldPhone: userToUpdate.phone,
+                    newPhone: cleanPhone 
+                });
             }
 
             // Update gender if provided
             if (gender !== undefined) {
                 if (gender.trim() === '') {
-                    updateData.gender = null; // Allow removing gender
+                    updateData.gender = null;
                 } else {
                     const validGenders = ['male', 'female', 'other'];
                     if (!validGenders.includes(gender.toLowerCase())) {
-                        return ResponseHandler.error(res, "Validation failed", "Gender must be: male, female, or other", 400);
+                        return ResponseHandler.error(
+                            res, 
+                            "Validation failed", 
+                            "Gender must be: male, female, or other", 
+                            400,
+                            'ADMIN_INVALID_GENDER'
+                        );
                     }
                     updateData.gender = gender.toLowerCase();
                 }
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating gender: ${userToUpdate.gender} → ${updateData.gender}`);
+                Logger.info('Updating gender field', requestId, { 
+                    oldGender: userToUpdate.gender,
+                    newGender: updateData.gender 
+                });
             }
 
             // Update age if provided
             if (age !== undefined) {
                 if (age === '' || age === null) {
-                    updateData.age = null; // Allow removing age
+                    updateData.age = null;
                 } else {
                     const ageNum = parseInt(age);
                     if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
-                        return ResponseHandler.error(res, "Validation failed", "Age must be between 1 and 150", 400);
+                        return ResponseHandler.error(
+                            res, 
+                            "Validation failed", 
+                            "Age must be between 1 and 150", 
+                            400,
+                            'ADMIN_INVALID_AGE'
+                        );
                     }
                     updateData.age = ageNum;
                 }
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating age: ${userToUpdate.age} → ${updateData.age}`);
+                Logger.info('Updating age field', requestId, { 
+                    oldAge: userToUpdate.age,
+                    newAge: updateData.age 
+                });
             }
 
             // Update profile completion status if provided
             if (profileCompleted !== undefined) {
                 updateData.profileCompleted = Boolean(profileCompleted);
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating profileCompleted: ${userToUpdate.profileCompleted} → ${updateData.profileCompleted}`);
+                Logger.info('Updating profileCompleted field', requestId, { 
+                    oldValue: userToUpdate.profileCompleted,
+                    newValue: updateData.profileCompleted 
+                });
             }
 
             // Update status if provided (convert to isActive field)
             if (status !== undefined) {
                 const validStatuses = ['Active', 'Inactive'];
                 if (!validStatuses.includes(status)) {
-                    return ResponseHandler.error(res, "Validation failed", "Status must be 'Active' or 'Inactive'", 400);
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Status must be 'Active' or 'Inactive'", 
+                        400,
+                        'ADMIN_INVALID_STATUS'
+                    );
                 }
                 updateData.isActive = (status === 'Active');
                 hasUpdates = true;
-                console.log(`✏️ [${requestId}] Updating status: ${userToUpdate.isActive ? 'Active' : 'Inactive'} → ${status}`);
+                Logger.info('Updating status field', requestId, { 
+                    oldStatus: userToUpdate.isActive ? 'Active' : 'Inactive',
+                    newStatus: status 
+                });
             }
 
             // Check if any updates were provided
             if (!hasUpdates) {
-                return ResponseHandler.error(res, "No updates provided", "At least one field must be provided for update", 400);
+                Logger.warn('No updates provided', requestId);
+                return ResponseHandler.error(
+                    res, 
+                    "No updates provided", 
+                    "At least one field must be provided for update", 
+                    400,
+                    'ADMIN_NO_UPDATES'
+                );
             }
 
             // Update the user
@@ -1169,12 +1618,15 @@ class AdminAuthController {
                 userId,
                 updateData,
                 { 
-                    new: true, // Return updated document
-                    runValidators: true // Run mongoose validators
+                    new: true,
+                    runValidators: true
                 }
             );
 
-            console.log(`✏️ [${requestId}] User successfully updated: ${updatedUser.name}`);
+            Logger.info('User updated successfully', requestId, { 
+                userId: updatedUser._id,
+                changedFields: Object.keys(updateData) 
+            });
 
             return ResponseHandler.success(res, "User updated successfully", {
                 updatedUser: {
@@ -1196,17 +1648,38 @@ class AdminAuthController {
             });
 
         } catch (error) {
-            console.error(`✏️ [${requestId}] Update user error:`, error);
+            Logger.error('Update user error', requestId, { 
+                errorName: error.name,
+                errorMessage: error.message 
+            });
             
             if (error.name === 'ValidationError') {
-                return ResponseHandler.error(res, "Validation failed", error.message, 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Validation failed", 
+                    error.message, 
+                    400,
+                    'ADMIN_VALIDATION_ERROR'
+                );
             }
             
             if (error.name === 'CastError') {
-                return ResponseHandler.error(res, "Invalid request", "Invalid user ID format", 400);
+                return ResponseHandler.error(
+                    res, 
+                    "Invalid request", 
+                    "Invalid user ID format", 
+                    400,
+                    'ADMIN_INVALID_USER_ID'
+                );
             }
             
-            return ResponseHandler.serverError(res, "Failed to update user");
+            return ResponseHandler.error(
+                res, 
+                "Server error", 
+                "Failed to update user", 
+                500,
+                'ADMIN_UPDATE_USER_FAILED'
+            );
         }
     }
 }

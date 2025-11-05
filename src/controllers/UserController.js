@@ -11,26 +11,35 @@ const {
 } = require('../utils/unitConverter');
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
-const s3 = require('../services/s3Service');
+const Logger = require('../utils/logger');
+
+const s3 = require('../services/s3Service')
 const dailyHealthData = require('../models/DailyHealthData');
 const otp = require('../models/OTP');
 const Goals = require('../models/Goals');
 const passwordReset = require('../models/PasswordReset');
 
 async function updateUserProfile(req, res) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `user-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-        console.log(`👤 [${requestId}] UserController.updateUserProfile START`);
-        console.log(`👤 [${requestId}] Request body:`, req.body);
+        Logger.info('updateUserProfile START', requestId, { bodyKeys: Object.keys(req.body) });
         
         const user = req.user;
-        console.log(`👤 [${requestId}] User from middleware: ${user._id}`);
-        console.log(`👤 [${requestId}] User profile completed: ${user.profileCompleted}`);
+        Logger.info('User from auth middleware', requestId, { 
+            userId: user._id, 
+            profileCompleted: user.profileCompleted 
+        });
 
         // Check if profile is completed (users can only update after initial setup)
         if (user.profileCompleted !== true) {
-            console.log(`👤 [${requestId}] Profile not completed for user: ${user._id}`);
-            return ResponseHandler.error(res, "Profile update failed", "Please complete your profile first before updating.");
+            Logger.warn('Profile update blocked - profile not completed', requestId, { userId: user._id });
+            return ResponseHandler.error(
+                res, 
+                "Profile update failed", 
+                "Please complete your profile first before updating.",
+                400,
+                'USER_PROFILE_NOT_COMPLETED'
+            );
         }
 
         const {
@@ -44,8 +53,12 @@ async function updateUserProfile(req, res) {
             age
         } = req.body;
 
-        console.log(`👤 [${requestId}] Profile data received:`, {
-            name, email, gender, height, heightUnit, weight, weightUnit, age
+        Logger.info('Profile data received', requestId, { 
+            name: !!name, 
+            email: !!email, 
+            gender: !!gender, 
+            hasHeight: !!height, 
+            hasWeight: !!weight 
         });
 
         // Prepare update data object (only include fields that are provided)
@@ -71,59 +84,87 @@ async function updateUserProfile(req, res) {
         // Handle height update
         if (height !== undefined && heightUnit !== undefined) {
             try {
-                console.log(`👤 [${requestId}] Converting height...`);
+                Logger.info('Converting height', requestId, { height, heightUnit });
                 const heightInCm = convertHeightToCm(height, heightUnit);
-                console.log(`👤 [${requestId}] Converted - Height: ${heightInCm}cm`);
+                Logger.info('Height converted', requestId, { heightInCm });
 
                 // Validate converted height
                 if (!isValidHeight(heightInCm)) {
-                    console.log(`👤 [${requestId}] Invalid height: ${heightInCm}cm`);
-                    return ResponseHandler.error(res, "Invalid height", 
-                        `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`);
+                    Logger.warn('Invalid height detected', requestId, { heightInCm });
+                    return ResponseHandler.error(
+                        res, 
+                        "Invalid height", 
+                        `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`,
+                        400,
+                        'USER_INVALID_HEIGHT'
+                    );
                 }
 
                 updateData.height = heightInCm;
                 updateData['userPreferences.heightUnit'] = heightUnit;
             } catch (conversionError) {
-                console.error(`👤 [${requestId}] Height conversion error:`, conversionError);
-                return ResponseHandler.error(res, 'Height conversion failed');
+                Logger.error('Height conversion error', requestId, { error: conversionError.message });
+                return ResponseHandler.error(
+                    res, 
+                    'Height conversion failed',
+                    'Unable to convert height to standard units',
+                    400,
+                    'USER_HEIGHT_CONVERSION_FAILED'
+                );
             }
         }
 
         // Handle weight update
         if (weight !== undefined && weightUnit !== undefined) {
             try {
-                console.log(`👤 [${requestId}] Converting weight...`);
+                Logger.info('Converting weight', requestId, { weight, weightUnit });
                 const weightInKg = convertWeightToKg(weight, weightUnit);
-                console.log(`👤 [${requestId}] Converted - Weight: ${weightInKg}kg`);
+                Logger.info('Weight converted', requestId, { weightInKg });
 
                 // Validate converted weight
                 if (!isValidWeight(weightInKg)) {
-                    console.log(`👤 [${requestId}] Invalid weight: ${weightInKg}kg`);
-                    return ResponseHandler.error(res, "Invalid weight", 
-                        `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`);
+                    Logger.warn('Invalid weight detected', requestId, { weightInKg });
+                    return ResponseHandler.error(
+                        res, 
+                        "Invalid weight", 
+                        `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`,
+                        400,
+                        'USER_INVALID_WEIGHT'
+                    );
                 }
 
                 updateData.weight = weightInKg;
                 updateData['userPreferences.weightUnit'] = weightUnit;
             } catch (conversionError) {
-                console.error(`👤 [${requestId}] Weight conversion error:`, conversionError);
-                return ResponseHandler.error(res, 'Weight conversion failed');
+                Logger.error('Weight conversion error', requestId, { error: conversionError.message });
+                return ResponseHandler.error(
+                    res, 
+                    'Weight conversion failed',
+                    'Unable to convert weight to standard units',
+                    400,
+                    'USER_WEIGHT_CONVERSION_FAILED'
+                );
             }
         }
 
         // Check if there's anything to update
         if (Object.keys(updateData).length === 0) {
-            console.log(`👤 [${requestId}] No fields to update`);
-            return ResponseHandler.error(res, "No update data", "No valid fields provided for update.");
+            Logger.warn('No fields to update', requestId);
+            return ResponseHandler.error(
+                res, 
+                "No update data", 
+                "No valid fields provided for update.",
+                400,
+                'USER_NO_UPDATE_DATA'
+            );
         }
 
-        console.log(`👤 [${requestId}] Update data prepared:`, updateData);
+        Logger.info('Update data prepared', requestId, { fieldCount: Object.keys(updateData).length });
 
         // Ensure MongoDB connection is ready
-        console.log(`👤 [${requestId}] Ensuring MongoDB connection...`);
+        Logger.info('Ensuring MongoDB connection', requestId);
         await ConnectionHelper.ensureConnection();
-        console.log(`👤 [${requestId}] MongoDB connection confirmed, starting database update...`);
+        Logger.info('MongoDB connection confirmed', requestId);
 
         // Update user with validation and timeout
         const userUpdated = await Promise.race([
@@ -140,27 +181,26 @@ async function updateUserProfile(req, res) {
             )
         ]);
 
-        console.log(`👤 [${requestId}] Database update completed successfully`);
+        Logger.info('Database update completed', requestId);
 
         if (!userUpdated) {
-            console.log(`👤 [${requestId}] User not found after update`);
-            return ResponseHandler.notFound(res, "User not found");
+            Logger.error('User not found after update', requestId, { userId: user._id });
+            return ResponseHandler.notFound(res, "User not found", 'USER_NOT_FOUND');
         }
 
-        console.log(`👤 Profile updated for user ${userUpdated._id} - ${userUpdated.name}`);
-        if (updateData.height) {
-            console.log(`📏 Height updated: ${height} ${heightUnit} → ${updateData.height} cm`);
-        }
-        if (updateData.weight) {
-            console.log(`⚖️ Weight updated: ${weight} ${weightUnit} → ${updateData.weight} kg`);
-        }
+        Logger.info('Profile updated successfully', requestId, { 
+            userId: userUpdated._id, 
+            name: userUpdated.name 
+        });
 
         // Calculate display height and weight for response
         const displayHeight = getDisplayHeight(userUpdated.height, userUpdated.userPreferences.heightUnit);
         const displayWeight = getDisplayWeight(userUpdated.weight, userUpdated.userPreferences.weightUnit);
         
-        console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
-        console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+        Logger.info('Profile response prepared', requestId, { 
+            displayHeight: displayHeight?.display, 
+            displayWeight: displayWeight?.display 
+        });
 
         return ResponseHandler.success(res, "Profile updated successfully", {
             user: {
@@ -181,45 +221,55 @@ async function updateUserProfile(req, res) {
         });
 
     } catch (error) {
-        console.error(`👤 [${requestId}] Update user profile error:`, error);
-        console.error(`👤 [${requestId}] Error name: ${error.name}`);
-        console.error(`👤 [${requestId}] Error message: ${error.message}`);
-        console.error(`👤 [${requestId}] Error stack:`, error.stack);
+        Logger.error('Update user profile error', requestId, { 
+            errorName: error.name, 
+            errorMessage: error.message 
+        });
         
         // Handle specific error types
         if (error.message.includes('timeout')) {
-            console.error(`👤 [${requestId}] Database operation timed out`);
-            return ResponseHandler.serverError(res, "Database operation timed out. Please try again.");
+            Logger.error('Database operation timed out', requestId);
+            return ResponseHandler.serverError(
+                res, 
+                "Database operation timed out. Please try again.",
+                'USER_UPDATE_TIMEOUT'
+            );
         }
         
         // Handle mongoose validation errors
         if (error.name === 'ValidationError') {
-            console.error(`👤 [${requestId}] Mongoose validation error:`, error.errors);
-            return ResponseHandler.mongooseError(res, error);
+            Logger.error('Mongoose validation error', requestId, { errors: error.errors });
+            return ResponseHandler.mongooseError(res, error, 'USER_VALIDATION_ERROR');
         }
 
         // Handle duplicate key errors (email/phone already exists)
         if (error.code === 11000) {
             const field = Object.keys(error.keyPattern)[0];
-            console.error(`👤 [${requestId}] Duplicate key error for field: ${field}`);
-            return ResponseHandler.error(res, "Update failed", `This ${field} is already in use.`);
+            Logger.error('Duplicate key error', requestId, { field });
+            return ResponseHandler.error(
+                res, 
+                "Update failed", 
+                `This ${field} is already in use.`,
+                400,
+                'USER_DUPLICATE_FIELD'
+            );
         }
 
-        return ResponseHandler.serverError(res, "Failed to update profile");
+        return ResponseHandler.serverError(res, "Failed to update profile", 'USER_UPDATE_FAILED');
     }
 }
 
 
 async function getUserProfile(req, res) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `user-profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-        console.log(`👤 [${requestId}] UserController.getUserProfile START`);
-        console.log(`👤 [${requestId}] Request headers:`, req.headers);
-        console.log(`👤 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+        Logger.info('getUserProfile START', requestId, { ip: req.ip || req.connection.remoteAddress });
         
         const user = req.user; // User object is set by authenticateToken middleware
-        console.log(`👤 [${requestId}] User from middleware: ${user ? user._id : 'null'}`);
-        console.log(`👤 [${requestId}] User profile completed: ${user ? user.profileCompleted : 'N/A'}`);
+        Logger.info('User from auth middleware', requestId, { 
+            userId: user ? user._id : 'null', 
+            profileCompleted: user ? user.profileCompleted : 'N/A' 
+        });
         
         // Prepare display height and weight if user has completed profile
         let displayHeight = null;
@@ -232,8 +282,10 @@ async function getUserProfile(req, res) {
             displayHeight = getDisplayHeight(user.height, heightUnit);
             displayWeight = getDisplayWeight(user.weight, weightUnit);
             
-            console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
-            console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+            Logger.info('Display units calculated', requestId, { 
+                displayHeight: displayHeight?.display, 
+                displayWeight: displayWeight?.display 
+            });
         }
         
         const responseData = {
@@ -266,32 +318,42 @@ async function getUserProfile(req, res) {
             }
         };
         
-        console.log(`👤 [${requestId}] Sending response for user: ${user._id}`);
+        Logger.info('Profile retrieved successfully', requestId, { userId: user._id });
         return ResponseHandler.success(res, "Profile retrieved successfully", responseData.user);
     } catch (error) {
-        console.error(`👤 [${requestId}] Get user profile error:`, error);
-        console.error(`👤 [${requestId}] Error stack:`, error.stack);
-        return ResponseHandler.serverError(res, "Failed to retrieve profile");
+        Logger.error('Get user profile error', requestId, { 
+            errorName: error.name, 
+            errorMessage: error.message 
+        });
+        return ResponseHandler.serverError(res, "Failed to retrieve profile", 'USER_PROFILE_FETCH_FAILED');
     }
 }
 
 
 async function updateFirstTimeProfile(req, res) {
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `user-firsttime_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-        console.log(`👤 [${requestId}] UserController.updateUserProfile START`);
-        console.log(`👤 [${requestId}] Request body:`, req.body);
-        console.log(`👤 [${requestId}] Request headers:`, req.headers);
-        console.log(`👤 [${requestId}] Request IP:`, req.ip || req.connection.remoteAddress);
+        Logger.info('updateFirstTimeProfile START', requestId, { 
+            bodyKeys: Object.keys(req.body),
+            ip: req.ip || req.connection.remoteAddress 
+        });
         
         const user = req.user;
-        console.log(`👤 [${requestId}] User from middleware: ${user._id}`);
-        console.log(`👤 [${requestId}] User profile completed: ${user.profileCompleted}`);
+        Logger.info('User from auth middleware', requestId, { 
+            userId: user._id, 
+            profileCompleted: user.profileCompleted 
+        });
 
         // Check if profile is already completed
         if (user.profileCompleted === true) {
-            console.log(`👤 [${requestId}] Profile already completed for user: ${user._id}`);
-            return ResponseHandler.error(res, "Profile update failed", "Profile already completed. Profile can only be updated once during initial setup.");
+            Logger.warn('Profile already completed', requestId, { userId: user._id });
+            return ResponseHandler.error(
+                res, 
+                "Profile update failed", 
+                "Profile already completed. Profile can only be updated once during initial setup.",
+                400,
+                'USER_PROFILE_ALREADY_COMPLETED'
+            );
         }
 
         const {
@@ -309,39 +371,60 @@ async function updateFirstTimeProfile(req, res) {
             sportsAmbitions
         } = req.body;
 
-        console.log(`👤 [${requestId}] Profile data received:`, {
-            name, email, gender, height, heightUnit, weight, weightUnit, 
-            age, loyaltyPercentage, bodyProfile, mainGoal, sportsAmbitions
+        Logger.info('Profile data received', requestId, { 
+            hasName: !!name, 
+            hasEmail: !!email, 
+            gender, 
+            heightUnit, 
+            weightUnit 
         });
 
         // Convert height and weight to standard units (cm and kg)
         let heightInCm, weightInKg;
         
         try {
-            console.log(`👤 [${requestId}] Converting units...`);
+            Logger.info('Converting units', requestId, { height, heightUnit, weight, weightUnit });
             heightInCm = convertHeightToCm(height, heightUnit);
             weightInKg = convertWeightToKg(weight, weightUnit);
-            console.log(`👤 [${requestId}] Converted - Height: ${heightInCm}cm, Weight: ${weightInKg}kg`);
+            Logger.info('Units converted successfully', requestId, { heightInCm, weightInKg });
         } catch (conversionError) {
-            console.error(`👤 [${requestId}] Unit conversion error:`, conversionError);
-            return ResponseHandler.error(res, 'Unit conversion failed');
+            Logger.error('Unit conversion error', requestId, { error: conversionError.message });
+            return ResponseHandler.error(
+                res, 
+                'Unit conversion failed',
+                'Unable to convert height or weight to standard units',
+                400,
+                'USER_UNIT_CONVERSION_FAILED'
+            );
         }
 
         // Validate converted values are within acceptable ranges
         if (!isValidHeight(heightInCm)) {
-            console.log(`👤 [${requestId}] Invalid height: ${heightInCm}cm`);
-            return ResponseHandler.error(res, "Invalid height", `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`);
+            Logger.warn('Invalid height detected', requestId, { heightInCm });
+            return ResponseHandler.error(
+                res, 
+                "Invalid height", 
+                `Height out of range: ${height} ${heightUnit} (${heightInCm} cm). Must be between ${getHeightRangeMessage(heightUnit)} (50-300 cm equivalent)`,
+                400,
+                'USER_INVALID_HEIGHT'
+            );
         }
 
         if (!isValidWeight(weightInKg)) {
-            console.log(`👤 [${requestId}] Invalid weight: ${weightInKg}kg`);
-            return ResponseHandler.error(res, "Invalid weight", `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`);
+            Logger.warn('Invalid weight detected', requestId, { weightInKg });
+            return ResponseHandler.error(
+                res, 
+                "Invalid weight", 
+                `Weight out of range: ${weight} ${weightUnit} (${weightInKg} kg). Must be between ${getWeightRangeMessage(weightUnit)} (10-500 kg equivalent)`,
+                400,
+                'USER_INVALID_WEIGHT'
+            );
         }
         
         // Ensure MongoDB connection is ready
-        console.log(`👤 [${requestId}] Ensuring MongoDB connection...`);
+        Logger.info('Ensuring MongoDB connection', requestId);
         await ConnectionHelper.ensureConnection();
-        console.log(`👤 [${requestId}] MongoDB connection confirmed, preparing update data...`);
+        Logger.info('MongoDB connection confirmed', requestId);
         
         // Prepare update data with converted values
         const updateData = {
@@ -362,8 +445,7 @@ async function updateFirstTimeProfile(req, res) {
             profileCompleted: true // Mark profile as completed
         };
 
-        console.log(`👤 [${requestId}] Update data prepared:`, updateData);
-        console.log(`👤 [${requestId}] Starting database update for user: ${user._id}`);
+        Logger.info('Update data prepared', requestId, { profileCompleted: true });
 
         // Update user with validation and timeout
         const userUpdated = await Promise.race([
@@ -380,23 +462,26 @@ async function updateFirstTimeProfile(req, res) {
             )
         ]);
 
-        console.log(`👤 [${requestId}] Database update completed successfully`);
+        Logger.info('Database update completed', requestId);
 
         if (!userUpdated) {
-            console.log(`👤 [${requestId}] User not found after update`);
-            return ResponseHandler.notFound(res, "User not found");
+            Logger.error('User not found after update', requestId, { userId: user._id });
+            return ResponseHandler.notFound(res, "User not found", 'USER_NOT_FOUND');
         }
 
-        console.log(`👤 Profile completed for user ${userUpdated._id} - ${userUpdated.name}`);
-        console.log(`📏 Height: ${height} ${heightUnit} → ${heightInCm} cm`);
-        console.log(`⚖️ Weight: ${weight} ${weightUnit} → ${weightInKg} kg`);
+        Logger.info('Profile completed successfully', requestId, { 
+            userId: userUpdated._id, 
+            name: userUpdated.name 
+        });
 
         // Calculate display height and weight for response
         const displayHeight = getDisplayHeight(userUpdated.height, userUpdated.userPreferences.heightUnit);
         const displayWeight = getDisplayWeight(userUpdated.weight, userUpdated.userPreferences.weightUnit);
         
-        console.log(`👤 [${requestId}] Display height: ${displayHeight?.display}`);
-        console.log(`👤 [${requestId}] Display weight: ${displayWeight?.display}`);
+        Logger.info('Profile response prepared', requestId, { 
+            displayHeight: displayHeight?.display, 
+            displayWeight: displayWeight?.display 
+        });
 
         return ResponseHandler.success(res, "Profile updated successfully", {
             user: {
@@ -421,39 +506,57 @@ async function updateFirstTimeProfile(req, res) {
         });
 
     } catch (error) {
-        console.error(`👤 [${requestId}] Update user profile error:`, error);
-        console.error(`👤 [${requestId}] Error name: ${error.name}`);
-        console.error(`👤 [${requestId}] Error message: ${error.message}`);
-        console.error(`👤 [${requestId}] Error stack:`, error.stack);
+        Logger.error('Update first time profile error', requestId, { 
+            errorName: error.name, 
+            errorMessage: error.message 
+        });
         
         // Handle specific error types
         if (error.message.includes('timeout')) {
-            console.error(`👤 [${requestId}] Database operation timed out`);
-            return ResponseHandler.serverError(res, "Database operation timed out. Please try again.");
+            Logger.error('Database operation timed out', requestId);
+            return ResponseHandler.serverError(
+                res, 
+                "Database operation timed out. Please try again.",
+                'USER_UPDATE_TIMEOUT'
+            );
         }
         
         // Handle mongoose validation errors
         if (error.name === 'ValidationError') {
-            console.error(`👤 [${requestId}] Mongoose validation error:`, error.errors);
-            return ResponseHandler.mongooseError(res, error);
+            Logger.error('Mongoose validation error', requestId, { errors: error.errors });
+            return ResponseHandler.mongooseError(res, error, 'USER_VALIDATION_ERROR');
         }
 
-        return ResponseHandler.serverError(res, "Failed to update profile");
+        return ResponseHandler.serverError(res, "Failed to update profile", 'USER_FIRSTTIME_UPDATE_FAILED');
     }
 }
 
 const deleteUserAccount = async (req, res) => {
   const userId = req.user?._id;
+  const requestId = `user-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
+    Logger.info('deleteUserAccount START', requestId, { userId: userId || 'none' });
+    
     if (!userId) {
-      return ResponseHandler.unauthorized(res, "Authentication required");
+      Logger.warn('User ID not found in request', requestId);
+      return ResponseHandler.unauthorized(res, "Authentication required", 'USER_AUTH_REQUIRED');
     }
 
     // Delete user
     const deletedUser = await User.findByIdAndDelete(userId);
     if (!deletedUser) {
-      return ResponseHandler.error(res, "Not found", "User account does not exist", 404);
+      Logger.warn('User not found for deletion', requestId, { userId });
+      return ResponseHandler.error(
+        res, 
+        "Not found", 
+        "User account does not exist", 
+        404,
+        'USER_NOT_FOUND'
+      );
     }
+
+    Logger.info('User account deleted', requestId, { userId, name: deletedUser.name });
 
     // Best-effort cascade deletes (do not block success)
     try {
@@ -461,60 +564,63 @@ const deleteUserAccount = async (req, res) => {
       await otp.deleteMany({ user: userId });
       await passwordReset.deleteMany({ user: userId });
       await Goals.deleteMany({ user: userId });
+      Logger.info('Cascade delete completed', requestId, { userId });
     } catch (cascadeErr) {
-      console.warn("Cascade delete warning:", cascadeErr);
+      Logger.warn('Cascade delete warning', requestId, { error: cascadeErr.message });
     }
 
     return ResponseHandler.success(res, "User account deleted successfully");
   } catch (error) {
-    console.error("Error deleting user account:", error);
+    Logger.error('Delete user account error', requestId, { 
+      errorName: error?.name, 
+      errorMessage: error?.message 
+    });
 
     if (error?.name === "CastError") {
-      return ResponseHandler.error(res, "Invalid request", "Invalid user ID format", 400);
+      Logger.warn('Invalid user ID format', requestId);
+      return ResponseHandler.error(
+        res, 
+        "Invalid request", 
+        "Invalid user ID format", 
+        400,
+        'USER_INVALID_ID'
+      );
     }
 
-    return ResponseHandler.serverError(res, "Failed to delete user account");
+    return ResponseHandler.serverError(res, "Failed to delete user account", 'USER_DELETE_FAILED');
   }
 };
 
 
 const addProfilePicture = async (req, res) => {
     const userId = req.user?._id;
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `user-addpic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-        console.log(`🖼️ [${requestId}] UserController.addProfilePicture START`);
-        console.log(`🖼️ [${requestId}] User ID: ${userId}`);
+        Logger.info('addProfilePicture START', requestId, { userId });
 
-        // -----------------------------
-        // 1️⃣ Validate file upload
-        // -----------------------------
+        // Validate file upload
         if (!req.file) {
-            console.log(`🖼️ [${requestId}] No file uploaded`);
-            return ResponseHandler.badRequest(res, 'Profile picture is required');
+            Logger.warn('No file uploaded', requestId);
+            return ResponseHandler.badRequest(res, 'Profile picture is required', 'USER_NO_FILE_UPLOADED');
         }
 
         const file = req.file;
-        console.log(`🖼️ [${requestId}] File received:`, {
-            fieldname: file.fieldname,
-            originalname: file.originalname,
-            mimetype: file.mimetype,
-            size: file.size
+        Logger.info('File received', requestId, { 
+            originalname: file.originalname, 
+            mimetype: file.mimetype, 
+            size: file.size 
         });
 
-        // -----------------------------
-        // 2️⃣ Get user from database
-        // -----------------------------
+        // Get user from database
         const user = await User.findById(userId);
         if (!user) {
-            console.log(`🖼️ [${requestId}] User not found: ${userId}`);
-            return ResponseHandler.notFound(res, 'User not found');
+            Logger.warn('User not found', requestId, { userId });
+            return ResponseHandler.notFound(res, 'User not found', 'USER_NOT_FOUND');
         }
 
-        // -----------------------------
-        // 3️⃣ Upload new profile picture to S3
-        // -----------------------------
-        console.log(`🖼️ [${requestId}] Uploading to S3...`);
+        // Upload new profile picture to S3
+        Logger.info('Uploading to S3', requestId);
         const uploadResult = await s3.uploadToS3(
             file.buffer,
             file.originalname,
@@ -526,101 +632,108 @@ const addProfilePicture = async (req, res) => {
             }
         );
 
-        console.log(`🖼️ [${requestId}] S3 upload successful:`, {
-            key: uploadResult.key,
-            url: uploadResult.url
+        Logger.info('S3 upload successful', requestId, { 
+            key: uploadResult.key, 
+            url: uploadResult.url 
         });
 
-        // -----------------------------
-        // 4️⃣ Delete old profile picture if exists
-        // -----------------------------
+        // Delete old profile picture if exists
         if (user.profilePictureKey) {
-            console.log(`🖼️ [${requestId}] Deleting old profile picture from S3...`);
+            Logger.info('Deleting old profile picture from S3', requestId, { 
+                key: user.profilePictureKey 
+            });
             try {
                 await s3.deleteFromS3(user.profilePictureKey);
-                console.log(`🖼️ [${requestId}] ✅ Old profile picture deleted:`, user.profilePictureKey);
+                Logger.info('Old profile picture deleted', requestId);
             } catch (deleteErr) {
-                console.warn(`🖼️ [${requestId}] ⚠️ Failed to delete old profile picture:`, deleteErr.message);
+                Logger.warn('Failed to delete old profile picture', requestId, { 
+                    error: deleteErr.message 
+                });
                 // Continue anyway - don't block upload
             }
         } else {
-            console.log(`🖼️ [${requestId}] No existing profile picture to delete`);
+            Logger.info('No existing profile picture to delete', requestId);
         }
 
-        // -----------------------------
-        // 5️⃣ Update user with new profile picture
-        // -----------------------------
+        // Update user with new profile picture
         user.profilePictureUrl = uploadResult.url || s3.getS3PublicUrl(uploadResult.key);
         user.profilePictureKey = uploadResult.key;
         await user.save();
 
-        console.log(`🖼️ [${requestId}] ✅ Profile picture updated successfully`);
+        Logger.info('Profile picture updated successfully', requestId);
 
         return ResponseHandler.success(res, "Profile picture updated successfully", {
             profilePictureUrl: user.profilePictureUrl
         });
     } catch (error) {
-        console.error(`🖼️ [${requestId}] ❌ Error adding profile picture:`, error);
-        return ResponseHandler.serverError(res, "Failed to update profile picture");
+        Logger.error('Error adding profile picture', requestId, { 
+            errorName: error.name, 
+            errorMessage: error.message 
+        });
+        return ResponseHandler.serverError(res, "Failed to update profile picture", 'USER_UPLOAD_FAILED');
     }
 };
 
 const deleteProfilePicture = async (req, res) => {
     const userId = req.user?._id;
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `user-delpic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
-        console.log(`🗑️ [${requestId}] UserController.deleteProfilePicture START`);
-        console.log(`🗑️ [${requestId}] User ID: ${userId}`);
+        Logger.info('deleteProfilePicture START', requestId, { userId });
 
-        // -----------------------------
-        // 1️⃣ Get user from database
-        // -----------------------------
+        // Get user from database
         const user = await User.findById(userId);
         if (!user) {
-            console.log(`🗑️ [${requestId}] User not found: ${userId}`);
-            return ResponseHandler.notFound(res, 'User not found');
+            Logger.warn('User not found', requestId, { userId });
+            return ResponseHandler.notFound(res, 'User not found', 'USER_NOT_FOUND');
         }
 
-        // -----------------------------
-        // 2️⃣ Check if user has a profile picture
-        // -----------------------------
+        // Check if user has a profile picture
         if (!user.profilePictureKey && !user.profilePictureUrl) {
-            console.log(`🗑️ [${requestId}] No profile picture to delete`);
-            return ResponseHandler.error(res, 'No profile picture', 'User does not have a profile picture', 400);
+            Logger.warn('No profile picture to delete', requestId, { userId });
+            return ResponseHandler.error(
+                res, 
+                'No profile picture', 
+                'User does not have a profile picture', 
+                400,
+                'USER_NO_PROFILE_PICTURE'
+            );
         }
 
-        // -----------------------------
-        // 3️⃣ Delete profile picture from S3
-        // -----------------------------
+        // Delete profile picture from S3
         if (user.profilePictureKey) {
-            console.log(`🗑️ [${requestId}] Deleting profile picture from S3:`, user.profilePictureKey);
+            Logger.info('Deleting profile picture from S3', requestId, { 
+                key: user.profilePictureKey 
+            });
             try {
                 await s3.deleteFromS3(user.profilePictureKey);
-                console.log(`🗑️ [${requestId}] ✅ Profile picture deleted from S3`);
+                Logger.info('Profile picture deleted from S3', requestId);
             } catch (deleteErr) {
-                console.error(`🗑️ [${requestId}] ❌ Failed to delete from S3:`, deleteErr.message);
+                Logger.error('Failed to delete from S3', requestId, { 
+                    error: deleteErr.message 
+                });
                 // Continue to update database even if S3 deletion fails
             }
         } else {
-            console.log(`🗑️ [${requestId}] No S3 key found, skipping S3 deletion`);
+            Logger.info('No S3 key found, skipping S3 deletion', requestId);
         }
 
-        // -----------------------------
-        // 4️⃣ Update user - remove profile picture references
-        // -----------------------------
+        // Update user - remove profile picture references
         user.profilePictureUrl = null;
         user.profilePictureKey = null;
         await user.save();
 
-        console.log(`🗑️ [${requestId}] ✅ Profile picture removed from user record`);
+        Logger.info('Profile picture removed from user record', requestId);
 
         return ResponseHandler.success(res, "Profile picture deleted successfully", {
             profilePictureUrl: null
         });
     } catch (error) {
-        console.error(`🗑️ [${requestId}] ❌ Error deleting profile picture:`, error);
-        return ResponseHandler.serverError(res, "Failed to delete profile picture");
+        Logger.error('Error deleting profile picture', requestId, { 
+            errorName: error.name, 
+            errorMessage: error.message 
+        });
+        return ResponseHandler.serverError(res, "Failed to delete profile picture", 'USER_DELETE_PICTURE_FAILED');
     }
 };
 
