@@ -4,6 +4,7 @@ const Goals = require('../models/Goals');
 const ConnectionHelper = require('../utils/connectionHelper');
 const WaterConverter = require('../utils/waterConverter');
 const ResponseHandler = require('../utils/ResponseHandler');
+const Logger = require('../utils/logger');
 const goalcounter = require('../utils/goalcounter');
 const sleepduration = require('../utils/sleepduration');
 const calorieService = require('../services/calorieService');
