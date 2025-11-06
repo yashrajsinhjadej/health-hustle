@@ -37,6 +37,10 @@ const WorkoutSchema = new mongoose.Schema({
 
 // Indexes for search/filter
 WorkoutSchema.index({ level: 1 });
-WorkoutSchema.index({ name: 1 });
+// Compound unique index - allows same name for inactive workouts
+WorkoutSchema.index({ name: 1, isActive: 1 }, { 
+  unique: true,
+  partialFilterExpression: { isActive: true }
+});
 
 module.exports = mongoose.model('Workout', WorkoutSchema);

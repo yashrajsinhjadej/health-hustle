@@ -1,3 +1,4 @@
+// filename: server.js
 // Health Hustle Backend Server - Updated validation system
 require('dotenv').config();
 
@@ -13,11 +14,7 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // Limit file size to 5MB
 });
 
-
-
 const app = express();
-
-
 
 // Add request logging middleware
 app.use((req, res, next) => {
@@ -56,13 +53,12 @@ app.use((req, res, next) => {
 
 // Security Middleware - Apply helmet before other middleware
 app.use(helmet({
-    // Configure for API usage
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
             connectSrc: ["'self'"],
             scriptSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles if needed
+            styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
@@ -70,9 +66,9 @@ app.use(helmet({
             frameSrc: ["'none'"],
         },
     },
-    crossOriginEmbedderPolicy: false, // Disable for API compatibility
+    crossOriginEmbedderPolicy: false,
     hsts: {
-        maxAge: 31536000, // 1 year
+        maxAge: 31536000,
         includeSubDomains: true,
         preload: true
     }
@@ -80,9 +76,19 @@ app.use(helmet({
 
 // Other Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
+// Enforce request body size limits (adjust values as needed)
+app.use(express.json({ limit: '2mb' })); // JSON payloads up to 2MB
+app.use(express.urlencoded({ extended: true, limit: '2mb' })); // Form payloads up to 2MB
+
+// Explicit handler for payload too large errors from body parsers
+app.use((err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+        console.error('❌ Payload too large:', err.message);
+        return ResponseHandler.error(res, 413, 'Payload Too Large');
+    }
+    next(err);
+});
 
 // Connect to MongoDB on startup using external helper
 console.log(' Starting Health Hustle server...');
@@ -100,28 +106,22 @@ console.log('🔍 ===== END ENVIRONMENT DEBUG =====');
 const connectDB = require('./src/utils/mongoConnect');
 connectDB();
 
-
 // Global MongoDB connection middleware - ensures DB is connected for all API requests
 const ensureMongoDBConnection = async (req, res, next) => {
-    // Skip for health check and debug routes (not API routes)
     if (req.path === '/health' || req.path === '/debug' || req.path === '/test-connection' || req.path === '/env-debug') {
         return next();
     }
     
     try {
-        // Check if MongoDB is connected
         if (mongoose.connection.readyState === 1) {
-            // Already connected, proceed
             console.log('✅ MongoDB already connected for:', req.path);
             return next();
         }
         
-        // Not connected, use ConnectionHelper to wait for connection
         console.log('🔄 MongoDB not connected for API request, attempting to connect...');
         console.log('📥 Request path:', req.path);
         console.log('📥 Request method:', req.method);
         
-        // Import and use ConnectionHelper for consistent connection handling
         const ConnectionHelper = require('./src/utils/connectionHelper');
         await ConnectionHelper.ensureConnection();
         
@@ -149,32 +149,24 @@ app.get('/health', async (req, res) => {
         console.log('   - Uptime:', uptime);
         console.log('   - MongoDB ready state:', mongoose.connection.readyState);
         
-        // Use ConnectionHelper to wait for database connection
         let dbStatus = 'disconnected';
         let dbHost = null;
         
         try {
             console.log('🔄 Health check - Waiting for MongoDB connection...');
-            
-            // Import and use ConnectionHelper
             const ConnectionHelper = require('./src/utils/connectionHelper');
             await ConnectionHelper.ensureConnection();
-            
-            // If we reach here, connection is successful
             dbStatus = 'connected';
             dbHost = mongoose.connection.host;
             console.log('✅ MongoDB connected successfully during health check');
-            
         } catch (dbError) {
             console.error('❌ MongoDB connection failed during health check:', dbError);
             dbStatus = 'disconnected';
         }
         
-        // Check SMS Provider status
         const SMSProviderFactory = require('./src/services/sms/SMSProviderFactory');
         const smsStatus = await SMSProviderFactory.healthCheck();
 
-        //check aws s3 status 
         const s3 = require('./src/services/s3Service');
         const s3Status = await s3.healthCheck();
         
@@ -206,7 +198,6 @@ app.get('/health', async (req, res) => {
         ResponseHandler.serverError(res, 'Health check failed');
     }
 });
-
 
 // Apply MongoDB connection middleware to all API routes
 app.use('/api', ensureMongoDBConnection);

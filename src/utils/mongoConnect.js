@@ -37,7 +37,7 @@ const connectDB = async () => {
         }
 
         const mongoOptions = {
-            maxPoolSize: 10,
+            maxPoolSize: 50,
             serverSelectionTimeoutMS: 20000,
             socketTimeoutMS: 45000,
             family: 4,
