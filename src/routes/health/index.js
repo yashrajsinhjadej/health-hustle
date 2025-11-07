@@ -39,30 +39,29 @@ router.get('/', (req, res) => {
             'POST /api/health/calories - Update calorie intake for TODAY (calories=additive)',
         ]
     });
-});
+}); //done
 
 // GET /health/today - Get today's health data (convenience route)
-router.get('/today', HealthController.getTodayHealth); // verified by yash
+router.get('/today', HealthController.getTodayHealth); // timezone done 
 
 // PUT /health/bulk - Bulk update health data for multiple dates
-router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); // verified by yashraj 
+router.post('/bulk', validateBulkUpdate, handleHealthValidationErrors, HealthController.bulkUpdateHealthData); //timezone done
 
 // GET /health/date - Get daily health data for specific date (date in body)
-router.post('/date', validateDateBody    , handleHealthValidationErrors, HealthController.getDailyHealth); // verified by yash 
+router.post('/date', validateDateBody, handleHealthValidationErrors, HealthController.getDailyHealth); //timezone done
+
+router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); //timezone done 
+router.post('/getwater',validateDateBody,handleHealthValidationErrors,HealthController.getwater); //timezone done
 
 
-router.post('/water', validateWaterBody, handleHealthValidationErrors, HealthController.addwater); // verified by yash
-router.post('/getwater',validateDateBody,handleHealthValidationErrors,HealthController.getwater);
+router.post('/sleep', validateSleepBody, handleHealthValidationErrors, HealthController.addsleep); //timezone done 
+router.get('/getsleep',HealthController.getsleep); //timezone done
 
+router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); //timezone done 
+router.post('/getcalories',validateDateBody,handleHealthValidationErrors,HealthController.getcalories); //timezone done 
 
-router.post('/sleep', validateSleepBody, handleHealthValidationErrors, HealthController.addsleep);
-router.get('/getsleep',HealthController.getsleep);
-
-router.post('/calories',validatecalories,handleHealthValidationErrors,HealthController.addCalories); // verified by yash
-router.post('/getcalories',validateDateBody,handleHealthValidationErrors,HealthController.getcalories);
-
-router.post('/weeklyreport',validateDateBody,handleHealthValidationErrors,HealthController.weeklyreport);
-router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport);
+router.post('/weeklyreport',validateDateBody,handleHealthValidationErrors,HealthController.weeklyreport); //timezone done
+router.post('/monthlyreport',validateDateBody,handleHealthValidationErrors,HealthController.monthlyreport); //timezone added 
 
 
 

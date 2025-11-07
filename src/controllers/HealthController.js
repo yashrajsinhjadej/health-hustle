@@ -8,7 +8,8 @@ const Logger = require('../utils/logger');
 const goalcounter = require('../utils/goalcounter');
 const sleepduration = require('../utils/sleepduration');
 const calorieService = require('../services/calorieService');
-
+const timeZoneUtil = require('../utils/timeZone');
+const { request } = require('../..');
 
 
 // CONFIGURABLE GOAL SYSTEM - Easy to modify which goals count for streaks
@@ -48,335 +49,355 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 
 class HealthController {
 
-    async monthlyreport(req, res) {
-        const requestId = `health-monthlyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  async monthlyreport(req, res) {
+    const requestId = `health-monthlyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        const userId = req.user._id;
+        const { date } = req.body;
+        const timezone = req.headers.timezone || 'UTC';
         
-        try {
-            const userId = req.user._id;
-            const { date } = req.body;
-            
-            // Calculate month boundaries
-            const inputDate = new Date(date);
-            const year = inputDate.getFullYear();
-            const month = inputDate.getMonth(); // 0-based (0 = January)
-            
-            // First day of month (e.g., "2025-10-01")
-            const monthStartString = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-            
-            // Last day of month (e.g., "2025-10-31")  
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const monthEndString = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-            
-            Logger.info('Monthly report START', requestId, { 
-                userId, 
-                monthStartString, 
-                monthEndString, 
-                daysInMonth 
+        // Input validation
+        if (!date) {
+            Logger.warn('Monthly report missing date', requestId);
+            return ResponseHandler.badRequest(res, 'Date is required in request body');
+        }
+        
+        // Validate date format (YYYY-MM-DD)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            Logger.warn('Monthly report invalid date format', requestId, { date });
+            return ResponseHandler.badRequest(res, 'Invalid date format. Please use YYYY-MM-DD format');
+        }
+        
+        // Calculate month boundaries
+        const inputDate = new Date(date + 'T00:00:00Z');
+        
+        // Check if date is valid
+        if (isNaN(inputDate.getTime())) {
+            Logger.warn('Monthly report invalid date', requestId, { date });
+            return ResponseHandler.badRequest(res, 'Invalid date provided');
+        }
+        
+        const year = inputDate.getUTCFullYear();
+        const month = inputDate.getUTCMonth(); // 0-based (0 = January)
+        
+        // First day of month (e.g., "2025-10-01")
+        const monthStartString = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        
+        // Last day of month (e.g., "2025-10-31")  
+        const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+        const monthEndString = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+        
+        Logger.info('Monthly report START', requestId, { 
+            userId, 
+            monthStartString, 
+            monthEndString, 
+            daysInMonth 
+        });
+        
+        // Get user goals
+        let userGoals = await Goals.findOne({ userId });
+        if (!userGoals) {
+            userGoals = new Goals({
+                userId,
+                stepsGoal: 10000,
+                caloriesBurnGoal: 2000,
+                waterIntakeGoal: 8,
+                caloriesIntakeGoal: 2000,
+                sleepGoal: { hours: 8 }
             });
-            
-            // Get user goals
-            let userGoals = await Goals.findOne({ userId });
-            if (!userGoals) {
-                userGoals = new Goals({
-                    userId,
-                    stepsGoal: 10000,
-                    caloriesBurnGoal: 2000,
-                    waterIntakeGoal: 8,
-                    caloriesIntakeGoal: 2000,
-                    sleepGoal: { hours: 8 }
-                });
-                await userGoals.save();
-                Logger.info('Created default goals', requestId);
-            }
-            
-            // MongoDB Aggregation Query for Monthly Data
-            const monthlyData = await DailyHealthData.aggregate([
-                {
-                    $match: {
-                        userId: userId,
-                        date: {
-                            $gte: monthStartString,
-                            $lte: monthEndString
-                        }
-                    }
-                },
-                {
-                    $sort: { date: 1 }
-                },
-                {
-                    $project: {
-                        date: 1,
-                        steps: 1,
-                        water: 1,
-                        calories: 1,
-                        sleep: 1,
-                        goalcomplete: 1,  // Include goalcomplete field
-                        _id: 0
+            await userGoals.save();
+            Logger.info('Created default goals', requestId);
+        }
+        
+        // MongoDB Aggregation Query for Monthly Data
+        const monthlyData = await DailyHealthData.aggregate([
+            {
+                $match: {
+                    userId: userId,
+                    date: {
+                        $gte: monthStartString,
+                        $lte: monthEndString
                     }
                 }
-            ]);
-            
-            // Always get TODAY's data for streak and goal completions
-            const todayDateString = new Date().toISOString().split('T')[0];
-            const todayHealth = await DailyHealthData.findOne({
-                userId: userId,
-                date: todayDateString
-            }).select('goalcomplete streak -_id');
-            
-            // Create complete month breakdown with zero values for missing days
-            const dailyBreakdown = [];
-            
-            // Create a map of existing data for quick lookup
-            const dataMap = {};
-            monthlyData.forEach(record => {
-                dataMap[record.date] = record;
-            });
-            
-            // Generate all days of the month
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                
-                const existingData = dataMap[dateString];
-                
-                dailyBreakdown.push({
-                    date: dateString,
-                    goalCompletion: existingData?.goalcomplete || false,  // Add goalCompletion for each day
-                    water: {
-                        ml: existingData?.water?.consumed || 0,
-                        glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
-                    },
-                    calories: {
-                        consumed: existingData?.calories?.consumed || 0,
-                        burned: existingData?.calories?.burned || 0
-                    },
-                    steps: {
-                        count: existingData?.steps?.count || 0
-                    },
-                    sleep: {
-                        duration: existingData?.sleep?.duration || 0
-                    }
-                });
+            },
+            {
+                $sort: { date: 1 }
+            },
+            {
+                $project: {
+                    date: 1,
+                    steps: 1,
+                    water: 1,
+                    calories: 1,
+                    sleep: 1,
+                    goalcomplete: 1,  // Include goalcomplete field
+                    _id: 0
+                }
             }
+        ]);
+        
+        // Always get TODAY's data for streak and goal completions (in user's timezone)
+        const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
+        const todayHealth = await DailyHealthData.findOne({
+            userId: userId,
+            date: todayDateString
+        }).select('goalcomplete streak -_id');
+        
+        // Create complete month breakdown with zero values for missing days
+        const dailyBreakdown = [];
+        
+        // Create a map of existing data for quick lookup
+        const dataMap = {};
+        monthlyData.forEach(record => {
+            dataMap[record.date] = record;
+        });
+        
+        // Generate all days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             
-            // Calculate monthly totals
-            const totalWaterIntake = monthlyData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
-            const totalCaloriesConsumed = monthlyData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
-            const totalCaloriesBurned = monthlyData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
-            const totalSleepDuration = monthlyData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
-            const totalSteps = monthlyData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+            const existingData = dataMap[dateString];
             
-            Logger.info('Monthly report SUCCESS', requestId, { 
-                recordsFound: monthlyData.length,
-                totalDays: daysInMonth 
+            dailyBreakdown.push({
+                date: dateString,
+                goalCompletion: existingData?.goalcomplete || 0,  // Changed to 0 for consistency
+                water: {
+                    ml: existingData?.water?.consumed || 0,
+                    glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
+                },
+                calories: {
+                    consumed: existingData?.calories?.consumed || 0,
+                    burned: existingData?.calories?.burned || 0
+                },
+                steps: {
+                    count: existingData?.steps?.count || 0
+                },
+                sleep: {
+                    duration: existingData?.sleep?.duration || 0
+                }
             });
-            
-            return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
-                goalcompletions: todayHealth?.goalcomplete || false,
-                streak: todayHealth?.streak || 0,
-                goals: {
-                    stepsGoal: userGoals.stepsGoal,
-                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                    waterIntakeGoal: userGoals.waterIntakeGoal,
-                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                    sleepGoal: { hours: userGoals.sleepGoal?.hours }
-                },
-                monthPeriod: {
-                    startDate: monthStartString,
-                    endDate: monthEndString,
-                    month: month + 1,
-                    year: year,
-                    totalDays: daysInMonth
-                },
-                monthSummary: {
-                    water: {
-                        totalGlasses: WaterConverter.mlToGlasses(totalWaterIntake),
-                        totalConsumed: totalWaterIntake
-                    },
-                    calories: {
-                        totalConsumed: totalCaloriesConsumed,
-                        totalBurned: totalCaloriesBurned
-                    },
-                    sleep: {
-                        totalDuration: totalSleepDuration
-                    },
-                    steps: {
-                        totalCount: totalSteps
-                    }
-                },
-                dailyBreakdown: dailyBreakdown
-            });
-            
-        } catch (error) {
-            Logger.error('Monthly report FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res, 'Failed to get monthly report', 'HEALTH_MONTHLY_REPORT_FAILED');
         }
+        
+        // Calculate monthly totals
+        const totalWaterIntake = monthlyData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
+        const totalCaloriesConsumed = monthlyData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
+        const totalCaloriesBurned = monthlyData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
+        const totalSleepDuration = monthlyData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
+        const totalSteps = monthlyData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+        
+        Logger.info('Monthly report SUCCESS', requestId, { 
+            recordsFound: monthlyData.length,
+            totalDays: daysInMonth 
+        });
+        
+        return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
+            goalcompletions: todayHealth?.goalcomplete || 0,
+            streak: todayHealth?.streak || 0,
+            goals: {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: { hours: userGoals.sleepGoal?.hours || 8 }
+            },
+            monthPeriod: {
+                startDate: monthStartString,
+                endDate: monthEndString,
+                month: month + 1,
+                year: year,
+                totalDays: daysInMonth
+            },
+            monthSummary: {
+                water: {
+                    totalGlasses: WaterConverter.mlToGlasses(totalWaterIntake),
+                    totalConsumed: totalWaterIntake
+                },
+                calories: {
+                    totalConsumed: totalCaloriesConsumed,
+                    totalBurned: totalCaloriesBurned
+                },
+                sleep: {
+                    totalDuration: totalSleepDuration
+                },
+                steps: {
+                    totalCount: totalSteps
+                }
+            },
+            dailyBreakdown: dailyBreakdown
+        });
+        
+    } catch (error) {
+        Logger.error('Monthly report FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to get monthly report', 'HEALTH_MONTHLY_REPORT_FAILED');
     }
+}
 
     // Get specific day health data
-    async weeklyreport(req, res) {
-        const requestId = `health-weeklyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Get specific day health data
+async weeklyreport(req, res) {
+    const requestId = `health-weeklyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        const userId = req.user._id;
+        const { date } = req.body;
+        const timezone = req.headers.timezone || 'UTC';
         
-        try{
-            const userId=req.user._id;
-            const {date} = req.body;
-            
-            // Input validation
-            if (!date) {
-                Logger.warn('Weekly report missing date', requestId);
-                return ResponseHandler.badRequest(res, 'Date is required in request body');
-            }
-            
-            // Validate date format (YYYY-MM-DD)
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!dateRegex.test(date)) {
-                Logger.warn('Weekly report invalid date format', requestId, { date });
-                return ResponseHandler.badRequest(res, 'Invalid date format. Please use YYYY-MM-DD format');
-            }
-            
-            const inputDate = new Date(date); // incoming date from client
-            
-            // Check if date is valid
-            if (isNaN(inputDate.getTime())) {
-                Logger.warn('Weekly report invalid date', requestId, { date });
-                return ResponseHandler.badRequest(res, 'Invalid date provided');
-            }
-            
-            Logger.info('Weekly report START', requestId, { userId, date });
-            
-            inputDate.setUTCHours(0, 0, 0, 0);
+        // Input validation
+        if (!date) {
+            Logger.warn('Weekly report missing date', requestId);
+            return ResponseHandler.badRequest(res, 'Date is required in request body');
+        }
+        
+        // Validate date format (YYYY-MM-DD)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            Logger.warn('Weekly report invalid date format', requestId, { date });
+            return ResponseHandler.badRequest(res, 'Invalid date format. Please use YYYY-MM-DD format');
+        }
+        
+        const inputDate = new Date(date + 'T00:00:00Z'); // Parse as UTC
+        
+        // Check if date is valid
+        if (isNaN(inputDate.getTime())) {
+            Logger.warn('Weekly report invalid date', requestId, { date });
+            return ResponseHandler.badRequest(res, 'Invalid date provided');
+        }
+        
+        Logger.info('Weekly report START', requestId, { userId, date });
+        
+        // Day of week (0 = Sunday, 6 = Saturday)
+        const dayOfWeek = inputDate.getUTCDay();
 
-            // Day of week (0 = Sunday, 6 = Saturday)
-            const dayOfWeek = inputDate.getUTCDay();
+        // Find Sunday (week start)
+        const weekStart = new Date(inputDate);
+        weekStart.setUTCDate(inputDate.getUTCDate() - dayOfWeek);
+        weekStart.setUTCHours(0, 0, 0, 0);
 
-            // Find Sunday (week start)
-            const weekStart = new Date(inputDate);
-            weekStart.setUTCDate(inputDate.getUTCDate() - dayOfWeek);
-            weekStart.setUTCHours(0, 0, 0, 0);
+        // Find Saturday (week end)
+        const weekEnd = new Date(weekStart);
+        weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+        weekEnd.setUTCHours(23, 59, 59, 999);
 
-            // Find Saturday (week end)
-            const weekEnd = new Date(weekStart);
-            weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
-            weekEnd.setUTCHours(23, 59, 59, 999);
+        // Convert Date objects to YYYY-MM-DD strings for database query
+        const weekStartString = weekStart.toISOString().split('T')[0];
+        const weekEndString = weekEnd.toISOString().split('T')[0];
 
-            // Convert Date objects to YYYY-MM-DD strings for database query
-            const weekStartString = weekStart.toISOString().split('T')[0];
-            const weekEndString = weekEnd.toISOString().split('T')[0];
-
-            // Get user goals first
-            const userGoals = await Goals.findOne({ userId })
-                            .select({
-                                _id: 0,
-                                "sleepGoal.hours": 1,
-                                stepsGoal: 1,
-                                caloriesBurnGoal: 1,
-                                waterIntakeGoal: 1,
-                                caloriesIntakeGoal: 1,
-                            })
-                            .lean();
-
-            // Fetch all 7 days' data using string dates
-            const weeklyHealthData = await DailyHealthData.find({
-                userId,
-                date: { $gte: weekStartString, $lte: weekEndString }
+        // Get user goals first
+        const userGoals = await Goals.findOne({ userId })
+            .select({
+                _id: 0,
+                "sleepGoal.hours": 1,
+                stepsGoal: 1,
+                caloriesBurnGoal: 1,
+                waterIntakeGoal: 1,
+                caloriesIntakeGoal: 1,
             })
-            .select('date water.consumed calories.consumed calories.burned sleep.duration steps.count')
-            .sort({ date: 1 })
             .lean();
 
-            // Generate the last 7 dates (weekStart -> weekEnd) and compute each day's weekday name
-            const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-            const weekDates = [];
+        // Fetch all 7 days' data using string dates
+        const weeklyHealthData = await DailyHealthData.find({
+            userId,
+            date: { $gte: weekStartString, $lte: weekEndString }
+        })
+        .select('date water.consumed calories.consumed calories.burned sleep.duration steps.count')
+        .sort({ date: 1 })
+        .lean();
 
-            for (let i = 0; i < 7; i++) {
-                const currentDate = new Date(weekStart);
-                currentDate.setUTCDate(weekStart.getUTCDate() + i);
-                const dateString = currentDate.toISOString().split('T')[0];
-                // Use dayNames[i] because weekStart is set to Sunday when using calendar week
-                const dayName = dayNames[i];
-                weekDates.push({ date: dateString, dayName });
-            }
+        // Generate the last 7 dates (weekStart -> weekEnd) and compute each day's weekday name
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const weekDates = [];
 
-            // Create complete daily breakdown with all metrics combined
-            const dailyBreakdown = weekDates.map(({ date, dayName }) => {
-                const dayData = weeklyHealthData.find(d => d.date === date);
-                return {
-                    date: date,
-                    dayName: dayName,
-                    water: {
-                        ml: dayData?.water?.consumed || 0,
-                        glasses: WaterConverter.mlToGlasses(dayData?.water?.consumed || 0)
-                    },
-                    calories: {
-                        consumed: dayData?.calories?.consumed || 0,
-                        burned: dayData?.calories?.burned || 0
-                    },
-                    steps: {
-                        count: dayData?.steps?.count || 0,
-                        entries: dayData?.steps?.entries || []
-                    },
-                    sleep: {
-                        duration: dayData?.sleep?.duration || 0,
-                        entries: dayData?.sleep?.entries || []
-                    }
-                };
-            });
+        for (let i = 0; i < 7; i++) {
+            const currentDate = new Date(weekStart);
+            currentDate.setUTCDate(weekStart.getUTCDate() + i);
+            const dateString = currentDate.toISOString().split('T')[0];
+            // Use dayNames[i] because weekStart is set to Sunday when using calendar week
+            const dayName = dayNames[i];
+            weekDates.push({ date: dateString, dayName });
+        }
 
-            // Calculate totals (only from existing data)
-            const totalWaterIntake = weeklyHealthData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
-            const totalCaloriesConsumed = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
-            const totalCaloriesBurned = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
-            const totalSleepDuration = weeklyHealthData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
-            const totalSteps = weeklyHealthData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
-            
-            // Get current streak from today's data
-            const today = new Date();
-            const dailyHealth = await DailyHealthData.findOne({ 
-                userId: userId, 
-                date: today.toISOString().split('T')[0]
-            });
-            const streak = dailyHealth ? dailyHealth.streak : 0;
-            
-            Logger.info('Weekly report SUCCESS', requestId, { 
-                weekStartString, 
-                weekEndString,
-                recordsFound: weeklyHealthData.length 
-            });
-            
-            return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
-                weekInfo:{
-                    "inputDate": date,
-                    "inputDayName": dayNames[dayOfWeek],
-                    "weekStartDate": weekStartString,
-                    "weekEndDate": weekEndString,
-                    "weekRange": `${weekStartString} to ${weekEndString}`
+        // Create complete daily breakdown with all metrics combined
+        const dailyBreakdown = weekDates.map(({ date, dayName }) => {
+            const dayData = weeklyHealthData.find(d => d.date === date);
+            return {
+                date: date,
+                dayName: dayName,
+                water: {
+                    ml: dayData?.water?.consumed || 0,
+                    glasses: WaterConverter.mlToGlasses(dayData?.water?.consumed || 0)
                 },
-                userGoals: userGoals,
-                "dailyBreakdown": dailyBreakdown,
-                "streak": streak,
-                "weekSummary":{
-                    "water":{
-                        "totalGlasses": WaterConverter.mlToGlasses(totalWaterIntake),
-                        "totalConsumed": totalWaterIntake
-                    },
-                    "calories":{
-                        "totalConsumed": totalCaloriesConsumed,
-                        "totalBurned": totalCaloriesBurned
-                    },
-                    "sleep":{
-                        "totalDuration": totalSleepDuration
-                    },
-                    "steps":{
-                        "totalCount": totalSteps
-                    }
+                calories: {
+                    consumed: dayData?.calories?.consumed || 0,
+                    burned: dayData?.calories?.burned || 0
+                },
+                steps: {
+                    count: dayData?.steps?.count || 0,
+                    entries: dayData?.steps?.entries || []
+                },
+                sleep: {
+                    duration: dayData?.sleep?.duration || 0,
+                    entries: dayData?.sleep?.entries || []
                 }
-            });
+            };
+        });
 
-        }
-        catch(error){
-            Logger.error('Weekly report FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res, 'Failed to get weekly water report', 'HEALTH_WEEKLY_REPORT_FAILED');
-        }
+        // Calculate totals (only from existing data)
+        const totalWaterIntake = weeklyHealthData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
+        const totalCaloriesConsumed = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
+        const totalCaloriesBurned = weeklyHealthData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
+        const totalSleepDuration = weeklyHealthData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
+        const totalSteps = weeklyHealthData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+        
+        // Get current streak from TODAY's data (in user's timezone)
+        const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
+        const dailyHealth = await DailyHealthData.findOne({ 
+            userId: userId, 
+            date: todayDateString
+        });
+        const streak = dailyHealth?.streak || 0;
+        
+        Logger.info('Weekly report SUCCESS', requestId, { 
+            weekStartString, 
+            weekEndString,
+            recordsFound: weeklyHealthData.length 
+        });
+        
+        return ResponseHandler.success(res, 'Weekly water report retrieved successfully', {
+            weekInfo: {
+                "inputDate": date,
+                "inputDayName": dayNames[dayOfWeek],
+                "weekStartDate": weekStartString,
+                "weekEndDate": weekEndString,
+                "weekRange": `${weekStartString} to ${weekEndString}`
+            },
+            userGoals: userGoals,
+            "dailyBreakdown": dailyBreakdown,
+            "streak": streak,
+            "weekSummary": {
+                "water": {
+                    "totalGlasses": WaterConverter.mlToGlasses(totalWaterIntake),
+                    "totalConsumed": totalWaterIntake
+                },
+                "calories": {
+                    "totalConsumed": totalCaloriesConsumed,
+                    "totalBurned": totalCaloriesBurned
+                },
+                "sleep": {
+                    "totalDuration": totalSleepDuration
+                },
+                "steps": {
+                    "totalCount": totalSteps
+                }
+            }
+        });
+
+    } catch (error) {
+        Logger.error('Weekly report FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to get weekly water report', 'HEALTH_WEEKLY_REPORT_FAILED');
     }
+}
 
 
     async estimateCalories(req,res){
@@ -419,126 +440,128 @@ class HealthController {
         }
     }
 
-
-
-    async addsleep(req,res){
-        const requestId = `health-sleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+async addsleep(req, res) {
+    const requestId = `health-sleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        const { duration } = req.body.sleep;
+        // Use duration directly from frontend
+        const sleepDuration = Number(duration);
+        const userId = req.user._id;
+        const timezone = req.headers.timezone || 'UTC';
         
-        try{
-            const { duration } = req.body.sleep;
-            // Use duration directly from frontend
-            const sleepDuration = Number(duration);
-            const userId = req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
+        const todayDate = timeZoneUtil.getCurrentDateInTimezone(timezone);
 
-            Logger.info('Add sleep START', requestId, { userId, duration: sleepDuration, date: todayDate });
+        Logger.info('Add sleep START', requestId, { userId, duration: sleepDuration, date: todayDate });
 
-            let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
+        let healthdatatoday = await DailyHealthData.findOne({ userId, date: todayDate });
 
-            if(healthdatatoday){
-                // Ensure sleep duration is a valid number, default to 0 if undefined/null
-                const currentDuration = healthdatatoday.sleep?.duration || 0;
-                if(currentDuration + sleepDuration > 12){
-                    Logger.warn('Sleep duration exceeds 12 hours', requestId, { currentDuration, newDuration: sleepDuration });
-                    return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
-                }
-                if (!healthdatatoday.sleep) {
-                    healthdatatoday.sleep = { duration: 0, entries: [] };
-                }
-                if (!healthdatatoday.sleep.entries) {
-                    healthdatatoday.sleep.entries = [];
-                }
-                healthdatatoday.sleep.entries.push({        
-                    duration: sleepDuration,
-                    at: new Date()
-                });
-                healthdatatoday.sleep.duration = Number((currentDuration + sleepDuration).toFixed(2));
-                await healthdatatoday.save();
-                Logger.info('Sleep updated in existing health data', requestId);
+        if (healthdatatoday) {
+            // Ensure sleep duration is a valid number, default to 0 if undefined/null
+            const currentDuration = healthdatatoday.sleep?.duration || 0;
+            if (currentDuration + sleepDuration > 12) {
+                Logger.warn('Sleep duration exceeds 12 hours', requestId, { currentDuration, newDuration: sleepDuration });
+                return ResponseHandler.error(res, 'Validation failed', 'Sleep duration cannot be greater than 12 hours');
             }
-            else{
-                healthdatatoday = new DailyHealthData({
-                    userId,
-                    date: todayDate,
-                    sleep: {
-                        duration: sleepDuration,
-                        entries: [{
-                            duration: sleepDuration,
-                            at: new Date()
-                        }]
-                    }
-                });
-                await healthdatatoday.save();
-                Logger.info('Created new health data with sleep', requestId);
+            if (!healthdatatoday.sleep) {
+                healthdatatoday.sleep = { duration: 0, entries: [] };
             }
-
-            // Get user goals
-            let userGoals = await Goals.findOne({ userId });
-            if (!userGoals) {
-                userGoals = new Goals({
-                    userId,
-                    stepsGoal: 10000,
-                    caloriesBurnGoal: 2000,
-                    waterIntakeGoal: 8,
-                    caloriesIntakeGoal: 2000,
-                    sleepGoal: { hours: 8 }
-                });
-                await userGoals.save();
-                Logger.info('Created default goals', requestId);
+            if (!healthdatatoday.sleep.entries) {
+                healthdatatoday.sleep.entries = [];
             }
-
-            // Build last 7 days array (today and previous 6 days) and fill missing days with zeros
-            const today = new Date();
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today => previous 6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
-
-            const last7DaysData = await DailyHealthData.find({
+            healthdatatoday.sleep.entries.push({        
+                duration: sleepDuration,
+                at: Date.now() 
+            });
+            healthdatatoday.sleep.duration = Number((currentDuration + sleepDuration).toFixed(2));
+            await healthdatatoday.save();
+            Logger.info('Sleep updated in existing health data', requestId);
+        } else {
+            healthdatatoday = new DailyHealthData({
                 userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
-            }).sort({ date: 1 }).select('date sleep').lean();
+                date: todayDate,
+                sleep: {
+                    duration: sleepDuration,
+                    entries: [{
+                        duration: sleepDuration,
+                        at: Date.now()
+                    }]
+                }
+            });
+            await healthdatatoday.save();
+            Logger.info('Created new health data with sleep', requestId);
+        }
 
-            const dataByDate = {};
-            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
+        // Get user goals
+        let userGoals = await Goals.findOne({ userId });
+        if (!userGoals) {
+            userGoals = new Goals({
+                userId,
+                stepsGoal: 10000,
+                caloriesBurnGoal: 2000,
+                waterIntakeGoal: 8,
+                caloriesIntakeGoal: 2000,
+                sleepGoal: { hours: 8 }
+            });
+            await userGoals.save();
+            Logger.info('Created default goals', requestId);
+        }
 
-            const sleepHistory = [];
-            for (let i = 0; i < 7; i++) {
-                const current = new Date(sevenDaysAgo);
-                current.setDate(sevenDaysAgo.getDate() + i);
-                const dateString = current.toISOString().split('T')[0];
-                const dayData = dataByDate[dateString];
+        // Calculate 7 days ago in the user's timezone
+        const todayDateObj = new Date(todayDate + 'T00:00:00Z');
+        const sevenDaysAgo = new Date(todayDateObj);
+        sevenDaysAgo.setDate(todayDateObj.getDate() - 6); // Include today, so -6 days
+        const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
 
-                sleepHistory.push({
-                    date: dateString,
-                    totalDuration: dayData?.sleep?.duration || 0,
-                    entries: dayData?.sleep?.entries || []
-                });
-            }
+        const last7DaysData = await DailyHealthData.find({
+            userId,
+            date: { $gte: sevenDaysAgoString, $lte: todayDate }
+        }).sort({ date: 1 }).select('date sleep').lean();
 
-            // Get today's updated health data for goals and streak
-            const updatedTodayData = await DailyHealthData.findOne({ userId, date: todayDate });
-            
-            Logger.info('Add sleep SUCCESS', requestId);
-            return ResponseHandler.success(res, 'Sleep consumption updated successfully', { 
-                goalcompletions: updatedTodayData.goalcomplete,
-                streak: updatedTodayData.streak,
-                goals: {
-                    stepsGoal: userGoals.stepsGoal,
-                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                    waterIntakeGoal: userGoals.waterIntakeGoal,
-                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                    sleepGoal: {
-                        hours: userGoals.sleepGoal?.hours
-                    }
-                },
-                last7Days: sleepHistory
+        // Build a map for quick lookup
+        const dataByDate = {};
+        last7DaysData.forEach(d => { 
+            dataByDate[d.date] = d; 
+        });
+
+        // Build a 7-day array (sevenDaysAgo -> today) and fill missing days with zeros
+        const sleepHistory = [];
+        for (let i = 0; i < 7; i++) {
+            const current = new Date(sevenDaysAgo);
+            current.setDate(sevenDaysAgo.getDate() + i);
+            const dateString = current.toISOString().split('T')[0];
+            const dayData = dataByDate[dateString];
+
+            sleepHistory.push({
+                date: dateString,
+                totalDuration: dayData?.sleep?.duration || 0,
+                entries: dayData?.sleep?.entries || []
             });
         }
-        catch(error){
-            Logger.error('Add sleep FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res, 'Failed to update sleep consumption', 'HEALTH_ADD_SLEEP_FAILED');
-        }
+
+        // Get today's updated health data for goals and streak
+        const updatedTodayData = await DailyHealthData.findOne({ userId, date: todayDate });
+        
+        Logger.info('Add sleep SUCCESS', requestId);
+        return ResponseHandler.success(res, 'Sleep consumption updated successfully', { 
+            goalcompletions: updatedTodayData?.goalcomplete || 0,
+            streak: updatedTodayData?.streak || 0,
+            goals: {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: {
+                    hours: userGoals.sleepGoal?.hours || 8
+                }
+            },
+            last7Days: sleepHistory
+        });
+    } catch (error) {
+        Logger.error('Add sleep FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to update sleep consumption', 'HEALTH_ADD_SLEEP_FAILED');
     }
+}
 
 
     
@@ -568,9 +591,9 @@ class HealthController {
             
             // Get water data for requested date
             const waterdata = await DailyHealthData.findOne({userId, date: date}).select('water date -_id');
-            
+            const timezone = req.headers.timezone || 'UTC';
             // Always get TODAY's data for streak and goal completions
-            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
             const todayHealth = await DailyHealthData.findOne({
                 userId: userId,
                 date: todayDateString
@@ -617,208 +640,202 @@ class HealthController {
         }
     }
 
-     async getsleep(req,res){
-        const requestId = `health-getsleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+async getsleep(req, res) {
+    const requestId = `health-getsleep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        const userId = req.user._id;
+        const timezone = req.headers.timezone || 'UTC';
+        const todayDate = timeZoneUtil.getCurrentDateInTimezone(timezone);
         
-        try{
-            const userId=req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
-            
-            Logger.info('Get sleep START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}` });
-            
-            // Get user goals
-            let userGoals = await Goals.findOne({ userId });
-            if (!userGoals) {
-                userGoals = new Goals({
-                    userId,
-                    stepsGoal: 10000,
-                    caloriesBurnGoal: 2000,
-                    waterIntakeGoal: 8,
-                    caloriesIntakeGoal: 2000,
-                    sleepGoal: { hours: 8 }
-                });
-                await userGoals.save();
-                Logger.info('Created default goals', requestId);
-            }
-
-            const last7DaysData = await DailyHealthData.find({
+        // Calculate 7 days ago in the user's timezone
+        const todayDateObj = new Date(todayDate + 'T00:00:00Z');
+        const sevenDaysAgo = new Date(todayDateObj);
+        sevenDaysAgo.setDate(todayDateObj.getDate() - 6); // Include today, so -6 days
+        const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+        
+        Logger.info('Get sleep START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}` });
+        
+        // Get user goals
+        let userGoals = await Goals.findOne({ userId });
+        if (!userGoals) {
+            userGoals = new Goals({
                 userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
-            }).sort({ date: 1 }).select('date sleep goalcomplete streak').lean();
+                stepsGoal: 10000,
+                caloriesBurnGoal: 2000,
+                waterIntakeGoal: 8,
+                caloriesIntakeGoal: 2000,
+                sleepGoal: { hours: 8 }
+            });
+            await userGoals.save();
+            Logger.info('Created default goals', requestId);
+        }
 
-            // Build a 7-day array (sevenDaysAgo -> today) and fill missing days with zeros
-            const sleepHistory = [];
-            const dataByDate = {};
-            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
+        const last7DaysData = await DailyHealthData.find({
+            userId,
+            date: { $gte: sevenDaysAgoString, $lte: todayDate }
+        }).sort({ date: 1 }).select('date sleep goalcomplete streak').lean();
 
-            for (let i = 0; i < 7; i++) {
-                const current = new Date(sevenDaysAgo);
-                current.setDate(sevenDaysAgo.getDate() + i);
-                const dateString = current.toISOString().split('T')[0];
-                const dayData = dataByDate[dateString];
+        // Build a map for quick lookup
+        const dataByDate = {};
+        last7DaysData.forEach(d => { 
+            dataByDate[d.date] = d; 
+        });
 
-                sleepHistory.push({
-                    date: dateString,
-                    totalDuration: dayData?.sleep?.duration || 0,
-                    entries: dayData?.sleep?.entries || []
-                });
-            }
+        // Build a 7-day array (sevenDaysAgo -> today) and fill missing days with zeros
+        const sleepHistory = [];
+        
+        for (let i = 0; i < 7; i++) {
+            const current = new Date(sevenDaysAgo);
+            current.setDate(current.getDate() + i); // Fixed: use current.getDate() instead of sevenDaysAgo.getDate()
+            const dateString = current.toISOString().split('T')[0];
+            const dayData = dataByDate[dateString];
 
-            // Get today's health data for goals and streak (from the constructed array)
-            const todayHealthData = sleepHistory.find(d => d.date === todayDate) || { totalDuration: 0, entries: [] };
-            
-            Logger.info('Get sleep SUCCESS', requestId);
-            return ResponseHandler.success(res, 'Sleep data retrieved successfully', {
-                goalcompletions: todayHealthData?.goalcomplete,
-                streak: todayHealthData?.streak,
-                goals: {
-                    stepsGoal: userGoals.stepsGoal,
-                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                    waterIntakeGoal: userGoals.waterIntakeGoal,
-                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                    sleepGoal: {
-                        hours: userGoals.sleepGoal?.hours
-                    }
-                },
-                last7Days: sleepHistory
+            sleepHistory.push({
+                date: dateString,
+                totalDuration: dayData?.sleep?.duration || 0,
+                entries: dayData?.sleep?.entries || []
             });
         }
-        catch(error){
-            Logger.error('Get sleep FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res,'Failed to get sleep data', 'HEALTH_GET_SLEEP_FAILED');
-        }
-    }
 
-    async getsteps(req,res){
-        const requestId = `health-getsteps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Get today's health data for goals and streak from the original data
+        const todayHealthData = dataByDate[todayDate];
         
-        try{
-            const userId=req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // Include today, so -6 days
-            const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
-            
-            Logger.info('Get steps START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}` });
-            
-            const last7DaysData = await DailyHealthData.find({
-                userId,
-                date: { $gte: sevenDaysAgoString, $lte: todayDate }
-            }).sort({ date: 1 }).select('date steps').lean();
-    
-            // Helper function to calculate step estimates
-            const calculateStepEstimates = (steps) => {
-                if (!steps || steps === 0) {
-                    return {
-                        estimatedCaloriesBurned: 0,
-                        estimatedWalkingTimeMinutes: 0,
-                        estimatedDistanceKm: 0
-                    };
+        Logger.info('Get sleep SUCCESS', requestId);
+        return ResponseHandler.success(res, 'Sleep data retrieved successfully', {
+            goalcompletions: todayHealthData?.goalcomplete || 0,
+            streak: todayHealthData?.streak || 0,
+            goals: {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: {
+                    hours: userGoals.sleepGoal?.hours || 8
                 }
-                
-                // Standard estimates (can be customized per user later)
-                const CALORIES_PER_STEP = 0.04; // Average: 40 calories per 1000 steps
-                const STEPS_PER_MINUTE = 100; // Average walking pace: 100 steps per minute
-                const STEPS_PER_KM = 1250; // Average: 1250 steps = 1 km (0.8m per step)
-                
+            },
+            last7Days: sleepHistory
+        });
+    } catch (error) {
+        Logger.error('Get sleep FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to get sleep data', 'HEALTH_GET_SLEEP_FAILED');
+    }
+}
+
+
+async getsteps(req, res) {
+    const requestId = `health-getsteps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+        const userId = req.user._id;
+        const timezone = req.headers.timezone || 'UTC';
+        const todayDate = timeZoneUtil.getCurrentDateInTimezone(timezone);
+
+        // Calculate 7 days ago from today, in user's timezone (inclusive of today)
+        const todayDateObj = new Date(todayDate + 'T00:00:00Z');
+        const sevenDaysAgo = new Date(todayDateObj);
+        sevenDaysAgo.setDate(todayDateObj.getDate() - 6);
+        const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0];
+        
+        Logger.info('Get steps START', requestId, { userId, dateRange: `${sevenDaysAgoString} to ${todayDate}`, timezone });
+
+        // Fetch steps data for last 7 days
+        const last7DaysData = await DailyHealthData.find({
+            userId,
+            date: { $gte: sevenDaysAgoString, $lte: todayDate }
+        }).sort({ date: 1 }).select('date steps').lean();
+
+        // Helper function to calculate estimates from step count
+        const calculateStepEstimates = (steps) => {
+            if (!steps || steps === 0) {
                 return {
-                    estimatedCaloriesBurned: Math.round(steps * CALORIES_PER_STEP),
-                    estimatedWalkingTimeMinutes: Math.round(steps / STEPS_PER_MINUTE),
-                    estimatedDistanceKm: Math.round((steps / STEPS_PER_KM) * 100) / 100 // Round to 2 decimal places
+                    estimatedCaloriesBurned: 0,
+                    estimatedWalkingTimeMinutes: 0,
+                    estimatedDistanceKm: 0
                 };
-            };
-    
-            // Build last 7 days array (sevenDaysAgo -> today) and ensure zeros for missing days
-            const dataByDate = {};
-            last7DaysData.forEach(d => { dataByDate[d.date] = d; });
-
-            const stepsHistory = [];
-            for (let i = 0; i < 7; i++) {
-                const current = new Date(sevenDaysAgo);
-                current.setDate(sevenDaysAgo.getDate() + i);
-                const dateString = current.toISOString().split('T')[0];
-                const dayData = dataByDate[dateString];
-
-                const totalSteps = dayData?.steps?.count || 0;
-                const estimates = calculateStepEstimates(totalSteps);
-
-                stepsHistory.push({
-                    date: dateString,
-                    totalSteps: totalSteps,
-                    entries: dayData?.steps?.entries || [],
-                    estimates: estimates
-                });
             }
-            
-            Logger.info('Get steps SUCCESS', requestId);
-            return ResponseHandler.success(res, 'Steps data retrieved successfully', {
-                last7Days: stepsHistory
+            const CALORIES_PER_STEP = 0.04;
+            const STEPS_PER_MINUTE = 100;
+            const STEPS_PER_KM = 1250;
+            return {
+                estimatedCaloriesBurned: Math.round(steps * CALORIES_PER_STEP),
+                estimatedWalkingTimeMinutes: Math.round(steps / STEPS_PER_MINUTE),
+                estimatedDistanceKm: Math.round((steps / STEPS_PER_KM) * 100) / 100
+            };
+        };
+
+        // Map data by date for quick lookup and build history array
+        const dataByDate = {};
+        last7DaysData.forEach(d => {
+            dataByDate[d.date] = d;
+        });
+
+        const stepsHistory = [];
+        for (let i = 0; i < 7; i++) {
+            const current = new Date(sevenDaysAgo);
+            current.setDate(sevenDaysAgo.getDate() + i);
+            const dateString = current.toISOString().split('T')[0];
+            const dayData = dataByDate[dateString];
+            const totalSteps = dayData?.steps?.count || 0;
+            const estimates = calculateStepEstimates(totalSteps);
+            stepsHistory.push({
+                date: dateString,
+                totalSteps: totalSteps,
+                entries: dayData?.steps?.entries || [],
+                estimates: estimates
             });
         }
-        catch(error){
-            Logger.error('Get steps FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res,'Failed to get steps data', 'HEALTH_GET_STEPS_FAILED');
-        }
-    }
 
-    async getcalories(req,res){
-        const requestId = `health-getcalories_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        Logger.info('Get steps SUCCESS', requestId);
+        return ResponseHandler.success(res, 'Steps data retrieved successfully', {
+            last7Days: stepsHistory
+        });
+    } catch (error) {
+        Logger.error('Get steps FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to get steps data', 'HEALTH_GET_STEPS_FAILED');
+    }
+}
+
+
+async getcalories(req, res) {
+    const requestId = `health-getcalories_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        const userId = req.user._id;
+        const date = req.body.date;
+        const timezone = req.headers.timezone || 'UTC';
         
-        try{
-            const userId=req.user._id;
-            const date = req.body.date;
-            
-            Logger.info('Get calories START', requestId, { userId, date });
-            
-            // Get user goals
-            let userGoals = await Goals.findOne({ userId });
-            if (!userGoals) {
-                userGoals = new Goals({
-                    userId,
-                    stepsGoal: 10000,
-                    caloriesBurnGoal: 2000,
-                    waterIntakeGoal: 8,
-                    caloriesIntakeGoal: 2000,
-                    sleepGoal: { hours: 8 }
-                });
-                await userGoals.save();
-                Logger.info('Created default goals', requestId);
-            }
-            
-            // Get calories data for requested date
-            const caloriesdata = await DailyHealthData.findOne({userId, date: date}).select('calories date -_id');
-            
-            // Always get TODAY's data for streak and goal completions
-            const todayDateString = new Date().toISOString().split('T')[0];
-            const todayHealth = await DailyHealthData.findOne({
-                userId: userId,
-                date: todayDateString
-            }).select('goalcomplete streak -_id');
-            
-            if(caloriesdata){
-                Logger.info('Get calories SUCCESS - Data found', requestId);
-                return ResponseHandler.success(res, 'Calories data retrieved successfully', {
-                    goalcompletions: todayHealth?.goalcomplete || false,
-                    streak: todayHealth?.streak || 0,
-                    goals: {
-                        stepsGoal: userGoals.stepsGoal,
-                        caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                        waterIntakeGoal: userGoals.waterIntakeGoal,
-                        caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                        sleepGoal: {
-                            hours: userGoals.sleepGoal?.hours
-                        }
-                    },
-                    calories: caloriesdata.calories,
-                    date: caloriesdata.date
-                });
-            }
-            Logger.info('Get calories SUCCESS - No data found', requestId);
-            return ResponseHandler.success(res,'No calories data found for the specified date',{
-                goalcompletions: todayHealth?.goalcomplete || false,
+        Logger.info('Get calories START', requestId, { userId, date });
+        
+        // Get user goals
+        let userGoals = await Goals.findOne({ userId });
+        if (!userGoals) {
+            userGoals = new Goals({
+                userId,
+                stepsGoal: 10000,
+                caloriesBurnGoal: 2000,
+                waterIntakeGoal: 8,
+                caloriesIntakeGoal: 2000,
+                sleepGoal: { hours: 8 }
+            });
+            await userGoals.save();
+            Logger.info('Created default goals', requestId);
+        }
+        
+        // Get calories data for requested date
+        const caloriesdata = await DailyHealthData.findOne({ userId, date: date }).select('calories date -_id');
+        
+        // Always get TODAY's data for streak and goal completions
+        const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
+        const todayHealth = await DailyHealthData.findOne({
+            userId: userId,
+            date: todayDateString
+        }).select('goalcomplete streak -_id');
+        
+        if (caloriesdata) {
+            Logger.info('Get calories SUCCESS - Data found', requestId);
+            return ResponseHandler.success(res, 'Calories data retrieved successfully', {
+                goalcompletions: todayHealth?.goalcomplete || 0,
                 streak: todayHealth?.streak || 0,
                 goals: {
                     stepsGoal: userGoals.stepsGoal,
@@ -826,17 +843,34 @@ class HealthController {
                     waterIntakeGoal: userGoals.waterIntakeGoal,
                     caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
                     sleepGoal: {
-                        hours: userGoals.sleepGoal?.hours
+                        hours: userGoals.sleepGoal?.hours || 8
                     }
                 },
-                date: date
+                calories: caloriesdata.calories,
+                date: caloriesdata.date
             });
         }
-        catch(error){
-            Logger.error('Get calories FAILED', requestId, { error: error.message, stack: error.stack });
-            return ResponseHandler.serverError(res,'Failed to get calories data', 'HEALTH_GET_CALORIES_FAILED');
-        }   
-    }
+        
+        Logger.info('Get calories SUCCESS - No data found', requestId);
+        return ResponseHandler.success(res, 'No calories data found for the specified date', {
+            goalcompletions: todayHealth?.goalcomplete || 0,
+            streak: todayHealth?.streak || 0,
+            goals: {
+                stepsGoal: userGoals.stepsGoal,
+                caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                waterIntakeGoal: userGoals.waterIntakeGoal,
+                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                sleepGoal: {
+                    hours: userGoals.sleepGoal?.hours || 8
+                }
+            },
+            date: date
+        });
+    } catch (error) {
+        Logger.error('Get calories FAILED', requestId, { error: error.message, stack: error.stack });
+        return ResponseHandler.serverError(res, 'Failed to get calories data', 'HEALTH_GET_CALORIES_FAILED');
+    }   
+}
 
     async addwater(req, res) {
         const requestId = `health-water_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -844,7 +878,9 @@ class HealthController {
         try {
             const waterconsumedinglasses = req.body.water.consumed;
             const userId = req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
+            // const todayDate = new Date().toISOString().split('T')[0];
+            const timezone = req.headers.timezone || 'UTC'; 
+            const todayDate = timeZoneUtil.getCurrentDateInTimezone(timezone)
 
             Logger.info('Add water START', requestId, { 
                 userId, 
@@ -860,7 +896,7 @@ class HealthController {
                 healthdatatoday.water.entries.push({ 
                     glasses: waterconsumedinglasses, 
                     ml: waterInMl,
-                    at: new Date()
+                    at: timeZoneUtil.getCurrentTimeInTimezone(timezone)
                 });
                 await healthdatatoday.save();
                 Logger.info('Water updated in existing health data', requestId);
@@ -874,10 +910,11 @@ class HealthController {
                         entries: [{ 
                             glasses: waterconsumedinglasses, 
                             ml: waterInMl,
-                            at: new Date()
+                            at: Date.now()
                         }]
+                     }
                     }
-                });
+                );
                 await healthdatatoday.save();
                 Logger.info('Created new health data with water', requestId);
             }
@@ -972,7 +1009,9 @@ class HealthController {
             const date = req.body.date;
 
             // Additional controller-level validation for future dates
-            const today = new Date();
+            const timezone = req.headers.timezone || 'UTC';
+            let today = timeZoneUtil.getCurrentDateInTimezone(timezone);
+            today = new Date(today);
             today.setHours(0, 0, 0, 0);
             const inputDate = new Date(date);
             inputDate.setHours(0, 0, 0, 0);
@@ -1001,9 +1040,9 @@ class HealthController {
                 userId: userId, 
                 date: date 
             });
-
+            
             // Always get TODAY's data for streak and goal completions
-            const todayDateString = new Date().toISOString().split('T')[0];
+            const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone)
             const todayHealth = await DailyHealthData.findOne({
                 userId: userId,
                 date: todayDateString
@@ -1126,8 +1165,8 @@ class HealthController {
             await ConnectionHelper.ensureConnection();
             
             const userId = req.user._id;
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-            
+            const today = timeZoneUtil.getCurrentDateInTimezone(req.headers['Time-Zone']);
+           
             Logger.info('Fetching today health data', requestId, { 
                 userId,
                 date: today 
@@ -1259,18 +1298,18 @@ class HealthController {
             
             const userId = req.user._id;
             const { health_data } = req.body;
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const timezone = req.headers['timezone'];
+            let today = timeZoneUtil.getCurrentDateInTimezone(timezone || 'UTC');
+            console.log(today);
+            console.log(health_data)
 
             // ULTRA OPTIMIZATION 1: Simple validation and sorting
             const sortedData = [...health_data]
                 .filter(item => {
-                    const inputDate = new Date(item.date);
-                    inputDate.setHours(0, 0, 0, 0);
-                    return inputDate <= today;
+                    return item.date <= today;
                 })
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
-
+                console.log(sortedData)
             if (sortedData.length === 0) {
                 Logger.warn('No valid data to process', requestId);
                 return ResponseHandler.error(
@@ -1560,7 +1599,8 @@ class HealthController {
                 }
 
                 // Always include today's health data and goals (or null)
-                const todayDateString = new Date().toISOString().split('T')[0];
+                // const todayDateString = new Date().toISOString().split('T')[0];
+                const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone || 'UTC');
                 let todayHealth = await DailyHealthData.findOne({ userId, date: todayDateString });
                 let todayGoals = goals || null;
                 let todayData;
@@ -1751,7 +1791,7 @@ class HealthController {
                 }
 
                 // Always include today's health data and goals (or null)
-                const todayDateString = new Date().toISOString().split('T')[0];
+                const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone || 'UTC');
                 let todayHealth = await DailyHealthData.findOne({ userId, date: todayDateString });
                 let todayGoals = null;
                 let todayData;
@@ -1851,7 +1891,8 @@ class HealthController {
         try {
             const caloriesConsumed = req.body.calories.consumed;
             const userId = req.user._id;
-            const todayDate = new Date().toISOString().split('T')[0];
+            const timezone = req.headers.timezone || 'UTC';
+            const todayDate = timeZoneUtil.getCurrentDateInTimezone(timezone);
 
             Logger.info('Add calories START', requestId, { userId, calories: caloriesConsumed, date: todayDate });
 
@@ -1865,7 +1906,7 @@ class HealthController {
                 if (!Array.isArray(healthdatatoday.calories.entries)) {
                     healthdatatoday.calories.entries = [];
                 }
-                healthdatatoday.calories.entries.push({ consumed: caloriesConsumed, at: new Date() });
+                healthdatatoday.calories.entries.push({ consumed: caloriesConsumed, at: Date.now() });
                 await healthdatatoday.save();
                 Logger.info('Calories updated in existing health data', requestId);
             } else {
@@ -1876,7 +1917,7 @@ class HealthController {
                     calories: {
                         consumed: caloriesConsumed,
                         burned: 0,
-                        entries: [{ consumed: caloriesConsumed, at: new Date() }]
+                        entries: [{ consumed: caloriesConsumed, at: Date.now()}]
                     }
                 });
                 await healthdatatoday.save();
