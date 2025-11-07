@@ -4,6 +4,7 @@ const workoutModel = require('../../models/Workout');
 const WorkoutVideoModel = require('../../models/workoutvideo');
 const categoryWorkout = require('../../models/CategoryWorkout');
 const CategoryModel = require('../../models/Category');
+const redisClient = require('../../utils/redisClient');
 
 // Define the minimal set of fields to return for a list view
 const WORKOUT_PROJECTION = {
@@ -108,74 +109,61 @@ class WorkoutUserController {
    */
   async homepage(req, res) {
     const requestId = `homepage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+    const CACHE_KEY = "homepage:data";
+    const CACHE_TTL = 3600; // 1 hour
+
     try {
-      const LIMIT = 10; // Number of workouts per category
+      Logger.info("Homepage fetch START", requestId);
 
-      Logger.info('Homepage data fetch START', requestId, { workoutLimit: LIMIT });
+      // 1️⃣ Check Redis cache first
+      const cachedData = await redisClient.get(CACHE_KEY);
+      if (cachedData) {
+        Logger.info("Homepage served from cache", requestId);
+        return ResponseHandler.success(
+          res,
+          "Homepage data fetched successfully (from cache)",
+          JSON.parse(cachedData)
+        );
+      }
 
+      const LIMIT = 10;
+
+      // 2️⃣ Fetch from MongoDB if cache miss
       const result = await CategoryModel.aggregate([
-        // ==========================================
-        // STEP 1: Filter only active categories
-        // ==========================================
-        { 
-          $match: { isActive: true } 
-        },
-
-        // ==========================================
-        // STEP 2: Sort categories by their sequence
-        // ==========================================
-        { 
-          $sort: { categorySequence: 1 } 
-        },
-
-        // ==========================================
-        // STEP 3: Lookup CategoryWorkout associations
-        // ==========================================
+        { $match: { isActive: true } },
+        { $sort: { categorySequence: 1 } },
         {
           $lookup: {
-            from: 'categoryworkouts', // Physical collection name
-            let: { catId: '$_id' },
+            from: "categoryworkouts",
+            let: { catId: "$_id" },
             pipeline: [
-              // Filter: only active associations for this category
               {
                 $match: {
                   $expr: {
                     $and: [
-                      { $eq: ['$categoryId', '$$catId'] },
-                      { $eq: ['$isActive', true] }
-                    ]
-                  }
-                }
+                      { $eq: ["$categoryId", "$$catId"] },
+                      { $eq: ["$isActive", true] },
+                    ],
+                  },
+                },
               },
-              
-              // Sort by sequence within category (workout order)
               { $sort: { sequence: 1 } },
-              
-              // Limit to top N workouts
               { $limit: LIMIT },
-              
-              // ==========================================
-              // STEP 4: Lookup actual workout details
-              // ==========================================
               {
                 $lookup: {
-                  from: 'workouts', // Physical collection name
-                  let: { workoutId: '$workoutId' },
+                  from: "workouts",
+                  let: { workoutId: "$workoutId" },
                   pipeline: [
-                    // Filter: only active workouts
                     {
                       $match: {
                         $expr: {
                           $and: [
-                            { $eq: ['$_id', '$$workoutId'] },
-                            { $eq: ['$isActive', true] }
-                          ]
-                        }
-                      }
+                            { $eq: ["$_id", "$$workoutId"] },
+                            { $eq: ["$isActive", true] },
+                          ],
+                        },
+                      },
                     },
-                    
-                    // Only return necessary fields (optimization)
                     {
                       $project: {
                         _id: 1,
@@ -184,95 +172,65 @@ class WorkoutUserController {
                         duration: 1,
                         difficulty: 1,
                         caloriesBurned: 1,
-                        introduction: 1
-                      }
-                    }
+                        introduction: 1,
+                      },
+                    },
                   ],
-                  as: 'workoutDetails'
-                }
+                  as: "workoutDetails",
+                },
               },
-              
-              // Flatten workout details array
-              { 
-                $unwind: { 
-                  path: '$workoutDetails', 
-                  preserveNullAndEmptyArrays: false // Skip if workout not found
-                } 
-              },
-              
-              // Replace root with workout data only
-              { $replaceRoot: { newRoot: '$workoutDetails' } }
+              { $unwind: { path: "$workoutDetails", preserveNullAndEmptyArrays: false } },
+              { $replaceRoot: { newRoot: "$workoutDetails" } },
             ],
-            as: 'workouts'
-          }
+            as: "workouts",
+          },
         },
-
-        // ==========================================
-        // STEP 5: Format final response
-        // ==========================================
         {
           $project: {
-            _id: 0, // Don't expose internal _id at root level
-            categoryId: '$_id',
-            category: '$name',
+            _id: 0,
+            categoryId: "$_id",
+            category: "$name",
             designId: 1,
-            categorySequence: 1, // Include for debugging/sorting verification
-            totalWorkouts: { $size: '$workouts' },
+            categorySequence: 1,
+            totalWorkouts: { $size: "$workouts" },
             data: {
               $map: {
-                input: '$workouts',
-                as: 'workout',
+                input: "$workouts",
+                as: "workout",
                 in: {
-                  _id: '$$workout._id',
-                  name: { $ifNull: ['$$workout.name', 'Untitled Workout'] },
-                  thumbnail: { $ifNull: ['$$workout.thumbnailUrl', null] },
-                  duration: '$$workout.duration',
-                  level: '$$workout.level',
-                  caloriesBurned: '$$workout.caloriesBurned',
-                  introduction: '$$workout.introduction'
-                }
-              }
-            }
-          }
-        }
-
-        // ==========================================
-        // STEP 6: Optional - Filter out empty categories
-        // ==========================================
-        // Uncomment if you don't want to show categories with no workouts
-        // { 
-        //   $match: { 
-        //     totalWorkouts: { $gt: 0 } 
-        //   } 
-        // }
+                  _id: "$$workout._id",
+                  name: { $ifNull: ["$$workout.name", "Untitled Workout"] },
+                  thumbnail: { $ifNull: ["$$workout.thumbnailUrl", null] },
+                  duration: "$$workout.duration",
+                  level: "$$workout.level",
+                  caloriesBurned: "$$workout.caloriesBurned",
+                  introduction: "$$workout.introduction",
+                },
+              },
+            },
+          },
+        },
       ]);
 
-      // Log summary
-      const summary = result.map(cat => ({
-        category: cat.category,
-        workouts: cat.totalWorkouts
-      }));
+      // 3️⃣ Cache the result in Redis
+      await redisClient.set(CACHE_KEY, JSON.stringify(result), { EX: CACHE_TTL });
+      Logger.info("Homepage cached in Redis", requestId, { ttl: CACHE_TTL });
 
-      Logger.info('Homepage data fetch SUCCESS', requestId, { 
-        categoriesReturned: result.length,
-        summary 
-      });
-
+      // 4️⃣ Return the response
       return ResponseHandler.success(
         res,
-        'Homepage data fetched successfully',
+        "Homepage data fetched successfully",
         result
       );
-
     } catch (error) {
-      Logger.error('Homepage data fetch FAILED', requestId, { 
-        error: error.message, 
-        stack: error.stack 
+      Logger.error("Homepage fetch FAILED", requestId, {
+        error: error.message,
+        stack: error.stack,
       });
       return ResponseHandler.serverError(
         res,
-        'An error occurred while fetching homepage data',
-        'HOMEPAGE_FETCH_FAILED'
+        "An error occurred while fetching homepage data",
+        "HOMEPAGE_FETCH_FAILED"
       );
     }
   }
