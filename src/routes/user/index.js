@@ -9,20 +9,18 @@ const {
     handleValidationErrors 
 } = require('../../validators/userValidators');
 const ResponseHandler = require('../../utils/ResponseHandler');
-const createCustomRateLimit = require('../../middleware/customRateLimit');
 const { upload, checkFileExists } = require('../../middleware/uploadMiddleware');
 const validateImageUpload = require('../../middleware/validateImageUpload');
+const {rateLimiters} = require('../../middleware/redisrateLimiter');
 
-// Create rate limiter for user routes using environment variables
-const userRateLimit = createCustomRateLimit(
-    parseInt(process.env.USER_ROUTES_LIMIT) || 60, 
-    parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
-); // User routes rate limit from env
 
-// Apply authentication and user authorization to all routes
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
 router.use(adminOrUser); // for checking user authorization
-router.use(userRateLimit); // Rate limit to 60 requests per minute per user
+
+
+router.use(rateLimiters.api()); // Apply Redis rate limiter for API routes
+
+
 
 
 router.get('/', (req, res) => {

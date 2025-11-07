@@ -7,7 +7,6 @@ const AdminAuthController = require('../../controllers/AdminAuthController');
 const AuthController = require('../../controllers/AuthController');
 const ResponseHandler = require('../../utils/ResponseHandler');
 const Logger = require('../../utils/logger');
-const createCustomRateLimit = require('../../middleware/customRateLimit');
 const { 
     validateAdminSignup, 
     validateAdminLogin, 
@@ -46,35 +45,24 @@ router.use((req, res, next) => {
     next();
 });
 
-// Create rate limiter for admin routes using environment variables
-const adminRateLimit = createCustomRateLimit(
-    parseInt(process.env.ADMIN_ROUTES_LIMIT) || 100, 
-    parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
-); // Admin routes rate limit from env
-
-const adminAuthLimit = createCustomRateLimit(
-    parseInt(process.env.ADMIN_AUTH_LIMIT) || 5, 
-    parseInt(process.env.RATE_LIMIT_WINDOW_SECONDS) || 60
-); // Admin auth routes rate limit from env
-
-
+const { rateLimiters } = require('../../middleware/redisrateLimiter');
 // Public admin auth routes (no authentication required)
-router.post('/signup', adminAuthLimit, validateAdminSignup, handleValidationErrors, AdminAuthController.signup);
+router.post('/signup', rateLimiters.strict(), validateAdminSignup, handleValidationErrors, AdminAuthController.signup);
 
-router.post('/login', adminAuthLimit, validateAdminLogin, handleValidationErrors, AdminAuthController.login);
+router.post('/login', rateLimiters.strict(), validateAdminLogin, handleValidationErrors, AdminAuthController.login);
 
 // POST /admin/forgot-password - Request password reset for admin via email with reset link
-router.post('/forgot-password', adminRateLimit, validateAdminEmail, handleValidationErrors, AdminAuthController.forgotPassword);
+router.post('/forgot-password', rateLimiters.auth(), validateAdminEmail, handleValidationErrors, AdminAuthController.forgotPassword);
 
 // POST /admin/reset-password - Process password reset with token
-router.post('/reset-password', adminRateLimit, validateAdminPasswordReset, handleValidationErrors, AdminAuthController.resetPassword);
+router.post('/reset-password', rateLimiters.auth(), validateAdminPasswordReset, handleValidationErrors, AdminAuthController.resetPassword);
 
     
 // Protected admin routes (authentication required)
 const protectedRouter = express.Router();
 protectedRouter.use(authenticateToken);
 protectedRouter.use(adminOnly);
-protectedRouter.use(adminRateLimit);
+protectedRouter.use(rateLimiters.admin());
 
 // GET /admin/profile - Get admin profile
 protectedRouter.get('/profile', AdminAuthController.getProfile);

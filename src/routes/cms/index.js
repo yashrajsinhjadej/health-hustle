@@ -19,6 +19,10 @@ const {
   getPublicFaqJson
 } = require('../../controllers/faqController');
 
+
+const rateLimiters = require('../../middleware/redisrateLimiter').rateLimiters;
+
+
 const router = express.Router();
 
 // ============================================
@@ -26,6 +30,10 @@ const router = express.Router();
 // ============================================
 
 // Get FAQ as HTML for WebView
+
+router.use(rateLimiters.global());
+
+
 router.get('/faq', getPublicFaqHtml);
 
 // Get FAQ as JSON for native mobile UI

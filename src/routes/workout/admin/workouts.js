@@ -13,12 +13,12 @@ const workoutImageUpload = upload.fields([
   { name: 'banner', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]);
-
+const rateLimiters = require('../../../middleware/redisrateLimiter').rateLimiters;
 
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); // for checking user authentication and giving user obj in req.user
 router.use(adminOnly);        // for checking user authorization
-
+router.use(rateLimiters.admin()); // Apply Redis rate limiter for admin routes
 // --- Endpoints ---
 
 router.get('/', (req, res) => {

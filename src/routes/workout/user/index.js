@@ -4,7 +4,7 @@ const router = express.Router();
 const {getworkoutByIdvalidator,handleValidationErrors,getcategoryvalidator, listWorkoutsValidator} = require('../../../validators/workoutValidators');
 const workoutUserController = require('../../../controllers/workout/workoutUserContoller');
 const { authenticateToken, adminOrUser } = require('../../../middleware/auth');
-
+const rateLimiters = require('../../../middleware/redisrateLimiter').rateLimiters;
 
 
 // Import all route modules
@@ -12,7 +12,7 @@ const { authenticateToken, adminOrUser } = require('../../../middleware/auth');
 // Apply authentication and user authorization to all routes
 router.use(authenticateToken); // for checking user authentication and giving user obj in req.user
 router.use(adminOrUser); // for checking user authorization
-
+router.use(rateLimiters.api()); // Apply Redis rate limiter for API routes
 
 
 

@@ -2,14 +2,14 @@ const express = require('express');
 const {adminOnly, authenticateToken } = require('../../../middleware/auth');
 const router = express.Router();
 const { createCategoryValidator, updateCategoryValidator, deleteCategoryValidator , handleValidationErrors } = require('../../../validators/categoryValidators');
-
+const rateLimiters = require('../../../middleware/redisrateLimiter').rateLimiters;
 
 
 const CategoryController    = require('../../../controllers/workout/categoryController');
 
 router.use(authenticateToken);
 router.use(adminOnly);
-
+router.use(rateLimiters.admin()); // Apply Redis rate limiter for admin routes
 
 // create category
 

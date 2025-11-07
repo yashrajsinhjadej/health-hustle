@@ -199,6 +199,42 @@ app.get('/health', async (req, res) => {
     }
 });
 
+// =======================
+// Redis client + rate limiter integration (ADDED)
+// =======================
+
+// Import Redis client and rate limiter (CommonJS style to match the file)
+const redisClient = require('./src/utils/redisClient.js').client;
+const { rateLimiter } = require('./src/middleware/redisrateLimiter.js');
+
+// Attach Redis client event listeners for visibility
+if (redisClient && typeof redisClient.on === 'function') {
+    redisClient.on('error', (err) => {
+        console.error('❌ Redis Client Error:', err);
+    });
+    redisClient.on('connect', () => {
+        console.log('✅ Redis connected');
+    });
+    redisClient.on('ready', () => {
+        console.log('✅ Redis ready to accept commands');
+    });
+    // For node-redis v4, connect() may be required if not already done in redisClient.js
+    (async () => {
+        try {
+            if (typeof redisClient.connect === 'function') {
+                await redisClient.connect();
+            }
+        } catch (err) {
+            console.error('❌ Failed to connect to Redis on startup:', err);
+            // Choose fail-fast if Redis is mandatory:
+            // process.exit(1);
+        }
+    })();
+} else {
+    console.warn('⚠ Redis client not initialized or missing event API.');
+}
+
+
 // Apply MongoDB connection middleware to all API routes
 app.use('/api', ensureMongoDBConnection);
 
