@@ -51,7 +51,9 @@ async function updateUserProfile(req, res) {
             weight,
             weightUnit,
             age,
-            sportsAmbitions
+            sportsAmbitions,
+            bodyProfile,
+            mainGoal
         } = req.body;
 
         Logger.info('Profile data received', requestId, { 
@@ -60,7 +62,9 @@ async function updateUserProfile(req, res) {
             gender: !!gender, 
             hasHeight: !!height, 
             hasWeight: !!weight,
-            hasSportsAmbitions: !!sportsAmbitions
+            hasSportsAmbitions: !!sportsAmbitions,
+            hasBodyProfile: !!bodyProfile,
+            hasMainGoal: !!mainGoal
         });
 
         // Prepare update data object (only include fields that are provided)
@@ -165,6 +169,13 @@ async function updateUserProfile(req, res) {
             );
         }
 
+        if( bodyProfile !== undefined) {
+            updateData.bodyProfile = bodyProfile;
+        }
+        if( mainGoal !== undefined) {
+            updateData.mainGoal = mainGoal;
+        }
+
         Logger.info('Update data prepared', requestId, { fieldCount: Object.keys(updateData).length });
 
         // Ensure MongoDB connection is ready
@@ -223,7 +234,9 @@ async function updateUserProfile(req, res) {
                 displayHeight: displayHeight, // Height in user's preferred unit
                 displayWeight: displayWeight, // Weight in user's preferred unit
                 userPreferences: userUpdated.userPreferences,
-                sportsAmbitions: userUpdated.sportsAmbitions
+                sportsAmbitions: userUpdated.sportsAmbitions,
+                bodyProfile: userUpdated.bodyProfile,
+                mainGoal: userUpdated.mainGoal
             }
         });
 

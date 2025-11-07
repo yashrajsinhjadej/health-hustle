@@ -313,7 +313,20 @@ const validateUserProfileUpdate = [
                 }
             }
             return true;
-        })
+        }),
+
+        body('bodyProfile')
+        .trim()
+        .optional()
+        .isIn(['slim', 'average', 'muscular', 'overweight'])
+        .withMessage('Body profile must be slim, average, muscular, or overweight'),
+
+        body('mainGoal')
+        .trim()
+        .optional()
+        .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'])
+        .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, athletic_performance, weight_gain, or fit_body'),
+
 ];
 
 
