@@ -295,6 +295,24 @@ const validateUserProfileUpdate = [
                 throw new Error('Weight unit must be provided when weight is specified');
             }
             return true;
+        }),
+
+
+    body('sportsAmbitions')
+        .optional()
+        .isArray({ min: 1 })
+        .withMessage('At least one sport ambition must be selected')
+        .custom((value) => {
+            if (value && value.length > 0) {
+                const allowedSports = ['swimming', 'badminton', 'table_tennis', 'boxing', 'running', 'cycling'];
+                const invalidSports = value.filter(sport => 
+                    !allowedSports.includes(sport.toLowerCase())
+                );
+                if (invalidSports.length > 0) {
+                    throw new Error(`Invalid sports: ${invalidSports.join(', ')}. Allowed sports: ${allowedSports.join(', ')}`);
+                }
+            }
+            return true;
         })
 ];
 

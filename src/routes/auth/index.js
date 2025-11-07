@@ -18,10 +18,10 @@ router.get('/',(req,res)=>{
 // Create rate limiters for different endpoints using environment variables
 
 // POST /auth/send-otp - Send OTP to phone number
-router.post('/send-otp', rateLimiters.strict(), validatePhoneNumber, handleValidationErrors, AuthController.sendOTP.bind(AuthController));
+router.post('/send-otp', rateLimiters.auth(), validatePhoneNumber, handleValidationErrors, AuthController.sendOTP.bind(AuthController));
 
 // POST /auth/verify-otp - Verify OTP and login/register
-router.post('/verify-otp', rateLimiters.auth(), validatePhoneNumber, validateOTP, handleValidationErrors, AuthController.verifyOTP.bind(AuthController));
+router.post('/verify-otp', rateLimiters.strict(), validatePhoneNumber, validateOTP, handleValidationErrors, AuthController.verifyOTP.bind(AuthController));
 
 // POST /auth/logout - Logout current user
 router.post('/logout', authenticateToken, AuthController.logout.bind(AuthController));

@@ -50,7 +50,8 @@ async function updateUserProfile(req, res) {
             heightUnit,
             weight,
             weightUnit,
-            age
+            age,
+            sportsAmbitions
         } = req.body;
 
         Logger.info('Profile data received', requestId, { 
@@ -58,7 +59,8 @@ async function updateUserProfile(req, res) {
             email: !!email, 
             gender: !!gender, 
             hasHeight: !!height, 
-            hasWeight: !!weight 
+            hasWeight: !!weight,
+            hasSportsAmbitions: !!sportsAmbitions
         });
 
         // Prepare update data object (only include fields that are provided)
@@ -147,6 +149,10 @@ async function updateUserProfile(req, res) {
             }
         }
 
+        if (sportsAmbitions !== undefined) {
+            updateData.sportsAmbitions = sportsAmbitions;
+        }
+
         // Check if there's anything to update
         if (Object.keys(updateData).length === 0) {
             Logger.warn('No fields to update', requestId);
@@ -216,7 +222,8 @@ async function updateUserProfile(req, res) {
                 weight: userUpdated.weight, // Raw weight in kg
                 displayHeight: displayHeight, // Height in user's preferred unit
                 displayWeight: displayWeight, // Weight in user's preferred unit
-                userPreferences: userUpdated.userPreferences
+                userPreferences: userUpdated.userPreferences,
+                sportsAmbitions: userUpdated.sportsAmbitions
             }
         });
 
