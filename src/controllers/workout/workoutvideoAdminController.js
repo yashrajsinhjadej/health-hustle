@@ -369,6 +369,8 @@ class WorkoutVideo {
       );
     }
   }
+
+  
 }
 
 module.exports = new WorkoutVideo();

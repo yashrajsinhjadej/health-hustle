@@ -2,7 +2,7 @@ const ResponseHandler = require('../../utils/ResponseHandler');
 const Logger = require('../../utils/logger');
 const categoryModel = require('../../models/Category');
 const CategoryWorkout = require('../../models/CategoryWorkout');
-
+const {clearCache} = require('../../utils/cacheutils');
 
 class CategoryController {
   /**
@@ -10,7 +10,9 @@ class CategoryController {
    * Logic: Find max sequence among ACTIVE categories only, then add 1
    */
   async createCategory(req, res) {
+    clearCache('homepage'); // Clear homepage cache on category changes
     const requestId = `category-create_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     
     try {
       const { name, designId } = req.body;
@@ -73,6 +75,7 @@ class CategoryController {
    * Inactive categories are ignored in sequence calculations
    */
   async updateCategory(req, res) {
+    clearCache('homepage'); // Clear homepage cache on category changes
     const requestId = `category-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -243,6 +246,7 @@ class CategoryController {
    * This keeps the active sequence continuous: 1, 2, 3, 4... (no gaps)
    */
   async deleteCategory(req, res) {
+    clearCache('homepage'); // Clear homepage cache on category changes
     const requestId = `category-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -337,9 +341,6 @@ class CategoryController {
       return ResponseHandler.serverError(res, 'An error occurred while fetching the category', 'CATEGORY_GET_BY_ID_FAILED');
     }
   }
-
-
 }
-
 
 module.exports = new CategoryController();
