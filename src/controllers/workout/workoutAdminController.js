@@ -15,7 +15,7 @@ const {clearCache} = require('../../utils/cacheUtils');
 class WorkoutAdminController {
 // controllers/workoutController.js (createWorkout)
 async  createWorkout(req, res) {
-  clearCache('workout');
+  clearCache('homepage');
   const requestId = `workout-create_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   let bannerKey = null;
   let thumbnailKey = null;
@@ -299,7 +299,7 @@ async  createWorkout(req, res) {
 
 
 async deleteWorkout(req, res) {
-  clearCache('workout');
+  clearCache('homepage');
   const requestId = `workout-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -452,7 +452,7 @@ async deleteWorkout(req, res) {
 }
 
 async updateWorkout(req, res) {
-  clearCache('workout');
+  clearCache('homepage');
   const requestId = `workout-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
   try {
@@ -924,7 +924,7 @@ async getworkoutbyid(req, res) {
  * - Uses index hints in comments; ensure you create indexes in your model.
  */
 async  updateWorkoutSequence(req, res) {
-  clearCache('workout');
+  clearCache('homepage');
   const requestId = `workout-reorder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const session = await mongoose.startSession();
 
