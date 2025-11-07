@@ -2,7 +2,7 @@ const ResponseHandler = require('../../utils/ResponseHandler');
 const Logger = require('../../utils/logger');
 const categoryModel = require('../../models/Category');
 const CategoryWorkout = require('../../models/CategoryWorkout');
-const {clearCache} = require('../../utils/cacheutils');
+const {clearCache} = require('../../utils/cacheUtils');
 
 class CategoryController {
   /**

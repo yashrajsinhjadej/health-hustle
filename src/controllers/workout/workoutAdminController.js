@@ -8,7 +8,7 @@ const workoutvideoModel = require('../../models/workoutvideo');
 const s3Service = require('../../services/s3Service');
 const categoryWorkout = require('../../models/CategoryWorkout');
 const CategoryModel = require('../../models/Category');
-const {clearCache} = require('../../utils/cacheutils');
+const {clearCache} = require('../../utils/cacheUtils');
 
 // NOTE: helmet's contentSecurityPolicy was imported but unused; removed to avoid confusion.
 
