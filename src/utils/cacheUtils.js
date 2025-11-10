@@ -12,11 +12,11 @@ async function clearCache(type = "all") {
       case "workout":
         pattern = "workout:*";
         break;
-      case "user":
-        pattern = "user:*";
-        break;
       case "admin":
         pattern = "admin:*";
+        break;
+      case "category":
+        pattern = "category:*";
         break;
       case "all":
         pattern = "*";
@@ -26,28 +26,25 @@ async function clearCache(type = "all") {
         break;
     }
 
-    const keys = [];
-    for await (const key of redisClient.scanIterator({ MATCH: pattern })) {
-      // ensure key is string (not buffer)
-      keys.push(String(key));
-    }
+    Logger.info("🧹 Starting Redis cache clear", { type, pattern });
+
+    // ⚡ Force use KEYS (safe for small dataset)
+    const keys = await redisClient.keys(pattern);
+    Logger.info("🔍 Keys matched", { total: keys.length, keys });
 
     if (keys.length === 0) {
       Logger.info("ℹ️ No Redis keys found to clear", { pattern });
       return;
     }
 
-    // ✅ use pipelined deletion for maximum safety
-    const pipeline = redisClient.multi();
-    for (const key of keys) {
-      pipeline.del(key);
-    }
-
-    await pipeline.exec();
-    Logger.info("🧹 Cleared Redis cache", {
+    // ⚙️ Delete all keys directly
+    const deletedCount = await redisClient.del(keys);
+    Logger.info("✅ Redis cache cleared", {
       pattern,
-      totalKeys: keys.length,
+      totalKeysFound: keys.length,
+      totalDeleted: deletedCount,
     });
+
   } catch (err) {
     Logger.error("❌ Error clearing Redis cache", {
       type,

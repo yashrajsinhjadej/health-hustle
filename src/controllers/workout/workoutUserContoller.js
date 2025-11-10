@@ -26,75 +26,88 @@ class WorkoutUserController {
    * 2. Fetch workout details for those associations
    * 3. Combine and return sorted by sequence
    */
-  async getcategory(req, res) {
-    const requestId = `category-workouts_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    try {
-      const { categoryId } = req.body;
+async getcategory(req, res) {
+  const requestId = `category-workouts_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Basic validation
-      if (!categoryId) {
-        Logger.warn('Get category workouts validation failed - missing categoryId', requestId);
-        return ResponseHandler.badRequest(res, 'Category ID is required');
-      }
+  try {
+    const { categoryId } = req.body;
 
-      Logger.info('Get category workouts START', requestId, { categoryId });
-      
-      // 1️⃣ Find all active category-workout associations
-      const categoryWorkouts = await categoryWorkout
-        .find({ categoryId: categoryId, isActive: true })
-        .sort({ sequence: 1 }); // Sort by sequence
-      
-      if (!categoryWorkouts || categoryWorkouts.length === 0) {
-        Logger.info('No workouts found for category', requestId, { categoryId });
-        return ResponseHandler.success(res, 'No workouts found in this category', []);
-      }
-  
-      // 2️⃣ Extract workout IDs
-      const workoutIds = categoryWorkouts.map(cw => cw.workoutId);
-      
-      Logger.info('Fetching workout details', requestId, { 
-        categoryId,
-        workoutCount: workoutIds.length 
-      });
-
-      // 3️⃣ Fetch workout details
-      const workouts = await workoutModel
-        .find({ _id: { $in: workoutIds } })
-        .select(WORKOUT_PROJECTION);
-      
-      // 4️⃣ Create a map of workouts by ID for easy lookup
-      const workoutMap = {};
-      workouts.forEach(workout => {
-        workoutMap[workout._id.toString()] = workout.toObject();
-      });
-      
-      // 5️⃣ Combine category-workout data with workout details, maintaining sequence order
-      const result = categoryWorkouts.map(cw => ({
-        ...workoutMap[cw.workoutId.toString()],
-        sequence: cw.sequence,
-        categoryWorkoutId: cw._id
-      }));
-
-      Logger.info('Get category workouts SUCCESS', requestId, { 
-        categoryId,
-        workoutsReturned: result.length 
-      });
-
-      return ResponseHandler.success(res, 'Workouts fetched successfully', result);
-      
-    } catch (error) {
-      Logger.error('Get category workouts FAILED', requestId, { 
-        error: error.message, 
-        stack: error.stack 
-      });
-      return ResponseHandler.serverError(
-        res, 
-        'An error occurred while fetching category workouts', 
-        'CATEGORY_WORKOUTS_GET_FAILED'
-      );
+    // Basic validation
+    if (!categoryId) {
+      Logger.warn('Get category workouts validation failed - missing categoryId', requestId);
+      return ResponseHandler.badRequest(res, 'Category ID is required');
     }
+
+    Logger.info('Get category workouts START', requestId, { categoryId });
+
+    // 0️⃣ Redis cache check
+    const cacheKey = `workout:category:${categoryId}`;
+    const cachedData = await redisClient.get(cacheKey);
+
+    if (cachedData) {
+      Logger.info('🧠 Cache hit for category workouts', requestId, { categoryId });
+      const result = JSON.parse(cachedData);
+      return ResponseHandler.success(res, 'Workouts fetched successfully (from cache)', result);
+    }
+
+    Logger.info('⚙️ Cache miss - fetching from DB', requestId, { categoryId });
+
+    // 1️⃣ Find all active category-workout associations
+    const categoryWorkouts = await categoryWorkout
+      .find({ categoryId: categoryId, isActive: true })
+      .sort({ sequence: 1 });
+
+    if (!categoryWorkouts || categoryWorkouts.length === 0) {
+      Logger.info('No workouts found for category', requestId, { categoryId });
+      return ResponseHandler.success(res, 'No workouts found in this category', []);
+    }
+
+    // 2️⃣ Extract workout IDs
+    const workoutIds = categoryWorkouts.map(cw => cw.workoutId);
+
+    Logger.info('Fetching workout details', requestId, {
+      categoryId,
+      workoutCount: workoutIds.length
+    });
+
+    // 3️⃣ Fetch workout details
+    const workouts = await workoutModel
+      .find({ _id: { $in: workoutIds } })
+      .select(WORKOUT_PROJECTION);
+
+    // 4️⃣ Create a map of workouts by ID for easy lookup
+    const workoutMap = {};
+    workouts.forEach(workout => {
+      workoutMap[workout._id.toString()] = workout.toObject();
+    });
+
+    // 5️⃣ Combine category-workout data with workout details, maintaining sequence order
+    const result = categoryWorkouts.map(cw => ({
+      ...workoutMap[cw.workoutId.toString()],
+      sequence: cw.sequence,
+      categoryWorkoutId: cw._id
+    }));
+
+    // 6️⃣ Store in Redis (10 min TTL)
+    await redisClient.set(cacheKey, JSON.stringify(result), { EX: 600 });
+    Logger.info('💾 Cached category workouts in Redis', requestId, { categoryId, count: result.length });
+
+    return ResponseHandler.success(res, 'Workouts fetched successfully', result);
+
+  } catch (error) {
+    Logger.error('Get category workouts FAILED', requestId, {
+      error: error.message,
+      stack: error.stack
+    });
+    return ResponseHandler.serverError(
+      res,
+      'An error occurred while fetching category workouts',
+      'CATEGORY_WORKOUTS_GET_FAILED'
+    );
   }
+}
+
+
 
   /**
    * HOMEPAGE API - Production Ready
@@ -323,84 +336,95 @@ class WorkoutUserController {
    * GET WORKOUT BY ID
    * Fetches a single workout with all its videos (sorted by sequence)
    */
-  async getworkoutbyid(req, res) {
-    const requestId = `workout-getbyid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    try {
-      const { workoutId } = req.body;
+async getworkoutbyid(req, res) {
+  const requestId = `workout-getbyid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Basic validation
-      if (!workoutId) {
-        Logger.warn('Get workout by ID validation failed - missing workoutId', requestId);
-        return ResponseHandler.badRequest(res, 'Workout ID is required');
-      }
+  try {
+    const { workoutId } = req.body;
 
-      Logger.info('Get workout by ID START', requestId, { workoutId });
-
-      // 1️⃣ Fetch workout and populate videos
-      const workout = await workoutModel
-        .findById(workoutId)
-        .populate({
-          path: 'videos.video',
-          model: 'WorkoutVideo',
-          select: 'title description youtubeUrl duration'
-        })
-        .lean(); // Convert Mongoose doc to plain JS object
-
-      if (!workout) {
-        Logger.warn('Get workout by ID failed - not found', requestId, { workoutId });
-        return ResponseHandler.notFound(res, 'Workout not found');
-      }
-
-      // 2️⃣ Map videos with sequence from workout.videos array and convert duration to minutes
-      const videosWithSequence = workout.videos
-        .map(v => {
-          if (!v.video) return null; // Skip if video was deleted
-          
-          // Convert duration from seconds to minutes (rounded up)
-          const durationInMinutes = v.video.duration ? Math.ceil(v.video.duration / 60) : 0;
-          
-          return {
-            _id: v.video._id,
-            title: v.video.title,
-            description: v.video.description,
-            youtubeUrl: v.video.youtubeUrl,
-            duration: durationInMinutes, // Now in minutes
-            sequence: v.sequence
-          };
-        })
-        .filter(v => v !== null) // Remove nulls
-        .sort((a, b) => a.sequence - b.sequence); // Sort by sequence
-        
-      Logger.info('Video durations converted to minutes', requestId, {
-        videoCount: videosWithSequence.length,
-        examples: videosWithSequence.slice(0, 2).map(v => ({ 
-          title: v.title,
-          durationMinutes: v.duration
-        }))
-      });
-
-      // 3️⃣ Replace videos array with sorted videos
-      workout.videos = videosWithSequence;
-
-      Logger.info('Get workout by ID SUCCESS', requestId, { 
-        workoutId,
-        videoCount: videosWithSequence.length 
-      });
-
-      return ResponseHandler.success(res, 'Workout fetched successfully', workout);
-    } catch (error) {
-      Logger.error('Get workout by ID FAILED', requestId, { 
-        error: error.message, 
-        stack: error.stack 
-      });
-      return ResponseHandler.serverError(
-        res, 
-        'An error occurred while fetching the workout', 
-        'WORKOUT_GET_BY_ID_FAILED'
-      );
+    // Basic validation
+    if (!workoutId) {
+      Logger.warn('Get workout by ID validation failed - missing workoutId', requestId);
+      return ResponseHandler.badRequest(res, 'Workout ID is required');
     }
+
+    Logger.info('Get workout by ID START', requestId, { workoutId });
+
+    // 0️⃣ Check Redis cache
+    const cacheKey = `workout:details:${workoutId}`;
+    const cachedWorkout = await redisClient.get(cacheKey);
+
+    if (cachedWorkout) {
+      Logger.info('🧠 Cache hit for workout details', requestId, { workoutId });
+      const workout = JSON.parse(cachedWorkout);
+      return ResponseHandler.success(res, 'Workout fetched successfully (from cache)', workout);
+    }
+
+    Logger.info('⚙️ Cache miss - fetching from DB', requestId, { workoutId });
+
+    // 1️⃣ Fetch workout and populate videos
+    const workout = await workoutModel
+      .findById(workoutId)
+      .populate({
+        path: 'videos.video',
+        model: 'WorkoutVideo',
+        select: 'title description youtubeUrl duration'
+      })
+      .lean();
+
+    if (!workout) {
+      Logger.warn('Get workout by ID failed - not found', requestId, { workoutId });
+      return ResponseHandler.notFound(res, 'Workout not found');
+    }
+
+    // 2️⃣ Process videos (sequence + duration)
+    const videosWithSequence = workout.videos
+      .map(v => {
+        if (!v.video) return null;
+        const durationInMinutes = v.video.duration ? Math.ceil(v.video.duration / 60) : 0;
+        return {
+          _id: v.video._id,
+          title: v.video.title,
+          description: v.video.description,
+          youtubeUrl: v.video.youtubeUrl,
+          duration: durationInMinutes,
+          sequence: v.sequence
+        };
+      })
+      .filter(v => v !== null)
+      .sort((a, b) => a.sequence - b.sequence);
+
+    workout.videos = videosWithSequence;
+
+    Logger.info('Video durations converted and sorted', requestId, {
+      videoCount: videosWithSequence.length
+    });
+
+    // 3️⃣ Store in Redis for 10 mins
+    await redisClient.set(cacheKey, JSON.stringify(workout), { EX: 600 });
+    Logger.info('💾 Cached workout details in Redis', requestId, { workoutId });
+
+    // 4️⃣ Return final result
+    Logger.info('Get workout by ID SUCCESS', requestId, {
+      workoutId,
+      videoCount: videosWithSequence.length
+    });
+
+    return ResponseHandler.success(res, 'Workout fetched successfully', workout);
+
+  } catch (error) {
+    Logger.error('Get workout by ID FAILED', requestId, {
+      error: error.message,
+      stack: error.stack
+    });
+    return ResponseHandler.serverError(
+      res,
+      'An error occurred while fetching the workout',
+      'WORKOUT_GET_BY_ID_FAILED'
+    );
   }
+}
+
 }
 
 module.exports = new WorkoutUserController();

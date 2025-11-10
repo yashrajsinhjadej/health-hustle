@@ -3,6 +3,8 @@ const Logger = require('../../utils/logger');
 const workoutModel = require('../../models/Workout');
 const workoutvideoModel = require('../../models/workoutvideo');
 const WorkoutUserController = require('../../controllers/workout/workoutUserContoller');
+const {clearCache} = require('../../utils/cacheUtils');
+
 
 class WorkoutVideo {
   /**
@@ -15,6 +17,7 @@ class WorkoutVideo {
    * 5. Update workout exerciseCount and duration
    */
   async createWorkoutVideo(req, res) {
+    clearCache('workout');
     const requestId = `video-create_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -137,6 +140,7 @@ class WorkoutVideo {
    * 4. Handle sequence reordering if needed
    */
   async updateWorkoutVideo(req, res) {
+    clearCache('workout');
     const requestId = `video-update_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -271,6 +275,7 @@ class WorkoutVideo {
    * 5. Delete video document
    */
   async deleteWorkoutVideo(req, res) {
+    clearCache('workout');
     const requestId = `video-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
