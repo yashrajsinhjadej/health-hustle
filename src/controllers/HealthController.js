@@ -49,7 +49,8 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 
 class HealthController {
 
-  async monthlyreport(req, res) {
+// Returns the monthly health report with boolean goalcompletions and normalized daily goalCompletion
+monthlyreport(req, res) {
     const requestId = `health-monthlyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -97,135 +98,142 @@ class HealthController {
         });
         
         // Get user goals
-        let userGoals = await Goals.findOne({ userId });
-        if (!userGoals) {
-            userGoals = new Goals({
-                userId,
-                stepsGoal: 10000,
-                caloriesBurnGoal: 2000,
-                waterIntakeGoal: 8,
-                caloriesIntakeGoal: 2000,
-                sleepGoal: { hours: 8 }
-            });
-            await userGoals.save();
-            Logger.info('Created default goals', requestId);
-        }
-        
-        // MongoDB Aggregation Query for Monthly Data
-        const monthlyData = await DailyHealthData.aggregate([
-            {
-                $match: {
-                    userId: userId,
-                    date: {
-                        $gte: monthStartString,
-                        $lte: monthEndString
+        Goals.findOne({ userId }).then(async (foundGoals) => {
+            let userGoals = foundGoals;
+            if (!userGoals) {
+                userGoals = new Goals({
+                    userId,
+                    stepsGoal: 10000,
+                    caloriesBurnGoal: 2000,
+                    waterIntakeGoal: 8,
+                    caloriesIntakeGoal: 2000,
+                    sleepGoal: { hours: 8 }
+                });
+                await userGoals.save();
+                Logger.info('Created default goals', requestId);
+            }
+            
+            // MongoDB Aggregation Query for Monthly Data
+            const monthlyData = await DailyHealthData.aggregate([
+                {
+                    $match: {
+                        userId: userId,
+                        date: {
+                            $gte: monthStartString,
+                            $lte: monthEndString
+                        }
+                    }
+                },
+                {
+                    $sort: { date: 1 }
+                },
+                {
+                    $project: {
+                        date: 1,
+                        steps: 1,
+                        water: 1,
+                        calories: 1,
+                        sleep: 1,
+                        goalcomplete: 1,  // Include goalcomplete field
+                        _id: 0
                     }
                 }
-            },
-            {
-                $sort: { date: 1 }
-            },
-            {
-                $project: {
-                    date: 1,
-                    steps: 1,
-                    water: 1,
-                    calories: 1,
-                    sleep: 1,
-                    goalcomplete: 1,  // Include goalcomplete field
-                    _id: 0
-                }
-            }
-        ]);
-        
-        // Always get TODAY's data for streak and goal completions (in user's timezone)
-        const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
-        const todayHealth = await DailyHealthData.findOne({
-            userId: userId,
-            date: todayDateString
-        }).select('goalcomplete streak -_id');
-        
-        // Create complete month breakdown with zero values for missing days
-        const dailyBreakdown = [];
-        
-        // Create a map of existing data for quick lookup
-        const dataMap = {};
-        monthlyData.forEach(record => {
-            dataMap[record.date] = record;
-        });
-        
-        // Generate all days of the month
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            ]);
             
-            const existingData = dataMap[dateString];
+            // Always get TODAY's data for streak and goal completions (in user's timezone)
+            const todayDateString = timeZoneUtil.getCurrentDateInTimezone(timezone);
+            const todayHealth = await DailyHealthData.findOne({
+                userId: userId,
+                date: todayDateString
+            }).select('goalcomplete streak -_id');
             
-            dailyBreakdown.push({
-                date: dateString,
-                goalCompletion: existingData?.goalcomplete || 0,  // Changed to 0 for consistency
-                water: {
-                    ml: existingData?.water?.consumed || 0,
-                    glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
-                },
-                calories: {
-                    consumed: existingData?.calories?.consumed || 0,
-                    burned: existingData?.calories?.burned || 0
-                },
-                steps: {
-                    count: existingData?.steps?.count || 0
-                },
-                sleep: {
-                    duration: existingData?.sleep?.duration || 0
-                }
+            // Create complete month breakdown with zero values for missing days
+            const dailyBreakdown = [];
+            
+            // Create a map of existing data for quick lookup
+            const dataMap = {};
+            monthlyData.forEach(record => {
+                dataMap[record.date] = record;
             });
-        }
-        
-        // Calculate monthly totals
-        const totalWaterIntake = monthlyData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
-        const totalCaloriesConsumed = monthlyData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
-        const totalCaloriesBurned = monthlyData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
-        const totalSleepDuration = monthlyData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
-        const totalSteps = monthlyData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
-        
-        Logger.info('Monthly report SUCCESS', requestId, { 
-            recordsFound: monthlyData.length,
-            totalDays: daysInMonth 
-        });
-        
-        return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
-            goalcompletions: todayHealth?.goalcomplete || 0,
-            streak: todayHealth?.streak || 0,
-            goals: {
-                stepsGoal: userGoals.stepsGoal,
-                caloriesBurnGoal: userGoals.caloriesBurnGoal,
-                waterIntakeGoal: userGoals.waterIntakeGoal,
-                caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
-                sleepGoal: { hours: userGoals.sleepGoal?.hours || 8 }
-            },
-            monthPeriod: {
-                startDate: monthStartString,
-                endDate: monthEndString,
-                month: month + 1,
-                year: year,
-                totalDays: daysInMonth
-            },
-            monthSummary: {
-                water: {
-                    totalGlasses: WaterConverter.mlToGlasses(totalWaterIntake),
-                    totalConsumed: totalWaterIntake
+            
+            // Generate all days of the month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                const existingData = dataMap[dateString];
+                
+                dailyBreakdown.push({
+                    date: dateString,
+                    // Normalize goalcomplete to boolean for each day
+                    goalCompletion: Boolean(existingData?.goalcomplete),  
+                    water: {
+                        ml: existingData?.water?.consumed || 0,
+                        glasses: WaterConverter.mlToGlasses(existingData?.water?.consumed || 0)
+                    },
+                    calories: {
+                        consumed: existingData?.calories?.consumed || 0,
+                        burned: existingData?.calories?.burned || 0
+                    },
+                    steps: {
+                        count: existingData?.steps?.count || 0
+                    },
+                    sleep: {
+                        duration: existingData?.sleep?.duration || 0
+                    }
+                });
+            }
+            
+            // Calculate monthly totals
+            const totalWaterIntake = monthlyData.reduce((sum, day) => sum + (day.water?.consumed || 0), 0);
+            const totalCaloriesConsumed = monthlyData.reduce((sum, day) => sum + (day.calories?.consumed || 0), 0);
+            const totalCaloriesBurned = monthlyData.reduce((sum, day) => sum + (day.calories?.burned || 0), 0);
+            const totalSleepDuration = monthlyData.reduce((sum, day) => sum + (day.sleep?.duration || 0), 0);
+            const totalSteps = monthlyData.reduce((sum, day) => sum + (day.steps?.count || 0), 0);
+            
+            Logger.info('Monthly report SUCCESS', requestId, { 
+                recordsFound: monthlyData.length,
+                totalDays: daysInMonth 
+            });
+            
+            return ResponseHandler.success(res, 'Monthly health report retrieved successfully', {
+                // Ensure boolean return for goalcompletions
+                goalcompletions: Boolean(todayHealth?.goalcomplete),
+                streak: todayHealth?.streak || 0,
+                goals: {
+                    stepsGoal: userGoals.stepsGoal,
+                    caloriesBurnGoal: userGoals.caloriesBurnGoal,
+                    waterIntakeGoal: userGoals.waterIntakeGoal,
+                    caloriesIntakeGoal: userGoals.caloriesIntakeGoal,
+                    sleepGoal: { hours: userGoals.sleepGoal?.hours || 8 }
                 },
-                calories: {
-                    totalConsumed: totalCaloriesConsumed,
-                    totalBurned: totalCaloriesBurned
+                monthPeriod: {
+                    startDate: monthStartString,
+                    endDate: monthEndString,
+                    month: month + 1,
+                    year: year,
+                    totalDays: daysInMonth
                 },
-                sleep: {
-                    totalDuration: totalSleepDuration
+                monthSummary: {
+                    water: {
+                        totalGlasses: WaterConverter.mlToGlasses(totalWaterIntake),
+                        totalConsumed: totalWaterIntake
+                    },
+                    calories: {
+                        totalConsumed: totalCaloriesConsumed,
+                        totalBurned: totalCaloriesBurned
+                    },
+                    sleep: {
+                        totalDuration: totalSleepDuration
+                    },
+                    steps: {
+                        totalCount: totalSteps
+                    }
                 },
-                steps: {
-                    totalCount: totalSteps
-                }
-            },
-            dailyBreakdown: dailyBreakdown
+                dailyBreakdown: dailyBreakdown
+            });
+        }).catch((error) => {
+            Logger.error('Monthly report FAILED', requestId, { error: error.message, stack: error.stack });
+            return ResponseHandler.serverError(res, 'Failed to get monthly report', 'HEALTH_MONTHLY_REPORT_FAILED');
         });
         
     } catch (error) {
