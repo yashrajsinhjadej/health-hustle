@@ -14,6 +14,12 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // Limit file size to 5MB
 });
 
+const startNotificationCron = require('./src/services/notificationCron');
+startNotificationCron();
+
+
+
+
 const app = express();
 
 // Add request logging middleware

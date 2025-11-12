@@ -12,7 +12,7 @@ const ResponseHandler = require('../../utils/ResponseHandler');
 const { upload, checkFileExists } = require('../../middleware/uploadMiddleware');
 const validateImageUpload = require('../../middleware/validateImageUpload');
 const {rateLimiters} = require('../../middleware/redisrateLimiter');
-
+const {saveFcmToken} = require('../../controllers/fcmController');
 
 router.use(authenticateToken); //for checking user authentication and giving user obj in req.user
 router.use(adminOrUser); // for checking user authorization
@@ -58,5 +58,7 @@ router.post(
 
 // POST /user/deleteprofilepic - Delete profile picture
 router.post('/deleteprofilepic', UserController.deleteProfilePicture);
+
+router.post('/save-token',saveFcmToken);
 
 module.exports = router;

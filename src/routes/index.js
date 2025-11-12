@@ -27,7 +27,7 @@ router.use('/admin', require('./admin'));      // Admin user management & dashbo
 router.use('/user', require('./user'));        // User profile & account management
 router.use('/health', require('./health'));    // Health data tracking (water, sleep, calories)
 router.use('/workout', require('./workout'));  // Workout features (admin & user)
-// router.use('/notification', require('./notification')); 
+router.use('/notification', require('./notification')); // Notifications management
 
 // ============================================
 // MULTER ERROR HANDLING

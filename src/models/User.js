@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema({
         },
         trim: true,
         lowercase: true,
-        unique: true,
+        unique: true,   
         sparse: true, // Allow multiple null values but unique non-null values
         match: [/^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$/, 'Please enter a valid email']
     },
@@ -154,7 +154,13 @@ const userSchema = new mongoose.Schema({
     signupAt: {
         type: Date,
         default: Date.now
-    }
+    },
+    fcmToken: {
+        token: { type: String, default: null },
+        platform: { type: String, enum: ['android', 'ios', 'web'], default: 'android' },
+        lastUsedAt: { type: Date, default: Date.now }
+    },
+
 
 }, {
     timestamps: true

@@ -48,9 +48,9 @@ function calculateStreakCompletion(goalResults, streakGoals = STREAK_GOALS) {
 }
 
 class HealthController {
+    
+    async monthlyreport(req, res) {
 
-// Returns the monthly health report with boolean goalcompletions and normalized daily goalCompletion
-monthlyreport(req, res) {
     const requestId = `health-monthlyreport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
