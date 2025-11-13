@@ -347,11 +347,8 @@ async logout(req, res) {
         await ConnectionHelper.ensureConnection();
 
         // 1️⃣ Remove FCM token completely so that token cannot be reused by another account
-        user.fcmToken = {
-            token: null,
-            platform: null,
-            lastUsedAt: null
-        };
+        user.set('fcmToken', undefined);
+        user.markModified('fcmToken');
 
         // 2️⃣ Invalidate user's current session/token by updating lastLoginAt
         user.lastLoginAt = new Date();
