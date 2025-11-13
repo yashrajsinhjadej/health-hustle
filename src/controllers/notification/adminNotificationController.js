@@ -4,6 +4,9 @@ const { notificationQueue } = require("../../queues/notificationQueue");
 const Logger = require("../../utils/logger");
 const ResponseHandler = require("../../utils/ResponseHandler");
 const Redis = require("ioredis");
+const NotificationHistory = require("../../models/NotificationHistory");
+const NotificationLog = require("../../models/NotificationLog");
+
 
 async function updateNotificationStatus(req, res) {
   const requestId = Logger.generateId("update-notification-status");
@@ -417,8 +420,342 @@ async function sendNotificationToUser(req, res) {
   );
 }
 
+const getNotificationHistory = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      sortBy = 'firedAt',
+      order = 'desc',
+      startDate,
+      endDate,
+      search
+    } = req.query;
+
+    // Convert page and limit to numbers
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build filter object
+    const filter = {};
+
+    // Status filter
+    if (status && ['sent', 'partial_success', 'failed'].includes(status)) {
+      filter.status = status;
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      filter.firedAt = {};
+      if (startDate) {
+        filter.firedAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        filter.firedAt.$lte = new Date(endDate);
+      }
+    }
+
+    // Build sort object
+    const sortOrder = order === 'asc' ? 1 : -1;
+    const sort = { [sortBy]: sortOrder };
+
+    // Execute query with pagination
+    const [notifications, totalCount] = await Promise.all([
+      NotificationHistory.find(filter)
+        .populate({
+          path: 'scheduleId',
+          select: 'title message frequency status scheduledTime scheduleType'
+        })
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      NotificationHistory.countDocuments(filter)
+    ]);
+
+    // If search is provided, filter results by schedule title or message
+    let filteredNotifications = notifications;
+    let filteredCount = totalCount;
+
+    if (search && search.trim() !== '') {
+      const searchLower = search.toLowerCase();
+      filteredNotifications = notifications.filter(notif => {
+        if (!notif.scheduleId) return false;
+        const titleMatch = notif.scheduleId.title?.toLowerCase().includes(searchLower);
+        const messageMatch = notif.scheduleId.message?.toLowerCase().includes(searchLower);
+        return titleMatch || messageMatch;
+      });
+      filteredCount = filteredNotifications.length;
+    }
+    console.log(filteredNotifications)
+    // Format response data
+    const formattedNotifications = filteredNotifications.map(notif => ({
+      id: notif._id,
+      title: notif.scheduleId?.title || 'N/A',
+      content: notif.scheduleId?.message || 'N/A',
+      type: notif.scheduleId?.scheduleType || 'daily',
+      date: notif.firedAt ? new Date(notif.firedAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }) : 'N/A',
+      time: notif.firedAt ? new Date(notif.firedAt).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }) : 'N/A',
+      status: notif.status,
+      totalTargeted: notif.totalTargeted,
+      successCount: notif.successCount,
+      failureCount: notif.failureCount,
+      successRate: notif.totalTargeted > 0 
+        ? ((notif.successCount / notif.totalTargeted) * 100).toFixed(2) + '%'
+        : '0%',
+      errorMessage: notif.errorMessage || null,
+      firedAt: notif.firedAt,
+      scheduleId: notif.scheduleId?._id || null
+    }));
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(filteredCount / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    // Send response
+    return res.status(200).json({
+      success: true,
+      data: {
+        notifications: formattedNotifications,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalItems: filteredCount,
+          itemsPerPage: limitNum,
+          hasNextPage,
+          hasPrevPage,
+          nextPage: hasNextPage ? pageNum + 1 : null,
+          prevPage: hasPrevPage ? pageNum - 1 : null
+        },
+        filters: {
+          status: status || 'all',
+          sortBy,
+          order,
+          startDate: startDate || null,
+          endDate: endDate || null,
+          search: search || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching notification history:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notification history',
+      error: error.message
+    });
+  }
+};
+
+
+/**
+ * Get notification statistics
+ * @route GET /api/notifications/history/stats
+ * @query {string} startDate - Start date for stats
+ * @query {string} endDate - End date for stats
+ */
+const getNotificationStats = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const filter = {};
+    if (startDate || endDate) {
+      filter.firedAt = {};
+      if (startDate) filter.firedAt.$gte = new Date(startDate);
+      if (endDate) filter.firedAt.$lte = new Date(endDate);
+    }
+
+    const stats = await NotificationHistory.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalNotifications: { $sum: 1 },
+          totalTargeted: { $sum: '$totalTargeted' },
+          totalSuccess: { $sum: '$successCount' },
+          totalFailures: { $sum: '$failureCount' },
+          sentCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'sent'] }, 1, 0] }
+          },
+          partialSuccessCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'partial_success'] }, 1, 0] }
+          },
+          failedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const result = stats[0] || {
+      totalNotifications: 0,
+      totalTargeted: 0,
+      totalSuccess: 0,
+      totalFailures: 0,
+      sentCount: 0,
+      partialSuccessCount: 0,
+      failedCount: 0
+    };
+
+    const successRate = result.totalTargeted > 0
+      ? ((result.totalSuccess / result.totalTargeted) * 100).toFixed(2)
+      : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...result,
+        successRate: `${successRate}%`
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching notification stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notification statistics',
+      error: error.message
+    });
+  }
+};
+
+const getScheduledNotifications = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      scheduleType,
+      sortBy = 'createdAt',
+      order = 'desc',
+      search
+    } = req.query;
+
+    // Convert page and limit to numbers
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build base filter object - exclude instant notifications
+    const filter = {
+      scheduleType: { $ne: 'instant' },
+      status: { $in: ['active', 'paused', 'pending'] } // Only show these 3 statuses
+    };
+
+    // Handle schedule type filter
+    if (scheduleType) {
+      if (scheduleType === 'daily') {
+        filter.scheduleType = 'daily';
+      } else if (scheduleType === 'scheduled_once') {
+        filter.scheduleType = 'scheduled_once';
+      }
+    }
+
+    // Handle status filter
+    if (status && ['active', 'paused', 'pending'].includes(status)) {
+      filter.status = status;
+    }
+
+    // Search filter
+    if (search && search.trim() !== '') {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      filter.$or = [
+        { title: searchRegex },
+        { message: searchRegex }
+      ];
+    }
+
+    // Build sort object
+    const sortOrder = order === 'asc' ? 1 : -1;
+    const sort = { [sortBy]: sortOrder };
+
+    // Execute query with pagination
+    const [schedules, totalCount] = await Promise.all([
+      NotificationSchedule.find(filter)
+        .populate('createdBy', 'name email')
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      NotificationSchedule.countDocuments(filter)
+    ]);
+
+    // Format response data
+    const formattedSchedules = schedules.map(schedule => ({
+      id: schedule._id,
+      title: schedule.title || 'N/A',
+      message: schedule.message || 'N/A',
+      scheduleType: schedule.scheduleType,
+      scheduledTime: schedule.scheduledTime || null,
+      scheduledDate: schedule.scheduledDate || null,
+      targetAudience: schedule.targetAudience || 'all',
+      status: schedule.status,
+      isActive: schedule.isActive,
+      createdBy: {
+        id: schedule.createdBy?._id,
+        name: schedule.createdBy?.name || 'Unknown',
+        email: schedule.createdBy?.email || 'N/A'
+      },
+      createdAt: schedule.createdAt,
+      updatedAt: schedule.updatedAt,
+    }));
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    // Send response
+    return res.status(200).json({
+      success: true,
+      data: {
+        schedules: formattedSchedules,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalItems: totalCount,
+          itemsPerPage: limitNum,
+          hasNextPage,
+          hasPrevPage,
+          nextPage: hasNextPage ? pageNum + 1 : null,
+          prevPage: hasPrevPage ? pageNum - 1 : null
+        },
+        filters: {
+          status: status || 'all',
+          scheduleType: scheduleType || 'all',
+          sortBy,
+          order,
+          search: search || null
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching scheduled notifications:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch scheduled notifications',
+      error: error.message
+    });
+  }
+};
 module.exports = {
   sendNotificationToAllUsers,
   sendNotificationToUser,
-  updateNotificationStatus
+  updateNotificationStatus,
+  getNotificationHistory, 
+  getNotificationStats,
+  getScheduledNotifications
 };

@@ -5,6 +5,10 @@ const {
   sendNotificationToAllUsers,
   sendNotificationToUser,
   updateNotificationStatus,
+  getNotificationHistory,
+  getScheduledNotifications,
+  
+  getNotificationStats
 } = require("../../controllers/notification/adminNotificationController");
 const { authenticateToken, adminOnly } = require("../../middleware/auth");
 const {validateAdminNotification,handleValidationErrors} = require("../../validators/notificationValidators");
@@ -23,5 +27,10 @@ router.post(
 
 
 router.post("/send-to-user", validateAdminNotification, handleValidationErrors, sendNotificationToUser);
+// GET /api/notifications/history?page=1&limit=10
+router.get('/history', getNotificationHistory);
+
+router.get('/scheduled', getScheduledNotifications);
+
 
 module.exports = router;
