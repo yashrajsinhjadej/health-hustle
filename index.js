@@ -13,9 +13,9 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 } // Limit file size to 5MB
 });
-
-const startNotificationCron = require('./src/services/notificationCron');
-startNotificationCron();
+// starting cron job for notifications
+// const startNotificationCron = require('./src/services/notificationCron');
+// startNotificationCron();
 
 
 
@@ -56,6 +56,19 @@ app.use((req, res, next) => {
     
     next();
 });
+
+const User = require('./models/User');
+
+(function checkUserSchema() {
+  try {
+    const tzPath = User.schema.path('timezone');
+    console.log('[boot] User schema timezone path:', tzPath);
+    console.log('[boot] User schema paths count:', Object.keys(User.schema.paths).length);
+  } catch (e) {
+    console.error('[boot] Failed to inspect User schema:', e);
+  }
+})();
+
 
 // Security Middleware - Apply helmet before other middleware
 app.use(helmet({
@@ -173,7 +186,7 @@ app.get('/health', async (req, res) => {
         const SMSProviderFactory = require('./src/services/sms/SMSProviderFactory');
         const smsStatus = await SMSProviderFactory.healthCheck();
 
-        const s3 = require('./src/services/s3Service');
+        const s3 = require('./src/services/s3Service.js');
         const s3Status = await s3.healthCheck();
         
         const healthResponse = {
