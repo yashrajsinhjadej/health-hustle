@@ -4,7 +4,7 @@ const User = require("../models/User");
 const saveFcmToken = async (req, res) => {
   try {
     const { token, platform } = req.body;
-    const timezone = req.headers.timezone;
+    const timezone = req.headers['timezone'];
     if (!token) {
       return res.status(400).json({
         success: false,
