@@ -7,7 +7,7 @@ const { sendNotificationToAllUsers } = require("../controllers/notification/admi
 const startNotificationCron = () => {
   console.log("🚀 Notification Cron Job initialized...");
 
-  cron.schedule("5 11 * * *", async () => {
+  cron.schedule("*/1  * * * *", async () => {
     console.log("⏰ Running scheduled notification task...");
     
     // You can define custom notification data here

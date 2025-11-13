@@ -332,41 +332,49 @@ class AuthController {
             return ResponseHandler.serverError(res, "Failed to update profile");
         }
     }
+async logout(req, res) {
+    const requestId = Logger.generateId('auth-logout');
 
-    // Logout user - invalidate current token
-    async logout(req, res) {
-        const requestId = Logger.generateId('auth-logout');
+    try {
+        const user = req.user;
+
+        Logger.info(requestId, 'User logout initiated', { 
+            userId: user._id,
+            phone: user.phone 
+        });
+
+        // Ensure MongoDB connection is ready
+        await ConnectionHelper.ensureConnection();
+
+        // 1️⃣ Remove FCM token completely so that token cannot be reused by another account
+        user.fcmToken = {
+            token: null,
+            platform: null,
+            lastUsedAt: null
+        };
+
+        // 2️⃣ Invalidate user's current session/token by updating lastLoginAt
+        user.lastLoginAt = new Date();
+
+        await user.save();
+
+        Logger.success(requestId, 'User logged out successfully', { 
+            userId: user._id, 
+            phone: user.phone 
+        });
+
+        return ResponseHandler.success(res, "Logged out successfully");
         
-        try {
-            const user = req.user;
-            
-            Logger.info(requestId, 'User logout initiated', { 
-                userId: user._id, 
-                phone: user.phone 
-            });
-            
-            // Ensure MongoDB connection is ready
-            await ConnectionHelper.ensureConnection();
-            
-            // Update lastLoginAt to current time (invalidates current token)
-            user.lastLoginAt = new Date();
-            await user.save();
-            
-            Logger.success(requestId, 'User logged out successfully', { 
-                userId: user._id, 
-                phone: user.phone 
-            });
-            
-            return ResponseHandler.success(res, "Logged out successfully");
-        } catch (error) {
-            Logger.error(requestId, 'Logout error', { 
-                error: error.message, 
-                stack: error.stack,
-                userId: req.user?._id 
-            });
-            return ResponseHandler.serverError(res, "Logout failed");
-        }
+    } catch (error) {
+        Logger.error(requestId, 'Logout error', { 
+            error: error.message, 
+            stack: error.stack,
+            userId: req.user?._id 
+        });
+
+        return ResponseHandler.serverError(res, "Logout failed");
     }
+}
 }
 
 module.exports = new AuthController();

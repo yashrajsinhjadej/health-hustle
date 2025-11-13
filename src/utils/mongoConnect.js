@@ -1,4 +1,5 @@
 // MongoDB connection logic extracted from index.js
+//src/utils/mongoConnect.js
 const mongoose = require('mongoose');
 const connectDB = async () => {
     try {

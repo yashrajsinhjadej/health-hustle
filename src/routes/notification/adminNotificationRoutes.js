@@ -4,41 +4,24 @@ const router = express.Router();
 const {
   sendNotificationToAllUsers,
   sendNotificationToUser,
+  updateNotificationStatus,
 } = require("../../controllers/notification/adminNotificationController");
+const { authenticateToken, adminOnly } = require("../../middleware/auth");
+const {validateAdminNotification,handleValidationErrors} = require("../../validators/notificationValidators");
 
-// Middleware to verify authentication (customize based on your auth setup)
-// const authMiddleware = require("../middleware/auth");
 
-/**
- * POST /api/notifications/send-to-all
- * Send notification to all users with FCM tokens
- * 
- * Body:
- * {
- *   "title": "Notification Title",
- *   "body": "Notification body text",
- *   "data": { "key": "value" },  // optional
- *   "imageUrl": "https://...",    // optional
- *   "android": { ... },           // optional platform-specific config
- *   "apns": { ... },              // optional platform-specific config
- *   "webpush": { ... }            // optional platform-specific config
- * }
- */
-router.post("/send-to-all", sendNotificationToAllUsers);
+router.use(authenticateToken);
+router.use(adminOnly);
 
-/**
- * POST /api/notifications/send-to-user
- * Send notification to specific user
- * 
- * Body:
- * {
- *   "userId": "user-id-here",
- *   "title": "Notification Title",
- *   "body": "Notification body text",
- *   "data": { "key": "value" },  // optional
- *   "imageUrl": "https://..."     // optional
- * }
- */
-router.post("/send-to-user", sendNotificationToUser);
+
+router.post("/send-to-all", validateAdminNotification, handleValidationErrors, sendNotificationToAllUsers);
+
+router.post(
+  "/:id/status",
+  updateNotificationStatus
+);
+
+
+router.post("/send-to-user", validateAdminNotification, handleValidationErrors, sendNotificationToUser);
 
 module.exports = router;

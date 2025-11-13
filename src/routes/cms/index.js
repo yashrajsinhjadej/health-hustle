@@ -51,29 +51,22 @@ router.put('/admin/faq/:id', authenticateToken, adminOnly, updateFaq);
 router.delete('/admin/faq/:id', authenticateToken, adminOnly, deleteFaq);
 
 // CMS Pages Management
-router.post('/admin/create', authenticateToken, adminOnly, upsertCMSPage);
+// router.post('/admin/create', authenticateToken, adminOnly, upsertCMSPage);
 router.get('/admin/cms', authenticateToken, adminOnly, listCMSPages);
 router.get('/admin/:slug', authenticateToken, adminOnly, getCMSPageForEdit);
-router.put('/admin/:slug', authenticateToken, adminOnly, upsertCMSPage);  // Add PUT for updates
+router.post('/admin/:slug', authenticateToken, adminOnly, upsertCMSPage);  // Add PUT for updates
 router.delete('/admin/:slug', authenticateToken, adminOnly, deleteCMSPage);
 
 // ============================================
 // MIXED ROUTES - Handle both authenticated and public
 // ============================================
 
+
 // Handle /:slug - if authenticated, return JSON for editing; if not, return HTML for public
+
+
 router.get('/:slug', (req, res, next) => {
-  const token = req.headers.authorization;
-  if (token) {
-    // Has token - treat as admin request for editing (return JSON)
-    authenticateToken(req, res, (err) => {
-      if (err) return next(err);
-      getCMSPageForEdit(req, res);
-    });
-  } else {
-    // No token - treat as public request (return HTML)
     getPublicCMSPageHTML(req, res);
-  }
 });
 
 router.post('/:slug', authenticateToken, adminOnly, upsertCMSPage);
