@@ -57,7 +57,7 @@ app.use((req, res, next) => {
     next();
 });
 
-const User = require('./models/User');
+const User = require('./src/models/User.js');
 
 (function checkUserSchema() {
   try {
