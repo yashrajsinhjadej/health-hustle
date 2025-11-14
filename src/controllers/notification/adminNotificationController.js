@@ -643,18 +643,17 @@ const getScheduledNotifications = async (req, res) => {
       search
     } = req.query;
 
-    // Convert page and limit to numbers
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build base filter object - exclude instant notifications
+    const now = new Date();
+
     const filter = {
       scheduleType: { $ne: 'instant' },
-      status: { $in: ['active', 'paused', 'pending'] } // Only show these 3 statuses
+      status: { $in: ['active', 'paused', 'pending'] }
     };
 
-    // Handle schedule type filter
     if (scheduleType) {
       if (scheduleType === 'daily') {
         filter.scheduleType = 'daily';
@@ -663,12 +662,10 @@ const getScheduledNotifications = async (req, res) => {
       }
     }
 
-    // Handle status filter
     if (status && ['active', 'paused', 'pending'].includes(status)) {
       filter.status = status;
     }
 
-    // Search filter
     if (search && search.trim() !== '') {
       const searchRegex = new RegExp(search.trim(), 'i');
       filter.$or = [
@@ -677,11 +674,18 @@ const getScheduledNotifications = async (req, res) => {
       ];
     }
 
-    // Build sort object
+    // Exclude paused one-time schedules whose scheduledDate is already in the past (UTC)
+    filter.$nor = [
+      {
+        scheduleType: 'scheduled_once',
+        status: 'paused',
+        scheduledDate: { $lt: now }
+      }
+    ];
+
     const sortOrder = order === 'asc' ? 1 : -1;
     const sort = { [sortBy]: sortOrder };
 
-    // Execute query with pagination
     const [schedules, totalCount] = await Promise.all([
       NotificationSchedule.find(filter)
         .populate('createdBy', 'name email')
@@ -692,32 +696,45 @@ const getScheduledNotifications = async (req, res) => {
       NotificationSchedule.countDocuments(filter)
     ]);
 
-    // Format response data
-    const formattedSchedules = schedules.map(schedule => ({
-      id: schedule._id,
-      title: schedule.title || 'N/A',
-      message: schedule.message || 'N/A',
-      scheduleType: schedule.scheduleType,
-      scheduledTime: schedule.scheduledTime || null,
-      scheduledDate: schedule.scheduledDate || null,
-      targetAudience: schedule.targetAudience || 'all',
-      status: schedule.status,
-      isActive: schedule.isActive,
-      createdBy: {
-        id: schedule.createdBy?._id,
-        name: schedule.createdBy?.name || 'Unknown',
-        email: schedule.createdBy?.email || 'N/A'
-      },
-      createdAt: schedule.createdAt,
-      updatedAt: schedule.updatedAt,
-    }));
+    // Format HH:mm from scheduledDate (UTC). If scheduledDate absent, leave null.
+    const formatHHmmUTC = (dateVal) => {
+      if (!dateVal) return null;
+      const d = new Date(dateVal);
+      const hh = String(d.getUTCHours()).padStart(2, '0');
+      const mm = String(d.getUTCMinutes()).padStart(2, '0');
+      return `${hh}:${mm}`;
+    };
 
-    // Calculate pagination metadata
+    const formattedSchedules = schedules.map(schedule => {
+      // Prefer explicit scheduledTime on doc; otherwise derive from scheduledDate
+      const derivedScheduledTime = formatHHmmUTC(schedule.scheduledDate);
+      const scheduledTimeOut = schedule.scheduledTime || derivedScheduledTime || null;
+
+      return {
+        id: schedule._id,
+        title: schedule.title || 'N/A',
+        message: schedule.message || 'N/A',
+        scheduleType: schedule.scheduleType,
+        // Return both scheduledDate (UTC timestamp) and scheduledTime (HH:mm)
+        scheduledDate: schedule.scheduledDate || null,
+        scheduledTime: scheduledTimeOut,
+        targetAudience: schedule.targetAudience || 'all',
+        status: schedule.status,
+        isActive: schedule.isActive,
+        createdBy: {
+          id: schedule.createdBy?._id,
+          name: schedule.createdBy?.name || 'Unknown',
+          email: schedule.createdBy?.email || 'N/A'
+        },
+        createdAt: schedule.createdAt,
+        updatedAt: schedule.updatedAt,
+      };
+    });
+
     const totalPages = Math.ceil(totalCount / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
 
-    // Send response
     return res.status(200).json({
       success: true,
       data: {
@@ -751,6 +768,7 @@ const getScheduledNotifications = async (req, res) => {
     });
   }
 };
+
 module.exports = {
   sendNotificationToAllUsers,
   sendNotificationToUser,

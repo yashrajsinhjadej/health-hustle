@@ -47,5 +47,10 @@ router.get('/Homepage', workoutUserController.homepage);
 router.post('/getcategory', getcategoryvalidator, handleValidationErrors, workoutUserController.getcategory);
 
 
+router.get('/search', workoutUserController.searchWorkouts);
+
+router.get('/search-suggestions', workoutUserController.getSearchSuggestions);
+
+
 
 module.exports = router;

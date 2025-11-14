@@ -19,13 +19,6 @@ const WORKOUT_PROJECTION = {
 };
 
 class WorkoutUserController {
-  /**
-   * GET WORKOUTS BY CATEGORY
-   * Logic:
-   * 1. Find all active category-workout associations for the category
-   * 2. Fetch workout details for those associations
-   * 3. Combine and return sorted by sequence
-   */
 async getcategory(req, res) {
   const requestId = `category-workouts_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -109,18 +102,7 @@ async getcategory(req, res) {
 
 
 
-  /**
-   * HOMEPAGE API - Production Ready
-   * Returns all active categories with their top N workouts
-   * 
-   * Flow:
-   * Category (sorted by categorySequence) 
-   *   → CategoryWorkout (sorted by sequence, isActive=true)
-   *     → Workout (isActive=true)
-   * 
-   * Performance: Single aggregation query
-   */
-  async homepage(req, res) {
+async homepage(req, res) {
     const requestId = `homepage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const CACHE_KEY = "homepage:data";
     const CACHE_TTL = 3600; // 1 hour
@@ -247,13 +229,8 @@ async getcategory(req, res) {
       );
     }
   }
-      
-  /**
-   * LIST WORKOUTS
-   * Lists workouts with optional search and filtering
-   * GET /workouts?search=fullbody&level=beginner&page=1&limit=25
-   */
-  async listworkout(req, res) {
+ 
+async listworkout(req, res) {
     const requestId = `workout-list_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -424,6 +401,305 @@ async getworkoutbyid(req, res) {
     );
   }
 }
+
+// Workout Search Controller Functions
+// Workout Search Controller Functions
+// Workout Search Controller Functions
+// Workout Search Controller Functions
+
+async searchWorkouts(req, res) {
+  try {
+    const { 
+      query = '', 
+      page = 1, 
+      limit = 10,
+      level,
+      minDuration,
+      maxDuration,
+      minCalories,
+      maxCalories,
+      equipment,
+      sortBy = 'relevance' // relevance, duration, calories, name
+    } = req.query;
+
+    // Validate query length (frontend should handle this, but safety check)
+    if (query.length < 3) {
+      return ResponseHandler.error(res, 'Search query must be at least 3 characters long', 400);
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build search query with priority weighting
+    const searchQuery = {
+      isActive: true, // Only search active workouts
+      $or: [
+        { 
+          name: { 
+            $regex: query, 
+            $options: 'i' // Case insensitive
+          } 
+        },
+        { 
+          description: { 
+            $regex: query, 
+            $options: 'i' 
+          } 
+        },
+        { 
+          introduction: { 
+            $regex: query, 
+            $options: 'i' 
+          } 
+        },
+        { 
+          level: { 
+            $regex: query, 
+            $options: 'i' 
+          } 
+        }
+      ]
+    };
+
+    // Add optional filters
+    if (level) {
+      searchQuery.level = level;
+    }
+
+    if (minDuration || maxDuration) {
+      searchQuery.duration = {};
+      if (minDuration) searchQuery.duration.$gte = parseInt(minDuration);
+      if (maxDuration) searchQuery.duration.$lte = parseInt(maxDuration);
+    }
+
+    if (minCalories || maxCalories) {
+      searchQuery.caloriesBurned = {};
+      if (minCalories) searchQuery.caloriesBurned.$gte = parseInt(minCalories);
+      if (maxCalories) searchQuery.caloriesBurned.$lte = parseInt(maxCalories);
+    }
+
+    if (equipment && equipment !== '' && equipment !== 'undefined') {
+      const equipmentArray = Array.isArray(equipment) ? equipment : [equipment];
+      const validEquipment = equipmentArray.filter(e => e && e !== '' && e !== 'undefined');
+      if (validEquipment.length > 0) {
+        searchQuery.equipment = { $in: validEquipment };
+      }
+    }
+
+    // Build aggregation pipeline for weighted search results
+    const aggregationPipeline = [
+      { $match: searchQuery },
+      {
+        $addFields: {
+          // Calculate relevance score
+          relevanceScore: {
+            $add: [
+              // Exact match bonus - highest priority (weight: 20)
+              {
+                $cond: [
+                  { $eq: [{ $toLower: '$name' }, query.toLowerCase()] },
+                  20,
+                  0
+                ]
+              },
+              // Name match gets highest priority (weight: 15)
+              {
+                $cond: [
+                  { $regexMatch: { input: '$name', regex: query, options: 'i' } },
+                  15,
+                  0
+                ]
+              },
+              // Description match gets high priority (weight: 8)
+              {
+                $cond: [
+                  { 
+                    $and: [
+                      { $ne: ['$description', null] },
+                      { $ne: ['$description', ''] },
+                      { $regexMatch: { input: '$description', regex: query, options: 'i' } }
+                    ]
+                  },
+                  8,
+                  0
+                ]
+              },
+              // Introduction match gets medium priority (weight: 5)
+              {
+                $cond: [
+                  { 
+                    $and: [
+                      { $ne: ['$introduction', null] },
+                      { $ne: ['$introduction', ''] },
+                      { $regexMatch: { input: '$introduction', regex: query, options: 'i' } }
+                    ]
+                  },
+                  5,
+                  0
+                ]
+              },
+              // Level match gets lower priority (weight: 2)
+              {
+                $cond: [
+                  { $regexMatch: { input: '$level', regex: query, options: 'i' } },
+                  2,
+                  0
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ];
+
+    // Add sorting
+    let sortStage = {};
+    switch (sortBy) {
+      case 'duration':
+        sortStage = { duration: 1, relevanceScore: -1 };
+        break;
+      case 'calories':
+        sortStage = { caloriesBurned: -1, relevanceScore: -1 };
+        break;
+      case 'name':
+        sortStage = { name: 1 };
+        break;
+      case 'relevance':
+      default:
+        sortStage = { relevanceScore: -1, name: 1 };
+        break;
+    }
+
+    aggregationPipeline.push({ $sort: sortStage });
+
+    // Get total count for pagination
+    const totalCountPipeline = [...aggregationPipeline, { $count: 'total' }];
+    const countResult = await workoutModel.aggregate(totalCountPipeline);
+    const totalResults = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Add pagination
+    aggregationPipeline.push(
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    );
+
+    // Project only needed fields
+    aggregationPipeline.push({
+      $project: {
+        name: 1,
+        thumbnailUrl: 1,
+        bannerUrl: 1,
+        description: 1,
+        introduction: 1,
+        equipment: 1,
+        duration: 1,
+        exerciseCount: 1,
+        level: 1,
+        caloriesBurned: 1,
+        relevanceScore: 1
+      }
+    });
+
+    // Execute aggregation
+    const workouts = await workoutModel.aggregate(aggregationPipeline);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalResults / parseInt(limit));
+    const hasNextPage = parseInt(page) < totalPages;
+    const hasPrevPage = parseInt(page) > 1;
+
+    Logger.info(`Search completed for query: "${query}" - Found ${totalResults} results`);
+
+    return ResponseHandler.success(res, {
+      workouts,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalResults,
+        resultsPerPage: parseInt(limit),
+        hasNextPage,
+        hasPrevPage
+      },
+      searchQuery: query,
+      filters: {
+        level,
+        duration: { min: minDuration, max: maxDuration },
+        calories: { min: minCalories, max: maxCalories },
+        equipment
+      }
+    }, 'Workouts retrieved successfully');
+
+  } catch (error) {
+    Logger.error('Search workouts error:', error);
+    return ResponseHandler.error(res, 'Error searching workouts', 500, error.message);
+  }
+}
+
+async getSearchSuggestions(req, res) {
+  try {
+    const { query = '', limit = 5 } = req.query;
+
+    if (query.length < 2) {
+      return ResponseHandler.success(res, { suggestions: [] }, 'No suggestions');
+    }
+
+    // Try to get from cache first
+    const cacheKey = `search_suggestions:${query}:${limit}`;
+    let cachedSuggestions = null;
+
+    try {
+      cachedSuggestions = await redisClient.get(cacheKey);
+      
+      if (cachedSuggestions) {
+        Logger.info(`Cache hit for suggestions: ${query}`);
+        return ResponseHandler.success(
+          res, 
+          { suggestions: JSON.parse(cachedSuggestions) }, 
+          'Suggestions retrieved from cache'
+        );
+      }
+    } catch (cacheError) {
+      Logger.warn('Redis cache read error:', cacheError.message);
+    }
+
+    // Query database if not in cache
+    const suggestions = await workoutModel.find(
+      {
+        isActive: true,
+        $or: [
+          { name: { $regex: query, $options: 'i' } },
+          { description: { $regex: query, $options: 'i' } }
+        ]
+      },
+      { 
+        name: 1, 
+        level: 1, 
+        duration: 1, 
+        thumbnailUrl: 1,
+        exerciseCount: 1,
+        caloriesBurned: 1
+      }
+    )
+      .limit(parseInt(limit))
+      .lean();
+
+    // Cache suggestions for 5 minutes
+    try {
+      await redisClient.set(cacheKey, JSON.stringify(suggestions), 'EX', 300);
+    } catch (cacheError) {
+      Logger.warn('Redis cache write error:', cacheError.message);
+    }
+
+    Logger.info(`Suggestions generated for query: ${query}`);
+
+    return ResponseHandler.success(res, { suggestions }, 'Suggestions retrieved successfully');
+
+  } catch (error) {
+    Logger.error('Get suggestions error:', error);
+    return ResponseHandler.error(res, 'Error getting suggestions', 500, error.message);
+  }
+}
+
 
 }
 

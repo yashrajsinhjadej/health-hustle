@@ -5,7 +5,7 @@ const connectDB = require("../utils/mongoConnect");
 const FCMService = require("../services/FCMService");
 const NotificationSchedule = require("../models/NotificationSchedule");
 const NotificationLog = require("../models/NotificationLog");
-const NotificationHistory = require("../models/NotificationHistory"); // ✨ NEW
+const NotificationHistory = require("../models/NotificationHistory");
 const User = require("../models/User");
 const { notificationQueue } = require("../queues/notificationQueue");
 const Logger = require("../utils/logger");
@@ -101,9 +101,10 @@ async function handleNotificationSend(job, requestId) {
     );
   }
 
-  // 🎯 Eligible users (with valid FCM tokens)
+  // 🎯 Eligible users (with valid FCM tokens) - IMPROVED QUERY
   const userQuery = {
-    "fcmToken.token": { $exists: true, $ne: null, $ne: "" },
+    fcmToken: { $exists: true, $ne: null }, // fcmToken object exists
+    "fcmToken.token": { $exists: true, $ne: null, $ne: "" }, // token field is valid
     $or: [
       { notificationsEnabled: true },
       { notificationsEnabled: { $exists: false } },
@@ -112,9 +113,16 @@ async function handleNotificationSend(job, requestId) {
   if (timezone) userQuery.timezone = timezone;
 
   const users = await User.find(userQuery).lean();
-  Logger.info(requestId, `📊 Found ${users.length} users`, { timezone });
+  
+  // ✨ Additional safety filter - remove any users with invalid tokens
+  const validUsers = users.filter(user => {
+    const token = user.fcmToken?.token;
+    return token && typeof token === 'string' && token.trim().length > 0;
+  });
 
-  if (!users.length) {
+  Logger.info(requestId, `📊 Found ${validUsers.length} users with valid FCM tokens (${users.length - validUsers.length} filtered out)`, { timezone });
+
+  if (!validUsers.length) {
     const update = {
       status: schedule.scheduleType === "daily" ? "active" : "failed",
       failureReason: "No valid users found",
@@ -150,8 +158,8 @@ async function handleNotificationSend(job, requestId) {
     },
   };
 
-  // 🚀 Send to all tokens
-  const tokens = users.map((u) => u.fcmToken?.token).filter(Boolean);
+  // 🚀 Send to all tokens (using validUsers)
+  const tokens = validUsers.map((u) => u.fcmToken.token);
   const result = await FCMService.sendToMultipleTokens(tokens, payload);
 
   Logger.debug(requestId, "📦 FCM Result", result);
@@ -194,9 +202,9 @@ async function handleNotificationSend(job, requestId) {
     );
   }
 
-  // 🗂️ Save per-user logs
-  const logs = users.map((user) => {
-    const tokenFailed = result.failures.some((f) => f.token === user.fcmToken?.token);
+  // 🗂️ Save per-user logs (using validUsers)
+  const logs = validUsers.map((user) => {
+    const tokenFailed = result.failures.some((f) => f.token === user.fcmToken.token);
     return {
       userId: user._id,
       scheduleId,
@@ -204,13 +212,13 @@ async function handleNotificationSend(job, requestId) {
       message: schedule.message,
       status: tokenFailed ? "failed" : "sent",
       sentAt: new Date(),
-      deviceToken: user.fcmToken?.token,
+      deviceToken: user.fcmToken.token,
     };
   });
   await NotificationLog.insertMany(logs);
 
-  // 📈 Delivery Stats Calculation
-  const totalUsers = users.length;
+  // 📈 Delivery Stats Calculation (using validUsers)
+  const totalUsers = validUsers.length;
   const successRate = (result.successCount / totalUsers) * 100;
 
   const update = {

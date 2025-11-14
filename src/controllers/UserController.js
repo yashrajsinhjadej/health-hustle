@@ -53,7 +53,8 @@ async function updateUserProfile(req, res) {
             age,
             sportsAmbitions,
             bodyProfile,
-            mainGoal
+            mainGoal,
+            loyaltyPercentage
         } = req.body;
 
         Logger.info('Profile data received', requestId, { 
@@ -64,7 +65,8 @@ async function updateUserProfile(req, res) {
             hasWeight: !!weight,
             hasSportsAmbitions: !!sportsAmbitions,
             hasBodyProfile: !!bodyProfile,
-            hasMainGoal: !!mainGoal
+            hasMainGoal: !!mainGoal,
+            hasLoyaltyPercentage: !!loyaltyPercentage
         });
 
         // Prepare update data object (only include fields that are provided)
@@ -85,6 +87,10 @@ async function updateUserProfile(req, res) {
 
         if (age !== undefined) {
             updateData.age = age;
+        }
+
+        if (loyaltyPercentage !== undefined) {
+            updateData.loyaltyPercentage = loyaltyPercentage;
         }
 
         // Handle height update
@@ -175,6 +181,9 @@ async function updateUserProfile(req, res) {
         if( mainGoal !== undefined) {
             updateData.mainGoal = mainGoal;
         }
+        if( loyaltyPercentage !== undefined) {
+            updateData.loyaltyPercentage = loyaltyPercentage;
+        }
 
         Logger.info('Update data prepared', requestId, { fieldCount: Object.keys(updateData).length });
 
@@ -236,7 +245,8 @@ async function updateUserProfile(req, res) {
                 userPreferences: userUpdated.userPreferences,
                 sportsAmbitions: userUpdated.sportsAmbitions,
                 bodyProfile: userUpdated.bodyProfile,
-                mainGoal: userUpdated.mainGoal
+                mainGoal: userUpdated.mainGoal,
+                loyaltyPercentage: userUpdated.loyaltyPercentage
             }
         });
 

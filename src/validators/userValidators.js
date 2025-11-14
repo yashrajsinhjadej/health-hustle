@@ -327,6 +327,18 @@ const validateUserProfileUpdate = [
         .isIn(['weight_loss', 'build_muscles', 'full_body_detox', 'fit_body','weight_gain','athletic_performance'])
         .withMessage('Main goal must be weight_loss, build_muscles, full_body_detox, athletic_performance, weight_gain, or fit_body'),
 
+         body('loyaltyPercentage')
+        .trim()
+        .optional()
+        .isInt({ min: 0, max: 100 })
+        .withMessage('Loyalty percentage must be between 0 and 100')
+        .custom((value) => {
+            if (value % 10 !== 0) {
+                throw new Error('Loyalty percentage must be in intervals of 10 (0, 10, 20, ..., 100)');
+            }
+            return true;
+        }),
+
 ];
 
 
