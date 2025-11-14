@@ -31,12 +31,33 @@ const notificationScheduleSchema = new mongoose.Schema(
     },
     targetAudience: {
       type: String,
-      enum: ["all", "specific"],
+      enum: ["all", "filtered"], // ✅ CHANGED: "specific" → "filtered"
       default: "all",
     },
     filters: {
-      type: Object,
-      default: {},
+      // ✅ IMPROVED: Added proper structure for filters
+      gender: {
+        type: [String],
+        enum: ["male", "female", "other"],
+        default: undefined,
+      },
+      platform: {
+        type: [String],
+        enum: ["android", "ios", "web"],
+        default: undefined,
+      },
+      ageRange: {
+        min: {
+          type: Number,
+          min: 13,
+          max: 120,
+        },
+        max: {
+          type: Number,
+          min: 13,
+          max: 120,
+        },
+      },
     },
     status: {
       type: String,
@@ -90,5 +111,6 @@ const notificationScheduleSchema = new mongoose.Schema(
 notificationScheduleSchema.index({ scheduleType: 1, status: 1 });
 notificationScheduleSchema.index({ createdBy: 1 });
 notificationScheduleSchema.index({ scheduledDate: 1 });
+notificationScheduleSchema.index({ targetAudience: 1 }); // ✅ NEW: Index for filtering
 
 module.exports = mongoose.model("NotificationSchedule", notificationScheduleSchema);

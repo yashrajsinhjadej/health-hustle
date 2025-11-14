@@ -6,7 +6,8 @@ const ResponseHandler = require("../../utils/ResponseHandler");
 const Redis = require("ioredis");
 const NotificationHistory = require("../../models/NotificationHistory");
 const NotificationLog = require("../../models/NotificationLog");
-
+const { buildUserFilterQuery } = require("../../utils//filterQueryBuilder.js");
+const User = require("../../models/User");
 
 async function updateNotificationStatus(req, res) {
   const requestId = Logger.generateId("update-notification-status");
@@ -202,7 +203,19 @@ async function requeueJobs(schedule, requestId) {
 
     if (schedule.scheduleType === "daily") {
       // Requeue timezone jobs for daily schedule
-      await queueTimezoneJobs(schedule._id, "daily");
+      const result = await queueTimezoneJobs(schedule._id, "daily");
+      if (result?.noRecipients) {
+      return ResponseHandler.error(
+        res,
+        "No users found for the selected filters. Notification not sent.",
+        {
+          scheduleId: schedule._id,
+          targetAudience: "filtered",
+          status: "no_recipients"
+        }
+      );
+    }
+
       Logger.success(requestId, "Daily timezone jobs requeued", {
         scheduleId: schedule._id,
       });
@@ -238,13 +251,23 @@ async function sendNotificationToAllUsers(req, res) {
     Logger.info(requestId, "📢 Starting sendNotificationToAllUsers");
     Logger.logRequest(requestId, req);
 
-    const { title, body, scheduleType, scheduledTime, scheduledDate } = req.body;
+    const { 
+      title, 
+      body, 
+      scheduleType, 
+      scheduledTime, 
+      scheduledDate,
+      targetAudience,
+      filters 
+    } = req.body;
 
     // --- Step 1: Create schedule document ---
+    // (Filters already validated by express-validator middleware)
     Logger.debug(requestId, "Creating notification schedule in MongoDB", {
       scheduleType,
       scheduledTime,
       scheduledDate,
+      targetAudience,
     });
 
     const scheduleData = {
@@ -253,8 +276,8 @@ async function sendNotificationToAllUsers(req, res) {
       scheduleType: scheduleType || "instant",
       scheduledTime: scheduleType === "daily" ? scheduledTime : undefined,
       scheduledDate: scheduleType === "scheduled_once" ? scheduledDate : undefined,
-      targetAudience: "all",
-      filters: {},
+      targetAudience: targetAudience || "all",
+      filters: targetAudience === "filtered" ? filters : {},
       createdBy: req.user?._id || null,
       status: "pending",
     };
@@ -270,14 +293,29 @@ async function sendNotificationToAllUsers(req, res) {
     Logger.success(requestId, "NotificationSchedule created", {
       scheduleId: schedule._id,
       scheduleType,
+      targetAudience: schedule.targetAudience,
+      filters: schedule.filters,
     });
 
-    // --- Step 2: Queue based on scheduleType ---
+    // --- Step 3: Queue based on scheduleType ---
     if (scheduleType === "instant" || !scheduleType) {
-      Logger.info(requestId, "Queuing INSTANT job (timezone-aware)", {
+      Logger.info(requestId, "Queueing INSTANT job (timezone-aware)", {
         scheduleId: schedule._id,
+        targetAudience: schedule.targetAudience,
       });
-      await queueTimezoneJobs(schedule._id, "instant");
+      const result = await queueTimezoneJobs(schedule._id, "instant");
+     if (result?.noRecipients) {
+  return ResponseHandler.error(
+    res,
+    "No users found for the selected filters. Notification not sent.",
+    {
+      scheduleId: schedule._id,
+      targetAudience: "filtered",
+      status: "no_recipients"
+    }
+  );
+}
+
 
     } else if (scheduleType === "scheduled_once") {
       const delayMs = calculateDelayForScheduledOnce(scheduledDate);
@@ -292,7 +330,11 @@ async function sendNotificationToAllUsers(req, res) {
         );
       }
 
-      Logger.info(requestId, "Queuing SCHEDULED_ONCE job", { delayMs, scheduleId: schedule._id });
+      Logger.info(requestId, "Queueing SCHEDULED_ONCE job", { 
+        delayMs, 
+        scheduleId: schedule._id,
+        targetAudience: schedule.targetAudience,
+      });
       await notificationQueue.add(
         "scheduled-once-send",
         { scheduleId: schedule._id },
@@ -304,24 +346,49 @@ async function sendNotificationToAllUsers(req, res) {
       );
 
     } else if (scheduleType === "daily") {
-      Logger.info(requestId, "Queuing DAILY timezone jobs", { scheduleId: schedule._id });
-      await queueTimezoneJobs(schedule._id, "daily");
+      Logger.info(requestId, "Queueing DAILY timezone jobs", { 
+        scheduleId: schedule._id,
+        targetAudience: schedule.targetAudience,
+      });
+      const result = await queueTimezoneJobs(schedule._id, "daily");
+      if (result?.noRecipients) {
+      return ResponseHandler.error(
+        res,
+        "No users found for the selected filters. Notification not sent.",
+        {
+          scheduleId: schedule._id,
+          targetAudience: "filtered",
+          status: "no_recipients"
+        }
+      );
     }
 
-    // --- Step 3: Response ---
+    }
+
+    // --- Step 4: Response ---
     Logger.success(requestId, "Notification scheduling complete", {
       scheduleId: schedule._id,
       scheduleType,
+      targetAudience: schedule.targetAudience,
     });
 
-    return ResponseHandler.success(
-      res,
-      scheduleType === "instant" || !scheduleType
+    const responseMessage = 
+      targetAudience === "filtered"
+        ? `Filtered notification ${scheduleType === "instant" || !scheduleType ? "queued" : "scheduled"} successfully`
+        : scheduleType === "instant" || !scheduleType
         ? "Notification queued for all users (instant send)"
         : scheduleType === "scheduled_once"
         ? "Notification scheduled successfully"
-        : "Daily notification scheduled successfully",
-      { scheduleId: schedule._id }
+        : "Daily notification scheduled successfully";
+
+    return ResponseHandler.success(
+      res,
+      responseMessage,
+      { 
+        scheduleId: schedule._id,
+        targetAudience: schedule.targetAudience,
+        filters: schedule.filters,
+      }
     );
   } catch (error) {
     Logger.error(requestId, "Error in sendNotificationToAllUsers", {
@@ -332,8 +399,8 @@ async function sendNotificationToAllUsers(req, res) {
   }
 }
 
+
 async function queueTimezoneJobs(scheduleId, scheduleType) {
-  const User = require("../../models/User");
   const requestId = Logger.generateId("queue-timezone");
 
   Logger.info(requestId, "Queueing timezone jobs", { scheduleId, scheduleType });
@@ -344,16 +411,51 @@ async function queueTimezoneJobs(scheduleId, scheduleType) {
     throw new Error("Schedule not found");
   }
 
-  const timezones = await User.distinct("timezone", {
-    "fcmToken.token": { $exists: true, $ne: null, $ne: "" },
-    $or: [
-      { notificationsEnabled: true },
-      { notificationsEnabled: { $exists: false } },
-    ],
+  // --- Build base query (without timezone) ---
+  let baseQuery;
+  
+  if (schedule.targetAudience === "filtered") {
+    // Use filter query builder for filtered notifications
+    baseQuery = buildUserFilterQuery(schedule, null, requestId);
+    Logger.info(requestId, "Using filtered query", { 
+      filters: schedule.filters,
+      query: baseQuery 
+    });
+  } else {
+    // Default query for "all" users
+    baseQuery = {
+      "fcmToken.token": { $exists: true, $ne: null, $ne: "" },
+      $or: [
+        { notificationsEnabled: true },
+        { notificationsEnabled: { $exists: false } },
+      ],
+    };
+    Logger.info(requestId, "Using 'all users' query");
+  }
+
+  // --- Get distinct timezones based on the query ---
+  const timezones = await User.distinct("timezone", baseQuery);
+
+  Logger.debug(requestId, "Fetched distinct timezones", { 
+    count: timezones.length,
+    timezones: timezones 
   });
 
-  Logger.debug(requestId, "Fetched distinct timezones", { count: timezones.length });
+  if (timezones.length === 0) {
+    Logger.warn(requestId, "No users found matching filters", {
+      targetAudience: schedule.targetAudience,
+      filters: schedule.filters,
+    });
+    
+    // Update schedule status
+    await NotificationSchedule.findByIdAndUpdate(scheduleId, {
+      status: "failed",
+      failureReason: "No users found matching the specified filters",
+    });
+    return { noRecipients: true };
+  }
 
+  // --- Queue jobs for each timezone ---
   for (const timezone of timezones) {
     let utcFireTime;
 
@@ -382,8 +484,10 @@ async function queueTimezoneJobs(scheduleId, scheduleType) {
     scheduleId,
     scheduleType,
     timezoneCount: timezones.length,
+    targetAudience: schedule.targetAudience,
   });
 }
+
 
 function calculateNextOccurrenceInTimezone(scheduledTime, timezone) {
   const moment = require("moment-timezone");
@@ -768,7 +872,6 @@ const getScheduledNotifications = async (req, res) => {
     });
   }
 };
-
 module.exports = {
   sendNotificationToAllUsers,
   sendNotificationToUser,

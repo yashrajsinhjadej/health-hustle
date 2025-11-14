@@ -116,7 +116,7 @@ const userSchema = new mongoose.Schema(
     },
 
     fcmToken: {
-      token: { type: String, default: null },
+      token: { type: String },
       platform: { type: String, enum: ['android', 'ios', 'web'], default: 'android' },
       lastUsedAt: { type: Date, default: Date.now },
     },
