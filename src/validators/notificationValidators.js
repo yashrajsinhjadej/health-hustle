@@ -28,6 +28,11 @@ const validateAdminNotification = [
             }
             return true;
         }),
+    body('category')
+        .optional()
+        .isIn(['Workout', 'Remainder','Progress','General','Motivational'])
+        .withMessage('category must be one of: Workout, Reminder, Progress, General, Motivational'),
+
 
     body('scheduleType')
         .optional()

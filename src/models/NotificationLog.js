@@ -11,6 +11,7 @@ const notificationLogSchema = new Schema({
   sentAt: { type: Date },
   failureReason: { type: String },
   deviceToken: { type: String },
+  category: { type: String, default: "Reminder" },
 }, { timestamps: true });
 
 notificationLogSchema.index({ userId: 1, createdAt: -1 });

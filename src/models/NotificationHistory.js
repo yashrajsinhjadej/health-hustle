@@ -33,4 +33,8 @@ const notificationHistorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+notificationHistorySchema.index({ firedAt: -1 });
+notificationHistorySchema.index({ status: 1 });
+notificationHistorySchema.index({ status: 1, firedAt: -1 });
+
 module.exports = mongoose.model("NotificationHistory", notificationHistorySchema);

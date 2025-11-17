@@ -212,6 +212,7 @@ async function handleNotificationSend(job, requestId) {
       scheduleId,
       title: schedule.title,
       message: schedule.message,
+      category:schedule.category || "Reminder",
       status: tokenFailed ? "failed" : "sent",
       sentAt: new Date(),
       deviceToken: user.fcmToken.token,

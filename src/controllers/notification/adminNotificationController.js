@@ -254,6 +254,7 @@ async function sendNotificationToAllUsers(req, res) {
     const { 
       title, 
       body, 
+      category,
       scheduleType, 
       scheduledTime, 
       scheduledDate,
@@ -261,13 +262,12 @@ async function sendNotificationToAllUsers(req, res) {
       filters 
     } = req.body;
 
-    // --- Step 1: Create schedule document ---
-    // (Filters already validated by express-validator middleware)
     Logger.debug(requestId, "Creating notification schedule in MongoDB", {
       scheduleType,
       scheduledTime,
       scheduledDate,
       targetAudience,
+      category,
     });
 
     const scheduleData = {
@@ -278,6 +278,7 @@ async function sendNotificationToAllUsers(req, res) {
       scheduledDate: scheduleType === "scheduled_once" ? scheduledDate : undefined,
       targetAudience: targetAudience || "all",
       filters: targetAudience === "filtered" ? filters : {},
+      category: category || null,
       createdBy: req.user?._id || null,
       status: "pending",
     };

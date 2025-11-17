@@ -25,16 +25,17 @@ class UserNotificationController {
                     .sort({ sentAt: -1, createdAt: -1 })
                     .skip(skip)
                     .limit(limit)
-                    .select('_id title message sentAt createdAt')
+                    .select('_id title message category sentAt createdAt')
                     .lean(),
                 NotificationLog.countDocuments(filter)
             ]);
-
-            const notifications = logs.map((log) => ({
+            console.log(logs)
+                const notifications = logs.map((log) => ({
                 id: log._id,
                 title: log.title,
                 message: log.message,
-                sentAt: log.sentAt || log.createdAt
+                sentAt: log.sentAt || log.createdAt,
+                category: log.category || null
             }));
 
             const totalPages = limit > 0 ? Math.ceil(totalItems / limit) : 0;

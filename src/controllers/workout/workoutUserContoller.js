@@ -309,10 +309,6 @@ async listworkout(req, res) {
     }
   }
 
-  /**
-   * GET WORKOUT BY ID
-   * Fetches a single workout with all its videos (sorted by sequence)
-   */
 async getworkoutbyid(req, res) {
   const requestId = `workout-getbyid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -401,11 +397,6 @@ async getworkoutbyid(req, res) {
     );
   }
 }
-
-// Workout Search Controller Functions
-// Workout Search Controller Functions
-// Workout Search Controller Functions
-// Workout Search Controller Functions
 
 async searchWorkouts(req, res) {
   try {
@@ -640,7 +631,7 @@ async getSearchSuggestions(req, res) {
     const { query = '', limit = 5 } = req.query;
 
     if (query.length < 2) {
-      return ResponseHandler.success(res, { suggestions: [] }, 'No suggestions');
+      return ResponseHandler.success(res, 'No suggestions', { suggestions: [] });
     }
 
     // Try to get from cache first
@@ -653,9 +644,10 @@ async getSearchSuggestions(req, res) {
       if (cachedSuggestions) {
         Logger.info(`Cache hit for suggestions: ${query}`);
         return ResponseHandler.success(
-          res, 
+          res,
+          'Suggestions retrieved from cache', 
           { suggestions: JSON.parse(cachedSuggestions) }, 
-          'Suggestions retrieved from cache'
+       
         );
       }
     } catch (cacheError) {
@@ -692,7 +684,7 @@ async getSearchSuggestions(req, res) {
 
     Logger.info(`Suggestions generated for query: ${query}`);
 
-    return ResponseHandler.success(res, { suggestions }, 'Suggestions retrieved successfully');
+    return ResponseHandler.success(res, 'Suggestions retrieved successfully',{ suggestions });
 
   } catch (error) {
     Logger.error('Get suggestions error:', error);
