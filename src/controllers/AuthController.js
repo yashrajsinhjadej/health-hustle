@@ -1,26 +1,16 @@
 // Authentication Controller
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 const OTPUtils = require('../utils/otpUtils');
 const OTPService = require('../services/otpService');
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
 const Logger = require('../utils/logger');
+const redis = require('../utils/redisClient');
+
 
 class AuthController {
-    // Generate JWT token
-    generateToken(userId) {
-        // Validate JWT_SECRET is set
-        if (!process.env.JWT_SECRET) {
-            throw new Error('JWT_SECRET environment variable is required');
-        }
-
-        return jwt.sign(
-            { userId },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-        );
-    }
 
     // Send OTP to phone number
     async sendOTP(req, res) {
@@ -35,7 +25,6 @@ class AuthController {
 
             Logger.info(requestId, 'Finding user is inactive or not in the db before sending OTP', { phone });
             const user = await User.findOne({ phone: OTPUtils.cleanPhoneNumber(phone) }).select('isActive');
-
             if (user && !user.isActive) {
                 Logger.warn(requestId, 'Attempt to send OTP to inactive user', { phone });
                 return ResponseHandler.error(res, 'User account is inactive. Please contact support.', 'AUTH_USER_INACTIVE', 403);
@@ -77,106 +66,93 @@ class AuthController {
     }
 
     // Verify OTP and login/register user
-    async verifyOTP(req, res) {
-        const requestId = Logger.generateId('auth-verify-otp');
-        
-        try {
-            Logger.info(requestId, '🔐 AuthController.verifyOTP - Request started');
-            Logger.logRequest(requestId, req);
-            
-            const { phone, otp } = req.body;
-            Logger.debug(requestId, 'Extracted credentials', { phone, otp: '***' });
+   // Verify OTP and login/register user
+async verifyOTP(req, res) {
+    const requestId = Logger.generateId('auth-verify-otp');
 
-            // Use service for OTP verification
-            Logger.info(requestId, 'Calling OTPService.verifyOTP');
-            const verificationResult = await OTPService.verifyOTP(phone, otp);
-            Logger.debug(requestId, 'OTPService.verifyOTP result received', { 
-                success: verificationResult.success 
-            });
+    try {
+        Logger.info(requestId, '🔐 AuthController.verifyOTP - Request started');
+        Logger.logRequest(requestId, req);
 
-            if (!verificationResult.success) {
-                Logger.warn(requestId, 'OTP verification failed', { 
-                    message: verificationResult.message,
-                    phone 
-                });
-                return ResponseHandler.error(res, verificationResult.message, verificationResult.error, 400, verificationResult.code);
-            }
-            
-            // Clean phone for user lookup
-            const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
-            Logger.success(requestId, 'OTP verified successfully', { phone: cleanPhone });
-            
-            // Ensure MongoDB connection is ready
-            Logger.debug(requestId, 'Ensuring MongoDB connection');
-            await ConnectionHelper.ensureConnection();
-            
-            // Check if user exists, if not create new user
-            Logger.info(requestId, 'Looking up user in database', { phone: cleanPhone });
-            let user = await User.findOne({ phone: cleanPhone });
-            
-            if (!user) {
-                // Create new user with incomplete profile
-                Logger.info(requestId, 'Creating new user', { phone: cleanPhone });
-                user = new User({
-                    name: 'New User', // Temporary name
-                    phone: cleanPhone,
-                    role: 'user', // Default role for new registrations
-                    profileCompleted: false, // Mark as incomplete
-                    signupAt: new Date()
-                });
-                const savedUser = await user.save();
-                Logger.success(requestId, 'New user created', { userId: savedUser._id });
-            } else {
-                Logger.info(requestId, 'Existing user found', { 
-                    userId: user._id, 
-                    name: user.name 
-                });
-            }
+        const { phone, otp } = req.body;
+        Logger.debug(requestId, 'Extracted credentials', { phone, otp: '***' });
 
-            // Generate JWT token with user ID first to get the exact iat
-            Logger.debug(requestId, 'Generating JWT token', { userId: user._id });
-            const token = this.generateToken(user._id);
-            
-            // Extract the iat from the token to set lastLoginAt safely before it
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
-            
-            Logger.debug(requestId, 'Token generated', { 
-                tokenIssuedAt,
-                expiresIn: decoded.exp - decoded.iat 
-            });
-            
-            user.lastLoginAt = new Date(tokenIssuedAt.getTime() - 1000); // 1 second before
-            await user.save();
-          
-            Logger.success(requestId, 'User login successful', { 
-                userId: user._id,
-                profileCompleted: user.profileCompleted 
-            });
-
-            // Set JWT token in Authorization header
-            res.set('Authorization', `Bearer ${token}`);
-
-            return ResponseHandler.success(res, "Login successful", {
-                token: token, // Adding token to response body for testing
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    phone: user.phone,
-                    role: user.role,
-                    profileCompleted: user.profileCompleted,
-                    lastLoginAt: user.lastLoginAt
-                }
-            });
-
-        } catch (error) {
-            Logger.error(requestId, 'Verify OTP error', { 
-                error: error.message, 
-                stack: error.stack 
-            });
-            return ResponseHandler.serverError(res, "Authentication failed");
+        // 1️⃣ Verify OTP
+        const verificationResult = await OTPService.verifyOTP(phone, otp);
+        if (!verificationResult.success) {
+            return ResponseHandler.error(
+                res,
+                verificationResult.message,
+                verificationResult.error,
+                400,
+                verificationResult.code
+            );
         }
+
+        const cleanPhone = OTPUtils.cleanPhoneNumber(phone);
+        await ConnectionHelper.ensureConnection();
+
+        // 2️⃣ Find/Create user
+        let user = await User.findOne({ phone: cleanPhone });
+
+        if (!user) {
+            user = new User({
+                name: 'New User',
+                phone: cleanPhone,
+                role: 'user',
+                profileCompleted: false,
+                signupAt: new Date()
+            });
+            await user.save();
+        }
+
+        // 3️⃣ Create new session ID
+        const sessionId = uuidv4();
+
+        // 4️⃣ Generate JWT (with sessionId + role)
+        const token = jwt.sign(
+            {
+                userId: user._id.toString(),
+                role: "user",
+                sessionId
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN }
+        );
+
+       await redis.set(
+        `session:user:${user._id}`,
+        sessionId,
+        { EX: parseInt(process.env.REDIS_SESSION_TTL) }
+        );
+        Logger.success(requestId, 'User login successful', {
+            userId: user._id,
+            profileCompleted: user.profileCompleted
+        });
+
+        // 6️⃣ Send token back
+        res.set('Authorization', `Bearer ${token}`);
+
+        return ResponseHandler.success(res, "Login successful", {
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                phone: user.phone,
+                role: user.role,
+                profileCompleted: user.profileCompleted
+            }
+        });
+
+    } catch (error) {
+        Logger.error(requestId, 'Verify OTP error', {
+            error: error.message,
+            stack: error.stack
+        });
+        return ResponseHandler.serverError(res, "Authentication failed");
     }
+}
+
 
     // Get current user profile
     async getProfile(req, res) {
@@ -344,42 +320,63 @@ async logout(req, res) {
     const requestId = Logger.generateId('auth-logout');
 
     try {
-        const user = req.user;
+        const user = req.user;              // mongoose document
+        const userId = user._id.toString(); 
+        const { role, sessionId } = req.session;
 
-        Logger.info(requestId, 'User logout initiated', { 
-            userId: user._id,
-            phone: user.phone 
+        Logger.info(requestId, 'User logout initiated', {
+            userId,
+            role,
+            sessionId
         });
 
-        // Ensure MongoDB connection is ready
+        // ❌ Admin logout is not allowed
+        if (role !== "user") {
+            return ResponseHandler.forbidden(
+                res,
+                "Admins cannot logout from this endpoint",
+                "ADMIN_LOGOUT_NOT_ALLOWED"
+            );
+        }
+
+        // 1️⃣ Ensure DB connected
         await ConnectionHelper.ensureConnection();
 
-        // 1️⃣ Remove FCM token completely so that token cannot be reused by another account
+        // 2️⃣ Remove FCM token
         user.set('fcmToken', undefined);
         user.markModified('fcmToken');
-
-        // 2️⃣ Invalidate user's current session/token by updating lastLoginAt
-        user.lastLoginAt = new Date();
-
         await user.save();
 
-        Logger.success(requestId, 'User logged out successfully', { 
-            userId: user._id, 
-            phone: user.phone 
-        });
+        // 3️⃣ Delete Redis session (user only)
+        try {
+            const key = `session:user:${userId}`;
+            Logger.info(requestId, 'Deleting user session key', { key });
+
+            const deleted = await redis.del(key);
+            Logger.info(requestId, 'Redis delete result', { deleted });
+
+        } catch (redisErr) {
+            Logger.warn(requestId, 'Redis cleanup failed (non-blocking)', {
+                error: redisErr.message
+            });
+        }
+
+        Logger.success(requestId, 'User logged out successfully', { userId });
 
         return ResponseHandler.success(res, "Logged out successfully");
-        
+
     } catch (error) {
-        Logger.error(requestId, 'Logout error', { 
-            error: error.message, 
+        Logger.error(requestId, 'Logout error', {
+            error: error.message,
             stack: error.stack,
-            userId: req.user?._id 
+            userId: req.user?._id
         });
 
         return ResponseHandler.serverError(res, "Logout failed");
     }
 }
+
+
 }
 
 module.exports = new AuthController();

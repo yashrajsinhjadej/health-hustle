@@ -102,11 +102,12 @@ class AdminAuthController {
         if (!process.env.JWT_SECRET) {
             throw new Error('JWT_SECRET environment variable is required');
         }
-
         return jwt.sign(
-            { userId },
+            { userId,
+              role:"user"
+             },
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            { expiresIn: process.env.JWT_EXPIRES_IN || '90d' }
         );
     }
 

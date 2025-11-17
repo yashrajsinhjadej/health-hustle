@@ -12,6 +12,7 @@ const {
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
 const Logger = require('../utils/logger');
+const redis = require('../utils/redisClient')
 
 const s3 = require('../services/s3Service')
 const dailyHealthData = require('../models/DailyHealthData');
@@ -562,64 +563,85 @@ async function updateFirstTimeProfile(req, res) {
 }
 
 const deleteUserAccount = async (req, res) => {
-  const userId = req.user?._id;
-  const requestId = `user-delete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  try {
-    Logger.info('deleteUserAccount START', requestId, { userId: userId || 'none' });
-    
-    if (!userId) {
-      Logger.warn('User ID not found in request', requestId);
-      return ResponseHandler.unauthorized(res, "Authentication required", 'USER_AUTH_REQUIRED');
-    }
+    const userId = req.user?._id?.toString(); 
+    const role = req.session?.role;
 
-    // Delete user
-    const deletedUser = await User.findByIdAndDelete(userId);
-    if (!deletedUser) {
-      Logger.warn('User not found for deletion', requestId, { userId });
-      return ResponseHandler.error(
-        res, 
-        "Not found", 
-        "User account does not exist", 
-        404,
-        'USER_NOT_FOUND'
-      );
-    }
+    const requestId = `user-delete_${Date.now()}`;
 
-    Logger.info('User account deleted', requestId, { userId, name: deletedUser.name });
-
-    // Best-effort cascade deletes (do not block success)
     try {
-      await dailyHealthData.deleteMany({ user: userId });
-      await otp.deleteMany({ user: userId });
-      await passwordReset.deleteMany({ user: userId });
-      await Goals.deleteMany({ user: userId });
-      Logger.info('Cascade delete completed', requestId, { userId });
-    } catch (cascadeErr) {
-      Logger.warn('Cascade delete warning', requestId, { error: cascadeErr.message });
+        Logger.info('deleteUserAccount START', requestId, { userId, role });
+
+        if (!userId) {
+            return ResponseHandler.unauthorized(
+                res,
+                "Authentication required",
+                'USER_AUTH_REQUIRED'
+            );
+        }
+
+        // 🚫 Admins or other roles are not allowed to delete accounts
+        if (role !== "user") {
+            return ResponseHandler.forbidden(
+                res,
+                "Admins cannot delete their account",
+                "ACCOUNT_DELETE_NOT_ALLOWED"
+            );
+        }
+
+        // 1️⃣ Delete Redis session for this user
+        try {
+            const key = `session:user:${userId}`;
+            Logger.info("Deleting user session key", { key });
+
+            const deleted = await redis.del(key);
+            Logger.info("Redis delete result", { deleted });
+        } catch (redisErr) {
+            Logger.warn('Redis cleanup failed', requestId, {
+                error: redisErr.message
+            });
+        }
+
+        // 2️⃣ Delete user from DB
+        const deletedUser = await User.findByIdAndDelete(userId);
+        if (!deletedUser) {
+            return ResponseHandler.error(
+                res,
+                "Not found",
+                "User account does not exist",
+                404,
+                'USER_NOT_FOUND'
+            );
+        }
+
+        Logger.info('User account deleted', requestId, { userId });
+
+        // 3️⃣ Cascade delete (non blocking)
+        try {
+            await dailyHealthData.deleteMany({ user: userId });
+            await otp.deleteMany({ user: userId });
+            await passwordReset.deleteMany({ user: userId });
+            await Goals.deleteMany({ user: userId });
+
+            Logger.info('Cascade delete completed', requestId, { userId });
+        } catch (cascadeErr) {
+            Logger.warn('Cascade delete warning', requestId, {
+                error: cascadeErr.message
+            });
+        }
+
+        return ResponseHandler.success(res, "User account deleted successfully");
+
+    } catch (error) {
+        Logger.error('Delete user account error', requestId, {
+            errorName: error.name,
+            errorMessage: error.message
+        });
+
+        return ResponseHandler.serverError(res, "Failed to delete user account", 'USER_DELETE_FAILED');
     }
-
-    return ResponseHandler.success(res, "User account deleted successfully");
-  } catch (error) {
-    Logger.error('Delete user account error', requestId, { 
-      errorName: error?.name, 
-      errorMessage: error?.message 
-    });
-
-    if (error?.name === "CastError") {
-      Logger.warn('Invalid user ID format', requestId);
-      return ResponseHandler.error(
-        res, 
-        "Invalid request", 
-        "Invalid user ID format", 
-        400,
-        'USER_INVALID_ID'
-      );
-    }
-
-    return ResponseHandler.serverError(res, "Failed to delete user account", 'USER_DELETE_FAILED');
-  }
 };
+
+
 
 
 const addProfilePicture = async (req, res) => {

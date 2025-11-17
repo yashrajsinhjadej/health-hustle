@@ -4,24 +4,23 @@ const User = require('../models/User');
 const ConnectionHelper = require('../utils/connectionHelper');
 const ResponseHandler = require('../utils/ResponseHandler');
 const Logger = require('../utils/logger');
+const redis = require('../utils/redisClient');  // ← Redis client
 
-// Verify JWT token
+// ==========================================================
+// 🔐 AUTHENTICATE TOKEN (JWT + Redis Session Validation)
+// ==========================================================
 const authenticateToken = async (req, res, next) => {
     const requestId = Logger.generateId('auth-token');
-    
+
     try {
-        Logger.info(requestId, 'Token authentication START', { 
-            method: req.method, 
+        Logger.info(requestId, 'Token authentication START', {
+            method: req.method,
             path: req.path,
-            ip: req.ip || req.connection.remoteAddress 
+            ip: req.ip || req.connection.remoteAddress
         });
-        
+
         const authHeader = req.headers['authorization'];
-        Logger.debug(requestId, 'Authorization header check', { 
-            hasHeader: !!authHeader 
-        });
-        
-        const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+        const token = authHeader && authHeader.split(' ')[1];
 
         if (!token) {
             Logger.warn(requestId, 'No token provided');
@@ -30,46 +29,67 @@ const authenticateToken = async (req, res, next) => {
 
         Logger.debug(requestId, 'Token found, verifying...');
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        Logger.debug(requestId, 'Token decoded', { 
-            userId: decoded.userId, 
-            iat: decoded.iat, 
-            exp: decoded.exp 
-        });
-        
-        // Ensure MongoDB connection is ready
-        Logger.debug(requestId, 'Ensuring MongoDB connection');
+
+        const { userId, role, sessionId } = decoded;
+
+        Logger.debug(requestId, 'Token decoded', { userId, role, sessionId });
+
+        // ==========================================================
+        // 1️⃣ REDIS SESSION CHECK
+        // ==========================================================
+        Logger.debug(requestId, 'Checking session in Redis...');
+
+        if (role === 'user') {
+            // SINGLE DEVICE LOGIN → only 1 sessionId stored
+            const storedSession = await redis.get(`session:user:${userId}`);
+
+            if (!storedSession || storedSession !== sessionId) {
+                Logger.warn(requestId, 'Redis session invalid for USER', { userId, sessionId });
+                return ResponseHandler.unauthorized(
+                    res,
+                    'Session expired. Please login again.',
+                    'AUTH_SESSION_EXPIRED'
+                );
+            }
+        } else {
+            // MULTI-DEVICE LOGIN (ADMIN / HR / MASTER ADMIN)
+            const exists = await redis.exists(`session:admin:${userId}:${sessionId}`);
+
+            if (!exists) {
+                Logger.warn(requestId, 'Redis session invalid for ADMIN', { userId, sessionId });
+                return ResponseHandler.unauthorized(
+                    res,
+                    'Session expired or logged out.',
+                    'AUTH_SESSION_EXPIRED'
+                );
+            }
+        }
+
+        // ==========================================================
+        // 2️⃣ MONGO CONNECTION + USER FETCH
+        // ==========================================================
         await ConnectionHelper.ensureConnection();
-        
-        Logger.debug(requestId, 'Looking up user in database', { userId: decoded.userId });
-        const user = await User.findById(decoded.userId).select('-otp');
+
+        const user = await User.findById(userId).select('-otp');
 
         if (!user) {
-            Logger.warn(requestId, 'User not found or inactive', { userId: decoded.userId });
+            Logger.warn(requestId, 'User not found', { userId });
             return ResponseHandler.unauthorized(res, 'Invalid token or user not found', 'AUTH_USER_NOT_FOUND');
         }
 
-        if( !user.isActive ) {
-            Logger.warn(requestId, 'User account inactive', { userId: user._id });
-            return ResponseHandler.unauthorized(res, 'User account is inactive. Please contact support.', 'AUTH_USER_INACTIVE');
+        if (!user.isActive) {
+            Logger.warn(requestId, 'User inactive', { userId });
+            return ResponseHandler.unauthorized(res, 'User account inactive', 'AUTH_USER_INACTIVE');
         }
 
-        Logger.debug(requestId, 'User found', { userId: user._id, name: user.name });
+        Logger.success(requestId, 'Authentication successful', { userId });
 
-        // Check if token was issued before user's last login (session invalidation)
-        const tokenIssuedAt = new Date(decoded.iat * 1000); // JWT iat is in seconds
-        
-        if (user.lastLoginAt > tokenIssuedAt) {
-            Logger.warn(requestId, 'Token invalidated by newer login', { 
-                userId: user._id,
-                tokenIssuedAt,
-                lastLoginAt: user.lastLoginAt 
-            });
-            return ResponseHandler.unauthorized(res, 'Session expired due to login from another device', 'AUTH_SESSION_EXPIRED');
-        }
-
-        Logger.success(requestId, 'Authentication successful', { userId: user._id });
-        req.user = user;
-        next();
+        req.user = user
+       req.session = {
+        sessionId,
+        role
+        };
+        next()
     } catch (error) {
         if (error.name === 'JsonWebTokenError') {
             Logger.warn(requestId, 'Invalid JWT token', { error: error.message });
@@ -78,16 +98,18 @@ const authenticateToken = async (req, res, next) => {
             Logger.warn(requestId, 'JWT token expired', { expiredAt: error.expiredAt });
             return ResponseHandler.forbidden(res, 'Token expired', 'AUTH_TOKEN_EXPIRED');
         } else {
-            Logger.error(requestId, 'Authentication error', { 
-                error: error.message, 
-                stack: error.stack 
+            Logger.error(requestId, 'Authentication error', {
+                error: error.message,
+                stack: error.stack
             });
             return ResponseHandler.forbidden(res, 'Authentication failed', 'AUTH_FAILED');
         }
     }
 };
 
-// Role-based authorization middleware
+// ==========================================================
+// 🔐 ROLE-BASED AUTHORIZATION
+// ==========================================================
 const authorizeRole = (...allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {
@@ -95,22 +117,24 @@ const authorizeRole = (...allowedRoles) => {
         }
 
         if (!allowedRoles.includes(req.user.role)) {
-            return ResponseHandler.forbidden(res, `Access denied. Required role: ${allowedRoles.join(' or ')}`);
+            return ResponseHandler.forbidden(
+                res,
+                `Access denied. Required role: ${allowedRoles.join(' or ')}`
+            );
         }
 
         next();
     };
 };
 
-// Admin only middleware
-const adminOnly = authorizeRole('admin');
-
-// User only middleware
+// Define roles
+const adminOnly = authorizeRole('admin', 'master_admin', 'hr');
 const userOnly = authorizeRole('user');
+const adminOrUser = authorizeRole('admin', 'master_admin', 'hr', 'user');
 
-// Admin or User middleware
-const adminOrUser = authorizeRole('admin', 'user');
-
+// ==========================================================
+// EXPORTS
+// ==========================================================
 module.exports = {
     authenticateToken,
     authorizeRole,
