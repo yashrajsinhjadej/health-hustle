@@ -43,9 +43,14 @@ const authenticateToken = async (req, res, next) => {
         Logger.debug(requestId, 'Looking up user in database', { userId: decoded.userId });
         const user = await User.findById(decoded.userId).select('-otp');
 
-        if (!user || !user.isActive) {
+        if (!user) {
             Logger.warn(requestId, 'User not found or inactive', { userId: decoded.userId });
             return ResponseHandler.unauthorized(res, 'Invalid token or user not found', 'AUTH_USER_NOT_FOUND');
+        }
+
+        if( !user.isActive ) {
+            Logger.warn(requestId, 'User account inactive', { userId: user._id });
+            return ResponseHandler.unauthorized(res, 'User account is inactive. Please contact support.', 'AUTH_USER_INACTIVE');
         }
 
         Logger.debug(requestId, 'User found', { userId: user._id, name: user.name });

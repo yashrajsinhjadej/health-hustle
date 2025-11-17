@@ -1,6 +1,6 @@
 const ResponseHandler = require('../utils/ResponseHandler');
 // User Profile Validation Rules using express-validator
-const { body, validationResult } = require('express-validator');
+const { body, param,validationResult } = require('express-validator');
 const Logger = require('../utils/logger');
 
 // Admin signup validation
@@ -342,6 +342,145 @@ const validateUserProfileUpdate = [
 ];
 
 
+const updateUserValidationadmin = [
+    // Validate userId parameter format
+    param('userId')
+        .notEmpty().withMessage('User ID is required')
+        .isLength({ min: 24, max: 24 }).withMessage('User ID must be 24 characters')
+        .custom((value) => {
+            if (!mongoose.Types.ObjectId.isValid(value)) {
+                throw new Error('Invalid MongoDB ObjectId format');
+            }
+            return true;
+        }),
+
+    // Validate name format
+    body('name')
+        .optional()
+        .trim()
+        .notEmpty().withMessage('Name cannot be empty if provided')
+        .isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters')
+        .matches(/^[a-zA-Z\s\-\.\']+$/).withMessage('Name can only contain letters, spaces, hyphens, dots, and apostrophes')
+        .matches(/[a-zA-Z]/).withMessage('Name must contain at least one letter'),
+
+    // Validate email format
+    body('email')
+        .optional()
+        .trim()
+        .custom((value) => {
+            if (value === '' || value === null) {
+                return true; // Allow empty string or null to clear email
+            }
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(value)) {
+                throw new Error('Invalid email format');
+            }
+            return true;
+        })
+        .customSanitizer((value) => {
+            if (value === '' || value === null) return null;
+            return value.toLowerCase().trim();
+        }),
+
+    // Validate phone format
+    body('phone')
+        .optional()
+        .trim()
+        .custom((value) => {
+            if (!value || value === '') return true;
+            const cleanPhone = value.replace(/\D/g, '');
+            const phoneRegex = /^[0-9]{10,15}$/;
+            if (!phoneRegex.test(cleanPhone)) {
+                throw new Error('Phone number must be 10-15 digits');
+            }
+            return true;
+        })
+        .customSanitizer((value) => {
+            if (!value || value === '') return value;
+            return value.replace(/\D/g, '');
+        }),
+
+    // Validate gender format
+    body('gender')
+        .optional()
+        .trim()
+        .custom((value) => {
+            if (value === '' || value === null) return true; // Allow empty to clear gender
+            const validGenders = ['male', 'female', 'other'];
+            if (!validGenders.includes(value.toLowerCase())) {
+                throw new Error('Gender must be: male, female, or other');
+            }
+            return true;
+        })
+        .customSanitizer((value) => {
+            if (value === '' || value === null) return null;
+            return value.toLowerCase();
+        }),
+
+    // Validate age format
+    body('age')
+        .optional()
+        .custom((value) => {
+            if (value === '' || value === null || value === undefined) return true;
+            const ageNum = parseInt(value);
+            if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
+                throw new Error('Age must be between 1 and 150');
+            }
+            return true;
+        })
+        .customSanitizer((value) => {
+            if (value === '' || value === null) return null;
+            return parseInt(value);
+        }),
+
+    // Validate profileCompleted format
+    body('profileCompleted')
+        .optional()
+        .custom((value) => {
+            if (value === true || value === false) return true;
+            if (value === 'true' || value === 'false') return true;
+            if (value === 1 || value === 0) return true;
+            throw new Error('profileCompleted must be a boolean value');
+        })
+        .customSanitizer((value) => {
+            if (value === true || value === 'true' || value === 1 || value === '1') return true;
+            if (value === false || value === 'false' || value === 0 || value === '0') return false;
+            return value;
+        }),
+
+    body('isActive')
+        .optional()
+        .custom((value) => {
+            // Accept: true, false, "true", "false", 1, 0
+            if (value === true || value === false) return true;
+            if (value === 'true' || value === 'false') return true;
+            if (value === 1 || value === 0) return true;
+            throw new Error('isActive must be a boolean value (true/false, 1/0, or "true"/"false")');
+        })
+        .customSanitizer((value) => {
+            // Convert all truthy values to true boolean
+            if (value === true || value === 'true' || value === 1 || value === '1') {
+                return true;
+            }
+            // Convert all falsy values to false boolean
+            if (value === false || value === 'false' || value === 0 || value === '0') {
+                return false;
+            }
+            return value;
+        }),
+
+    // Check if at least one field is provided
+    body().custom((value, { req }) => {
+        const allowedFields = ['name', 'email', 'phone', 'gender', 'age', 'profileCompleted', 'isActive'];
+        const hasAtLeastOneField = allowedFields.some(field => req.body.hasOwnProperty(field));
+        
+        if (!hasAtLeastOneField) {
+            throw new Error('At least one field must be provided for update');
+        }
+        return true;
+    })
+];
+
 
 module.exports = {
     validateUserProfileUpdate,
@@ -352,5 +491,6 @@ module.exports = {
     validateAdminEmail,
     validateAdminPasswordReset,
     validateUserFirstTime,
+    updateUserValidationadmin,
     handleValidationErrors
 }; 

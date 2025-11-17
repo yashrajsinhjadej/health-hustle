@@ -12,6 +12,7 @@ const {
     validateAdminLogin, 
     validateAdminEmail,
     validateAdminPasswordReset,
+    updateUserValidationadmin,
     handleValidationErrors 
 } = require('../../validators/userValidators');
 
@@ -81,7 +82,7 @@ protectedRouter.get('/users/:userId', AdminAuthController.getUser);
 protectedRouter.delete('/users/:userId', AdminAuthController.deleteUser);
 
 // PUT /admin/users/:userId - Update user details with comprehensive validation
-protectedRouter.put('/users/:userId', AdminAuthController.updateUser);
+protectedRouter.put('/users/:userId', updateUserValidationadmin,AdminAuthController.updateUser);
 
 // Mount protected routes
 router.use('/', protectedRouter);

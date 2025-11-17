@@ -1279,232 +1279,124 @@ class AdminAuthController {
         }
     }
 
-    // Update User - Enhanced with comprehensive validation and duplicate checks
-    async updateUser(req, res) {
-        const requestId = `admin-update-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin update user START', requestId, { 
-                adminId: req.user._id,
-                targetUserId: req.params.userId,
-                ip: req.ip || req.connection.remoteAddress
+async updateUser(req, res) {
+    const requestId = `admin-update-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+        Logger.info('Admin update user START', requestId, { 
+            adminId: req.user._id,
+            targetUserId: req.params.userId,
+            ip: req.ip || req.connection.remoteAddress
+        });
+
+        // Ensure MongoDB connection is ready
+        await ConnectionHelper.ensureConnection();
+
+        const { userId } = req.params;
+        
+        // Find the user to update
+        Logger.info('Looking for user to update', requestId, { userId });
+        const userToUpdate = await User.findById(userId);
+
+        if (!userToUpdate) {
+            Logger.warn('User not found for update', requestId, { userId });
+            return ResponseHandler.error(
+                res, 
+                "User not found", 
+                "The specified user does not exist", 
+                404,
+                'ADMIN_USER_NOT_FOUND'
+            );
+        }
+
+        // Prevent updating other admins
+        if (userToUpdate.role === 'admin') {
+            Logger.warn('Attempted to update admin account', requestId, { 
+                targetUserId: userId,
+                targetEmail: userToUpdate.email 
             });
+            return ResponseHandler.error(
+                res, 
+                "Action not allowed", 
+                "Cannot update admin accounts", 
+                403,
+                'ADMIN_CANNOT_UPDATE_ADMIN'
+            );
+        }
 
-            // Ensure MongoDB connection is ready
-            await ConnectionHelper.ensureConnection();
+        Logger.info('User found for update', requestId, { 
+            userId: userToUpdate._id,
+            userName: userToUpdate.name 
+        });
 
-            const { userId } = req.params;
-            const { name, email, phone, gender, age, profileCompleted, status } = req.body;
-
-            // Validate userId format
-            if (!userId || userId.length !== 24) {
-                Logger.warn('Invalid user ID format', requestId, { userId });
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid user ID", 
-                    "User ID must be a valid 24-character MongoDB ObjectId", 
-                    400,
-                    'ADMIN_INVALID_USER_ID'
-                );
+        // Prepare update data
+        const updateData = {};
+        const allowedFields = ['name', 'email', 'phone', 'gender', 'age', 'profileCompleted', 'isActive'];
+        
+        // Build update data from validated req.body
+        allowedFields.forEach(field => {
+            if (req.body.hasOwnProperty(field)) {
+                updateData[field] = req.body[field];
             }
+        });
+
+        // MongoDB Validation: Check for duplicate email (exclude current user)
+        if (updateData.email && updateData.email !== null) {
+            Logger.info('Checking email uniqueness', requestId, { 
+                email: updateData.email 
+            });
             
-            // Validate ObjectId format
-            if (!mongoose.Types.ObjectId.isValid(userId)) {
-                Logger.warn('Invalid ObjectId format', requestId, { userId });
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid user ID", 
-                    "User ID must be a valid MongoDB ObjectId", 
-                    400,
-                    'ADMIN_INVALID_USER_ID'
-                );
-            }
-
-            // Find the user to update
-            Logger.info('Looking for user to update', requestId, { userId });
-            const userToUpdate = await User.findById(userId);
-
-            if (!userToUpdate) {
-                Logger.warn('User not found for update', requestId, { userId });
-                return ResponseHandler.error(
-                    res, 
-                    "User not found", 
-                    "The specified user does not exist", 
-                    404,
-                    'ADMIN_USER_NOT_FOUND'
-                );
-            }
-
-            // Prevent updating other admins
-            if (userToUpdate.role === 'admin') {
-                Logger.warn('Attempted to update admin account', requestId, { 
-                    targetUserId: userId,
-                    targetEmail: userToUpdate.email 
-                });
-                return ResponseHandler.error(
-                    res, 
-                    "Action not allowed", 
-                    "Cannot update admin accounts", 
-                    403,
-                    'ADMIN_CANNOT_UPDATE_ADMIN'
-                );
-            }
-
-            Logger.info('User found for update', requestId, { 
-                userId: userToUpdate._id,
-                userName: userToUpdate.name 
-            });
-
-            // Prepare update data
-            const updateData = {};
-            let hasUpdates = false;
-
-            // Update name if provided
-            if (name !== undefined && name.trim() !== '') {
-                const trimmedName = name.trim();
-                
-                // Validate name format - should contain at least one letter
-                const nameRegex = /^[a-zA-Z\s\-\.\']+$/;
-                const hasLetter = /[a-zA-Z]/.test(trimmedName);
-                
-                if (!nameRegex.test(trimmedName)) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 
-                        400,
-                        'ADMIN_INVALID_NAME_FORMAT'
-                    );
-                }
-                
-                if (!hasLetter) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Name must contain at least one letter", 
-                        400,
-                        'ADMIN_NAME_NO_LETTERS'
-                    );
-                }
-                
-                if (trimmedName.length < 2) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Name must be at least 2 characters long", 
-                        400,
-                        'ADMIN_NAME_TOO_SHORT'
-                    );
-                }
-                
-                if (trimmedName.length > 50) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Name must be less than 50 characters", 
-                        400,
-                        'ADMIN_NAME_TOO_LONG'
-                    );
-                }
-                
-                updateData.name = trimmedName;
-                hasUpdates = true;
-                Logger.info('Updating name field', requestId, { 
-                    oldName: userToUpdate.name,
-                    newName: trimmedName 
-                });
-            }
-
-            // Update email if provided
-            if (email !== undefined) {
-                if (email.trim() === '') {
-                    updateData.email = null;
-                } else {
-                    // Basic email validation
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!emailRegex.test(email)) {
-                        return ResponseHandler.error(
-                            res, 
-                            "Validation failed", 
-                            "Invalid email format", 
-                            400,
-                            'ADMIN_INVALID_EMAIL_FORMAT'
-                        );
-                    }
-                    
-                    const cleanEmail = email.toLowerCase().trim();
-                    
-                    // Check for duplicate email (exclude current user)
-                    Logger.info('Checking email uniqueness', requestId, { 
-                        email: cleanEmail 
-                    });
-                    
-                    try {
-                        const existingUser = await User.findOne({ 
-                            email: cleanEmail, 
-                            _id: { $ne: new mongoose.Types.ObjectId(userId) } 
-                        });
-                        
-                        if (existingUser) {
-                            Logger.warn('Duplicate email found', requestId, { 
-                                email: cleanEmail,
-                                existingUserId: existingUser._id 
-                            });
-                            return ResponseHandler.error(
-                                res, 
-                                "Validation failed", 
-                                "Email is already in use by another user", 
-                                400,
-                                'ADMIN_EMAIL_DUPLICATE'
-                            );
-                        }
-                        
-                        Logger.info('Email available', requestId);
-                    } catch (mongoError) {
-                        Logger.error('MongoDB error during email check', requestId, { 
-                            errorMessage: mongoError.message 
-                        });
-                        return ResponseHandler.error(
-                            res, 
-                            "Database error", 
-                            "Failed to validate email uniqueness", 
-                            500,
-                            'ADMIN_DB_ERROR'
-                        );
-                    }
-                    
-                    updateData.email = cleanEmail;
-                }
-                hasUpdates = true;
-                Logger.info('Updating email field', requestId, { 
-                    oldEmail: userToUpdate.email,
-                    newEmail: updateData.email 
-                });
-            }
-
-            // Update phone if provided
-            if (phone !== undefined && phone.trim() !== '') {
-                // Basic phone validation (10-15 digits)
-                const phoneRegex = /^[0-9]{10,15}$/;
-                const cleanPhone = phone.replace(/\D/g, '');
-                if (!phoneRegex.test(cleanPhone)) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Phone number must be 10-15 digits", 
-                        400,
-                        'ADMIN_INVALID_PHONE_FORMAT'
-                    );
-                }
-                
-                // Check for duplicate phone (exclude current user)
+            try {
                 const existingUser = await User.findOne({ 
-                    phone: cleanPhone, 
+                    email: updateData.email, 
+                    _id: { $ne: new mongoose.Types.ObjectId(userId) } 
+                });
+                
+                if (existingUser) {
+                    Logger.warn('Duplicate email found', requestId, { 
+                        email: updateData.email,
+                        existingUserId: existingUser._id 
+                    });
+                    return ResponseHandler.error(
+                        res, 
+                        "Validation failed", 
+                        "Email is already in use by another user", 
+                        400,
+                        'ADMIN_EMAIL_DUPLICATE'
+                    );
+                }
+                
+                Logger.info('Email available', requestId);
+            } catch (mongoError) {
+                Logger.error('MongoDB error during email check', requestId, { 
+                    errorMessage: mongoError.message 
+                });
+                return ResponseHandler.error(
+                    res, 
+                    "Database error", 
+                    "Failed to validate email uniqueness", 
+                    500,
+                    'ADMIN_DB_ERROR'
+                );
+            }
+        }
+
+        // MongoDB Validation: Check for duplicate phone (exclude current user)
+        if (updateData.phone && updateData.phone !== '') {
+            Logger.info('Checking phone uniqueness', requestId, { 
+                phone: updateData.phone 
+            });
+            
+            try {
+                const existingUser = await User.findOne({ 
+                    phone: updateData.phone, 
                     _id: { $ne: new mongoose.Types.ObjectId(userId) } 
                 });
                 
                 if (existingUser) {
                     Logger.warn('Duplicate phone found', requestId, { 
-                        phone: cleanPhone 
+                        phone: updateData.phone,
+                        existingUserId: existingUser._id 
                     });
                     return ResponseHandler.error(
                         res, 
@@ -1515,173 +1407,100 @@ class AdminAuthController {
                     );
                 }
                 
-                updateData.phone = cleanPhone;
-                hasUpdates = true;
-                Logger.info('Updating phone field', requestId, { 
-                    oldPhone: userToUpdate.phone,
-                    newPhone: cleanPhone 
+                Logger.info('Phone available', requestId);
+            } catch (mongoError) {
+                Logger.error('MongoDB error during phone check', requestId, { 
+                    errorMessage: mongoError.message 
                 });
-            }
-
-            // Update gender if provided
-            if (gender !== undefined) {
-                if (gender.trim() === '') {
-                    updateData.gender = null;
-                } else {
-                    const validGenders = ['male', 'female', 'other'];
-                    if (!validGenders.includes(gender.toLowerCase())) {
-                        return ResponseHandler.error(
-                            res, 
-                            "Validation failed", 
-                            "Gender must be: male, female, or other", 
-                            400,
-                            'ADMIN_INVALID_GENDER'
-                        );
-                    }
-                    updateData.gender = gender.toLowerCase();
-                }
-                hasUpdates = true;
-                Logger.info('Updating gender field', requestId, { 
-                    oldGender: userToUpdate.gender,
-                    newGender: updateData.gender 
-                });
-            }
-
-            // Update age if provided
-            if (age !== undefined) {
-                if (age === '' || age === null) {
-                    updateData.age = null;
-                } else {
-                    const ageNum = parseInt(age);
-                    if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
-                        return ResponseHandler.error(
-                            res, 
-                            "Validation failed", 
-                            "Age must be between 1 and 150", 
-                            400,
-                            'ADMIN_INVALID_AGE'
-                        );
-                    }
-                    updateData.age = ageNum;
-                }
-                hasUpdates = true;
-                Logger.info('Updating age field', requestId, { 
-                    oldAge: userToUpdate.age,
-                    newAge: updateData.age 
-                });
-            }
-
-            // Update profile completion status if provided
-            if (profileCompleted !== undefined) {
-                updateData.profileCompleted = Boolean(profileCompleted);
-                hasUpdates = true;
-                Logger.info('Updating profileCompleted field', requestId, { 
-                    oldValue: userToUpdate.profileCompleted,
-                    newValue: updateData.profileCompleted 
-                });
-            }
-
-            // Update status if provided (convert to isActive field)
-            if (status !== undefined) {
-                const validStatuses = ['Active', 'Inactive'];
-                if (!validStatuses.includes(status)) {
-                    return ResponseHandler.error(
-                        res, 
-                        "Validation failed", 
-                        "Status must be 'Active' or 'Inactive'", 
-                        400,
-                        'ADMIN_INVALID_STATUS'
-                    );
-                }
-                updateData.isActive = (status === 'Active');
-                hasUpdates = true;
-                Logger.info('Updating status field', requestId, { 
-                    oldStatus: userToUpdate.isActive ? 'Active' : 'Inactive',
-                    newStatus: status 
-                });
-            }
-
-            // Check if any updates were provided
-            if (!hasUpdates) {
-                Logger.warn('No updates provided', requestId);
                 return ResponseHandler.error(
                     res, 
-                    "No updates provided", 
-                    "At least one field must be provided for update", 
-                    400,
-                    'ADMIN_NO_UPDATES'
+                    "Database error", 
+                    "Failed to validate phone uniqueness", 
+                    500,
+                    'ADMIN_DB_ERROR'
                 );
             }
+        }
 
-            // Update the user
-            const updatedUser = await User.findByIdAndUpdate(
-                userId,
-                updateData,
-                { 
-                    new: true,
-                    runValidators: true
-                }
-            );
-
-            Logger.info('User updated successfully', requestId, { 
-                userId: updatedUser._id,
-                changedFields: Object.keys(updateData) 
+        // Log what's being updated
+        Object.keys(updateData).forEach(field => {
+            Logger.info(`Updating ${field} field`, requestId, { 
+                oldValue: userToUpdate[field],
+                newValue: updateData[field] 
             });
+        });
 
-            return ResponseHandler.success(res, "User updated successfully", {
-                updatedUser: {
-                    id: updatedUser._id,
-                    name: updatedUser.name || 'New User',
-                    email: updatedUser.email || 'Not provided',
-                    phone: updatedUser.phone,
-                    gender: updatedUser.gender || 'Not specified',
-                    age: updatedUser.age || 'Not specified',
-                    profileCompleted: updatedUser.profileCompleted,
-                    status: updatedUser.isActive ? 'Active' : 'Inactive',
-                    updatedAt: new Date().toISOString()
-                },
-                updatedBy: {
-                    adminId: req.user._id,
-                    adminEmail: req.user.email
-                },
-                changedFields: Object.keys(updateData)
-            });
-
-        } catch (error) {
-            Logger.error('Update user error', requestId, { 
-                errorName: error.name,
-                errorMessage: error.message 
-            });
-            
-            if (error.name === 'ValidationError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    error.message, 
-                    400,
-                    'ADMIN_VALIDATION_ERROR'
-                );
+        // Update the user in MongoDB
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            updateData,
+            { 
+                new: true,
+                runValidators: true
             }
-            
-            if (error.name === 'CastError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid request", 
-                    "Invalid user ID format", 
-                    400,
-                    'ADMIN_INVALID_USER_ID'
-                );
-            }
-            
+        );
+
+        Logger.info('User updated successfully', requestId, { 
+            userId: updatedUser._id,
+            changedFields: Object.keys(updateData) 
+        });
+
+        return ResponseHandler.success(res, "User updated successfully", {
+            updatedUser: {
+                id: updatedUser._id,
+                name: updatedUser.name || 'New User',
+                email: updatedUser.email || 'Not provided',
+                phone: updatedUser.phone,
+                gender: updatedUser.gender || 'Not specified',
+                age: updatedUser.age || 'Not specified',
+                profileCompleted: updatedUser.profileCompleted,
+                isActive: updatedUser.isActive,
+                updatedAt: new Date().toISOString()
+            },
+            updatedBy: {
+                adminId: req.user._id,
+                adminEmail: req.user.email
+            },
+            changedFields: Object.keys(updateData)
+        });
+
+    } catch (error) {
+        Logger.error('Update user error', requestId, { 
+            errorName: error.name,
+            errorMessage: error.message 
+        });
+        console.log(error);
+        
+        if (error.name === 'ValidationError') {
             return ResponseHandler.error(
                 res, 
-                "Server error", 
-                "Failed to update user", 
-                500,
-                'ADMIN_UPDATE_USER_FAILED'
+                "Validation failed", 
+                error.message, 
+                400,
+                'ADMIN_VALIDATION_ERROR'
             );
         }
+        
+        if (error.name === 'CastError') {
+            return ResponseHandler.error(
+                res, 
+                "Invalid request", 
+                "Invalid user ID format", 
+                400,
+                'ADMIN_INVALID_USER_ID'
+            );
+        }
+    
+        return ResponseHandler.error(
+            res, 
+            "Server error", 
+            "Failed to update user", 
+            500,
+            'ADMIN_UPDATE_USER_FAILED'
+        );
     }
+}
+
 }
 
 module.exports = new AdminAuthController();

@@ -33,6 +33,14 @@ class AuthController {
             const { phone } = req.body;
             Logger.debug(requestId, `Extracted phone number`, { phone, type: typeof phone });
 
+            Logger.info(requestId, 'Finding user is inactive or not in the db before sending OTP', { phone });
+            const user = await User.findOne({ phone: OTPUtils.cleanPhoneNumber(phone) }).select('isActive');
+
+            if (user && !user.isActive) {
+                Logger.warn(requestId, 'Attempt to send OTP to inactive user', { phone });
+                return ResponseHandler.error(res, 'User account is inactive. Please contact support.', 'AUTH_USER_INACTIVE', 403);
+            }
+
             // Use service for complete OTP workflow
             Logger.info(requestId, 'Calling OTPService.sendOTP');
             const result = await OTPService.sendOTP(phone);
