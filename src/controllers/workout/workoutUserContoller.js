@@ -610,7 +610,7 @@ async searchWorkouts(req, res) {
 
     Logger.info(`Search completed for query: "${query}" - Found ${totalResults} results`);
 
-    return ResponseHandler.success(res, {
+    return ResponseHandler.success(res,'Workouts retrieved successfully', {
       workouts,
       pagination: {
         currentPage: parseInt(page),
@@ -627,7 +627,7 @@ async searchWorkouts(req, res) {
         calories: { min: minCalories, max: maxCalories },
         equipment
       }
-    }, 'Workouts retrieved successfully');
+    });
 
   } catch (error) {
     Logger.error('Search workouts error:', error);
