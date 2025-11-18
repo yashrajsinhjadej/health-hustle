@@ -32,21 +32,6 @@ async function dailyHealthService({ userId, date, timezone, requestId }) {
     // ------------------ 3️⃣ Fetch user goals ------------------ //
     let userGoals = await Goals.findOne({ userId }).lean();
 
-    // Default goals fallback (same as old controller)
-    if (!userGoals) {
-        Logger.info("Creating default goals for user", requestId);
-
-        userGoals = {
-            stepsGoal: 10000,
-            caloriesBurnGoal: 2000,
-            waterIntakeGoal: 8,
-            caloriesIntakeGoal: 2000,
-            sleepGoal: { hours: 8 }
-        };
-
-        await Goals.create({ userId, ...userGoals });
-    }
-
     const cleanGoals = {
         stepsGoal: userGoals.stepsGoal,
         caloriesBurnGoal: userGoals.caloriesBurnGoal,

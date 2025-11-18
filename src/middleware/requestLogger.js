@@ -11,11 +11,26 @@ module.exports = function requestLogger(req, res, next) {
     // Override res.send to capture outgoing response
     const originalSend = res.send;
 
-    res.send = function (data) {
-        Logger.logResponse(requestId, res.statusCode, data);
+  res.send = function (data) {
+    let preview = "";
 
-        return originalSend.call(this, data);
-    };
+    try {
+        const stringData = typeof data === "string" ? data : JSON.stringify(data);
+
+        preview = stringData.length > 200
+            ? stringData.substring(0, 200) + "...[truncated]"
+            : stringData;
+
+        Logger.logResponse(requestId, res.statusCode, {
+            size: stringData.length,
+            preview
+        });
+    } catch (err) {
+        Logger.logResponse(requestId, res.statusCode, "Unable to parse body");
+    }
+
+    return originalSend.call(this, data);
+};
 
     next();
 };

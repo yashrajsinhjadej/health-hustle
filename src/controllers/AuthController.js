@@ -13,7 +13,7 @@ const redis = require('../utils/redisClient');
 class AuthController {
 
     // Send OTP to phone number
-    async sendOTP(req, res) {
+async sendOTP(req, res) {
         const requestId = Logger.generateId('auth-send-otp');
         
         try {
@@ -63,10 +63,8 @@ class AuthController {
             });
             return ResponseHandler.serverError(res, "Failed to send OTP");
         }
-    }
+}
 
-    // Verify OTP and login/register user
-   // Verify OTP and login/register user
 async verifyOTP(req, res) {
     const requestId = Logger.generateId('auth-verify-otp');
 
@@ -153,9 +151,8 @@ async verifyOTP(req, res) {
     }
 }
 
-
     // Get current user profile
-    async getProfile(req, res) {
+async getProfile(req, res) {
         const requestId = Logger.generateId('auth-profile');
         
         try {
@@ -179,10 +176,10 @@ async verifyOTP(req, res) {
             });
             return ResponseHandler.serverError(res, "Failed to fetch profile");
         }
-    }
+}
 
     // Update user profile
-    async updateProfile(req, res) {
+async updateProfile(req, res) {
         try {
             const user = req.user;
             const updateData = {};
@@ -315,8 +312,9 @@ async verifyOTP(req, res) {
             });
             return ResponseHandler.serverError(res, "Failed to update profile");
         }
-    }
-async logout(req, res) {
+}
+
+    async logout(req, res) {
     const requestId = Logger.generateId('auth-logout');
 
     try {

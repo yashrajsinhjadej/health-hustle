@@ -86,16 +86,7 @@ module.exports = async function last7DaysService({
     // Fetch Goals + Today’s streak/completions
     // ---------------------------------------------
     let userGoals = await Goals.findOne({ userId });
-    if (!userGoals) {
-        userGoals = await Goals.create({
-            userId,
-            stepsGoal: 10000,
-            caloriesBurnGoal: 2000,
-            waterIntakeGoal: 8,
-            caloriesIntakeGoal: 2000,
-            sleepGoal: { hours: 8 }
-        });
-    }
+ 
 
     const todayHealth = byDate[todayDate];
 

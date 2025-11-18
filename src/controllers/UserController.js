@@ -360,7 +360,6 @@ async function getUserProfile(req, res) {
     }
 }
 
-
 async function updateFirstTimeProfile(req, res) {
     const requestId = `user-firsttime_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
@@ -640,9 +639,6 @@ const deleteUserAccount = async (req, res) => {
         return ResponseHandler.serverError(res, "Failed to delete user account", 'USER_DELETE_FAILED');
     }
 };
-
-
-
 
 const addProfilePicture = async (req, res) => {
     const userId = req.user?._id;

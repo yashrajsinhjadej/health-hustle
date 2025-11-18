@@ -100,19 +100,7 @@ async function fetchUsers(queryParams) {
 
 
 class AdminAuthController {
-    // Generate JWT token
-    generateToken(userId) {
-        if (!process.env.JWT_SECRET) {
-            throw new Error('JWT_SECRET environment variable is required');
-        }
-        return jwt.sign(
-            { userId,
-              role:"user"
-             },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '90d' }
-        );
-    }
+    
 async signup(req, res) {
     const requestId = `admin-signup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -232,7 +220,7 @@ async signup(req, res) {
 }
 
 
-  async login(req, res) {
+async login(req, res) {
     const requestId = `admin-login_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
@@ -342,7 +330,7 @@ async signup(req, res) {
 }
 
     // Get admin profile
-    async getProfile(req, res) {
+async getProfile(req, res) {
         const requestId = `admin-profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
             Logger.info('Get admin profile START', requestId, { 
@@ -413,7 +401,7 @@ async signup(req, res) {
     }
 
     // Request password reset for admin (POST /admin/forgot-password)
-    async forgotPassword(req, res) {
+async forgotPassword(req, res) {
         const requestId = `admin-forgot-password_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
             Logger.info('Admin forgot password START', requestId, { 
@@ -870,7 +858,7 @@ async resetPassword(req, res) {
     // ============================================
     // Dashboard Function - Use fetchUsers()
     // ============================================
-    async dashboard(req, res) {
+async dashboard(req, res) {
         const requestId = `admin-dashboard_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         Logger.info('Admin dashboard START', requestId, { 
@@ -967,7 +955,7 @@ async resetPassword(req, res) {
     // ============================================
     // Export Dashboard Data - Use fetchUsers()
     // ============================================
-    async exportDashboardData(req, res) {
+async exportDashboardData(req, res) {
         const requestId = `admin-export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         Logger.info('Export dashboard data START', requestId, { 
             ip: req.ip || req.connection.remoteAddress,
@@ -1092,7 +1080,7 @@ async logout(req, res) {
 }
 
     // Get Individual User Details - Enhanced with comprehensive validation and security
-    async getUser(req, res) {
+async getUser(req, res) {
         const requestId = `admin-getuser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         try {
             Logger.info('Admin get user START', requestId, { 

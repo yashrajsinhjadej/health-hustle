@@ -26,11 +26,7 @@ class WaterConverter {
      * @returns {number} - Number of glasses
      */
     static mlToGlasses(ml) {
-        Logger.info('WaterConverter', 'mlToGlasses', 'Converting ml to glasses', {
-            inputMl: ml,
-            outputGlasses: ml / this.GLASS_TO_ML
-        });
-        
+
         return ml / this.GLASS_TO_ML;
     }
 }

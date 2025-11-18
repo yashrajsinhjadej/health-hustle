@@ -100,8 +100,6 @@ async getcategory(req, res) {
   }
 }
 
-
-
 async homepage(req, res) {
     const requestId = `homepage_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const CACHE_KEY = "homepage:data";
