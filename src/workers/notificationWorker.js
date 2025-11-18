@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { Worker } = require("bullmq");
 const Redis = require("ioredis");
-const connectDB = require("../utils/mongoConnect");
+const connectDB = require("../config/db");
 const FCMService = require("../services/FCMService");
 const NotificationSchedule = require("../models/NotificationSchedule");
 const NotificationLog = require("../models/NotificationLog");
