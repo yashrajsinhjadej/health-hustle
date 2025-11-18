@@ -118,7 +118,7 @@ const dailyHealthDataSchema = new mongoose.Schema(
 
     goalcomplete: {
       type: Boolean,
-      default: true,
+      default: false,
     },
 
     // Notes & Additional Data

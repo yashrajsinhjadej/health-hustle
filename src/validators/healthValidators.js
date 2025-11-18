@@ -253,35 +253,53 @@ const validatecalories = [
 
 // Validation for bulk update (can include historical dates)
 const validateBulkUpdate = [
-    body('health_data')
-        .notEmpty()
-        .withMessage('health_data is required')
-        .isArray()
-        .withMessage('health_data must be an array')
+    // Validate root array
+    body("health_data")
+        .notEmpty().withMessage("health_data is required")
+        .isArray().withMessage("health_data must be an array")
         .custom((value) => {
             if (value.length === 0) {
-                throw new Error('health_data array cannot be empty');
+                throw new Error("health_data array cannot be empty");
             }
             if (value.length > 30) {
-                throw new Error('Cannot process more than 30 days of data at once');
+                throw new Error("Cannot process more than 30 days of data at once");
             }
             return true;
         }),
-    
-    body('health_data.*.date')
-        .notEmpty()
-        .withMessage('Date is required for each health data entry')
+
+    // Ensure unique dates
+    body("health_data").custom((value) => {
+        const dates = value.map((item) => item.date);
+        const duplicates = dates.filter((d, i) => dates.indexOf(d) !== i);
+        if (duplicates.length > 0) {
+            throw new Error(`Duplicate dates found: ${duplicates.join(", ")}`);
+        }
+        return true;
+    }),
+
+    // Validate each date
+    body("health_data.*.date")
+        .notEmpty().withMessage("Date is required for each health data entry")
         .custom(isValidDateFormat)
         .custom((value, { req }) => {
-            const timezone = req.headers.timezone || 'UTC'; 
+            const timezone = req.headers.timezone || "UTC";
             return isDateNotFutureInTimezone(value, timezone);
         }),
-    
-    body('health_data.*.data')
-        .notEmpty()
-        .withMessage('Data object is required for each health data entry')
-        .isObject()
-        .withMessage('Data must be an object')
+
+    // Validate each data object exists
+    body("health_data.*.data")
+        .notEmpty().withMessage("Data object is required for each health data entry")
+        .isObject().withMessage("Data must be an object")
+        .custom((obj) => {
+            if (Object.keys(obj).length === 0) {
+                throw new Error("Data object cannot be empty");
+            }
+            return true;
+        }),
+
+    // Optional: Validate inner fields if they exist
+    body("health_data.*.data.steps").optional().isObject(),
+    body("health_data.*.data.calories").optional().isObject(),
 ];
 
 
