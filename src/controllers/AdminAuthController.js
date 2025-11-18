@@ -12,6 +12,9 @@ const {Parser}=require('json2csv');
 const otpmodel = require('../models/OTP');
 const dailyHealthData = require('../models/DailyHealthData');
 const Goals = require('../models/Goals');
+const redis = require('../utils/redisClient')
+
+
 
 const ConnectionHelper = require('../utils/connectionHelper');
 
@@ -110,362 +113,233 @@ class AdminAuthController {
             { expiresIn: process.env.JWT_EXPIRES_IN || '90d' }
         );
     }
+async signup(req, res) {
+    const requestId = `admin-signup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Admin Signup
-    async signup(req, res) {
-        const requestId = `admin-signup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin signup START', requestId, { 
-                url: req.originalUrl,
-                ip: req.ip || req.connection.remoteAddress 
-            });
-            
-            const { name, email, password } = req.body;
-            
-            // Basic validation
-            if (!name || !email || !password) {
-                Logger.warn('Missing required fields', requestId);
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Name, email, and password are required",
-                    400,
-                    'ADMIN_MISSING_FIELDS'
-                );
-            }
+    try {
+        Logger.info('Admin signup START', requestId);
 
-            // Validate name format
-            const trimmedName = name.trim();
-            const nameRegex = /^[a-zA-Z\s\-\.\']+$/; // Allow letters, spaces, hyphens, dots, apostrophes
-            const hasLetter = /[a-zA-Z]/.test(trimmedName); // Must contain at least one letter
-            
-            if (!nameRegex.test(trimmedName)) {
-                Logger.warn('Invalid name format', requestId, { name: trimmedName });
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Name can only contain letters, spaces, hyphens, dots, and apostrophes", 
-                    400,
-                    'ADMIN_INVALID_NAME_FORMAT'
-                );
-            }
-            
-            if (!hasLetter) {
-                Logger.warn('Name must contain letters', requestId);
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Name must contain at least one letter", 
-                    400,
-                    'ADMIN_NAME_NO_LETTERS'
-                );
-            }
-            
-            if (trimmedName.length < 2) {
-                Logger.warn('Name too short', requestId, { length: trimmedName.length });
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Name must be at least 2 characters long", 
-                    400,
-                    'ADMIN_NAME_TOO_SHORT'
-                );
-            }
-            
-            if (trimmedName.length > 50) {
-                Logger.warn('Name too long', requestId, { length: trimmedName.length });
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Name must be less than 50 characters", 
-                    400,
-                    'ADMIN_NAME_TOO_LONG'
-                );
-            }
+        const { name, email, password } = req.body;
 
-            if (password.length < (parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6)) {
-                Logger.warn('Password too short', requestId);
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    `Password must be at least ${parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6} characters long`,
-                    400,
-                    'ADMIN_PASSWORD_TOO_SHORT'
-                );
-            }
-
-            // Ensure MongoDB connection is ready
-            Logger.info('Ensuring MongoDB connection', requestId);
-            await ConnectionHelper.ensureConnection();
-
-            // Check if admin with this email already exists
-            Logger.info('Checking for existing admin', requestId, { email });
-            const existingAdmin = await User.findOne({ email: email.toLowerCase(), role: 'admin' });
-            
-            if (existingAdmin) {
-                Logger.warn('Admin already exists', requestId, { email });
-                return ResponseHandler.error(
-                    res, 
-                    "Registration failed", 
-                    "Admin with this email already exists",
-                    400,
-                    'ADMIN_EMAIL_EXISTS'
-                );
-            }
-
-            // Hash password
-            Logger.info('Hashing password', requestId);
-            const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
-            const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-            // Create new admin user
-            Logger.info('Creating new admin user', requestId);
-            const newAdmin = new User({
-                name: name.trim(),
-                email: email.toLowerCase().trim(),
-                password: hashedPassword,
-                role: 'admin',
-                profileCompleted: false, // Keep false for admin users - they don't need user profile fields
-                signupAt: new Date()
-            });
-
-            const savedAdmin = await newAdmin.save();
-            Logger.info('New admin created successfully', requestId, { 
-                adminId: savedAdmin._id,
-                email: savedAdmin.email 
-            });
-
-            // Generate JWT token
-            Logger.info('Generating JWT token', requestId);
-            const adminController = new AdminAuthController();
-            const token = adminController.generateToken(savedAdmin._id);
-
-            return ResponseHandler.success(res, "Admin registration successful", {
-                token: token,
-                admin: {
-                    id: savedAdmin._id,
-                    name: savedAdmin.name,
-                    email: savedAdmin.email,
-                    role: savedAdmin.role,
-                    signupAt: savedAdmin.signupAt
-                }
-            });
-
-        } catch (error) {
-            Logger.error('Admin signup error', requestId, { 
-                errorName: error.name, 
-                errorMessage: error.message 
-            });
-            return ResponseHandler.serverError(res, "Registration failed", 'ADMIN_SIGNUP_FAILED');
-        }
-    }
-
-    // Admin Login
-    async login(req, res) {
-        const requestId = `admin-login_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin login START', requestId, { 
-                url: req.originalUrl,
-                ip: req.ip || req.connection.remoteAddress 
-            });
-            
-            const { email, password } = req.body;
-            
-            // Basic validation
-            if (!email || !password) {
-                Logger.warn('Missing required fields', requestId);
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Email and password are required", 
-                    400,
-                    'ADMIN_LOGIN_MISSING_FIELDS'
-                );
-            }
-
-            // Ensure MongoDB connection is ready
-            Logger.info('Ensuring MongoDB connection', requestId);
-            try {
-                await ConnectionHelper.ensureConnection();
-            } catch (connectionError) {
-                Logger.error('Database connection failed', requestId, { error: connectionError.message });
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Database connection failed. Please try again later.", 
-                    503,
-                    'ADMIN_DB_CONNECTION_FAILED'
-                );
-            }
-
-            // Find admin user
-            Logger.info('Looking for admin user', requestId, { email });
-            let admin;
-            try {
-                admin = await User.findOne({ 
-                    email: email.toLowerCase(), 
-                    role: 'admin' 
-                });
-            } catch (dbError) {
-                Logger.error('Database query failed', requestId, { error: dbError.message });
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Database query failed. Please try again later.", 
-                    500,
-                    'ADMIN_DB_QUERY_FAILED'
-                );
-            }
-
-            if (!admin) {
-                Logger.warn('Admin not found', requestId, { email });
-                return ResponseHandler.error(
-                    res, 
-                    "Login failed", 
-                    "Invalid email or password", 
-                    401,
-                    'ADMIN_INVALID_CREDENTIALS'
-                );
-            }
-
-            // Verify password
-            Logger.info('Verifying password', requestId);
-            let isPasswordValid;
-            try {
-                isPasswordValid = await bcrypt.compare(password, admin.password);
-            } catch (bcryptError) {
-                Logger.error('Password verification failed', requestId, { error: bcryptError.message });
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Password verification failed. Please try again later.", 
-                    500,
-                    'ADMIN_PASSWORD_VERIFY_FAILED'
-                );
-            }
-
-            if (!isPasswordValid) {
-                Logger.warn('Invalid password', requestId, { email });
-                return ResponseHandler.error(
-                    res, 
-                    "Login failed", 
-                    "Invalid email or password", 
-                    401,
-                    'ADMIN_INVALID_CREDENTIALS'
-                );
-            }
-
-            // Generate JWT token with admin ID first to get the exact iat
-            Logger.info('Generating JWT token', requestId, { adminId: admin._id });
-            let token;
-            try {
-                const adminController = new AdminAuthController();
-                token = adminController.generateToken(admin._id);
-            } catch (jwtError) {
-                Logger.error('JWT generation failed', requestId, { error: jwtError.message });
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Token generation failed. Please check server configuration.", 
-                    500,
-                    'ADMIN_JWT_GENERATION_FAILED'
-                );
-            }
-            
-            // Extract the iat from the token to set lastLoginAt safely before it
-            let decoded;
-            try {
-                decoded = jwt.verify(token, process.env.JWT_SECRET);
-            } catch (jwtVerifyError) {
-                Logger.error('JWT verification failed', requestId, { error: jwtVerifyError.message });
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Token verification failed. Please try again later.", 
-                    500,
-                    'ADMIN_JWT_VERIFY_FAILED'
-                );
-            }
-            
-            const tokenIssuedAt = new Date(decoded.iat * 1000); // Convert to milliseconds
-            
-            Logger.info('Updating lastLoginAt', requestId, { 
-                tokenIssuedAt: tokenIssuedAt.toISOString() 
-            });
-            
-            admin.lastLoginAt = new Date(tokenIssuedAt.getTime() - 1000); // 1 second before
-            
-            // Save admin with updated lastLoginAt
-            try {
-                await admin.save();
-            } catch (saveError) {
-                Logger.warn('Failed to save admin lastLoginAt', requestId, { error: saveError.message });
-                // Don't fail the login for this - just log the error
-            }
-
-            Logger.info('Admin login successful', requestId, { 
-                adminId: admin._id,
-                email: admin.email 
-            });
-
-            return ResponseHandler.success(res, "Login successful", {
-                token: token,
-                admin: {
-                    id: admin._id,
-                    name: admin.name,
-                    email: admin.email,
-                    role: admin.role,
-                    lastLoginAt: admin.lastLoginAt
-                }
-            });
-
-        } catch (error) {
-            Logger.error('Admin login error', requestId, { 
-                errorName: error.name, 
-                errorMessage: error.message 
-            });
-            
-            // Handle specific error types
-            if (error.name === 'ValidationError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Invalid input data provided", 
-                    400,
-                    'ADMIN_VALIDATION_ERROR'
-                );
-            }
-            
-            if (error.name === 'MongoNetworkError' || error.name === 'MongoServerError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Database connection issue. Please try again later.", 
-                    503,
-                    'ADMIN_MONGO_ERROR'
-                );
-            }
-            
-            if (error.name === 'JsonWebTokenError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Server error", 
-                    "Authentication token error. Please try again later.", 
-                    500,
-                    'ADMIN_JWT_ERROR'
-                );
-            }
-            
-            // Generic server error for unhandled cases
+        // Basic validation
+        if (!name || !email || !password) {
             return ResponseHandler.error(
-                res, 
-                "Server error", 
-                "Login failed. Please try again later.", 
-                500,
-                'ADMIN_LOGIN_FAILED'
+                res,
+                "Validation failed",
+                "Name, email, and password are required",
+                400,
+                'ADMIN_MISSING_FIELDS'
             );
         }
+
+        // Name validation
+        const trimmedName = name.trim();
+        const nameRegex = /^[a-zA-Z\s\-\.\']+$/;
+        if (!nameRegex.test(trimmedName) || trimmedName.length < 2 || trimmedName.length > 50) {
+            return ResponseHandler.error(
+                res,
+                "Validation failed",
+                "Invalid name format",
+                400,
+                'ADMIN_INVALID_NAME'
+            );
+        }
+
+        if (password.length < (parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6)) {
+            return ResponseHandler.error(
+                res,
+                "Validation failed",
+                `Password must be at least ${parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6} characters long`,
+                400,
+                'ADMIN_PASSWORD_TOO_SHORT'
+            );
+        }
+
+        // Ensure database connection
+        await ConnectionHelper.ensureConnection();
+
+        // Check if admin email exists
+        const existingAdmin = await User.findOne({ email: email.toLowerCase(), role: 'admin' });
+
+        if (existingAdmin) {
+            return ResponseHandler.error(
+                res,
+                "Registration failed",
+                "Admin with this email already exists",
+                400,
+                'ADMIN_EMAIL_EXISTS'
+            );
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12);
+
+        // Create admin user
+        const newAdmin = new User({
+            name: trimmedName,
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            role: "admin",
+            signupAt: new Date(),
+            profileCompleted: false
+        });
+
+        const savedAdmin = await newAdmin.save();
+
+        // Generate token with sessionId
+        const sessionId = uuidv4();
+
+        const token = jwt.sign(
+            { 
+                userId: savedAdmin._id.toString(),
+                role: "admin",
+                sessionId
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || "365d" }
+        );
+
+        // Store admin session in Redis (multi-device)
+        const redisKey = `session:admin:${savedAdmin._id}:${sessionId}`;
+
+        await redis.setEx(
+            redisKey,
+            parseInt(process.env.REDIS_SESSION_TTL) || 31536000, // 1 year default
+            "valid"
+        );
+
+        Logger.info('Admin signup successful', requestId, { adminId: savedAdmin._id });
+
+        return ResponseHandler.success(res, "Admin registration successful", {
+            token: token,
+            admin: {
+                id: savedAdmin._id,
+                name: savedAdmin.name,
+                email: savedAdmin.email,
+                role: savedAdmin.role,
+                signupAt: savedAdmin.signupAt
+            }
+        });
+
+    } catch (error) {
+        Logger.error('Admin signup error', requestId, {
+            errorName: error.name,
+            errorMessage: error.message
+        });
+
+        return ResponseHandler.serverError(res, "Registration failed", 'ADMIN_SIGNUP_FAILED');
     }
+}
+
+
+  async login(req, res) {
+    const requestId = `admin-login_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+        Logger.info('Admin login START', requestId, { 
+            url: req.originalUrl,
+            ip: req.ip || req.connection.remoteAddress 
+        });
+
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return ResponseHandler.error(
+                res,
+                "Validation failed",
+                "Email and password are required",
+                400,
+                "ADMIN_LOGIN_MISSING_FIELDS"
+            );
+        }
+
+        // 1️⃣ Connect to Mongo
+        await ConnectionHelper.ensureConnection();
+
+        // 2️⃣ Find admin
+        Logger.info('Finding admin', requestId, { email });
+        const admin = await User.findOne({
+            email: email.toLowerCase(),
+            role: "admin"
+        });
+
+        if (!admin) {
+            return ResponseHandler.error(
+                res,
+                "Login failed",
+                "Invalid email or password",
+                401,
+                "ADMIN_INVALID_CREDENTIALS"
+            );
+        }
+
+        // 3️⃣ Check password
+        const isPasswordValid = await bcrypt.compare(password, admin.password);
+        if (!isPasswordValid) {
+            return ResponseHandler.error(
+                res,
+                "Login failed",
+                "Invalid email or password",
+                401,
+                "ADMIN_INVALID_CREDENTIALS"
+            );
+        }
+
+        // 4️⃣ Generate session ID for Redis
+        const sessionId = uuidv4();
+
+        // 5️⃣ Store admin session in Redis (multi-device)
+        const redisKey = `session:admin:${admin._id}:${sessionId}`;
+        await redis.set(
+            redisKey,
+            1,
+            { EX: parseInt(process.env.REDIS_SESSION_TTL, 10) }
+        );
+
+        Logger.info("Admin Redis session created", requestId, {
+            redisKey,
+            ttl: process.env.REDIS_SESSION_TTL
+        });
+
+        // 6️⃣ Generate JWT (with sessionId + role)
+        const token = jwt.sign(
+            {
+                userId: admin._id,
+                role: "admin",
+                sessionId
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN }
+        );
+
+        Logger.success("Admin login successful", requestId, {
+            adminId: admin._id
+        });
+
+        return ResponseHandler.success(res, "Login successful", {
+            token,
+            admin: {
+                id: admin._id,
+                name: admin.name,
+                email: admin.email,
+                role: "admin"
+            }
+        });
+
+    } catch (error) {
+        Logger.error('Admin login error', requestId, {
+            errorName: error.name,
+            errorMessage: error.message,
+            stack: error.stack
+        });
+
+        return ResponseHandler.serverError(
+            res,
+            "Server error. Login failed.",
+            "ADMIN_LOGIN_FAILED"
+        );
+    }
+}
 
     // Get admin profile
     async getProfile(req, res) {
@@ -674,291 +548,323 @@ class AdminAuthController {
         }
     }
 
-    // Reset password with token (POST /admin/reset-password)
-    async resetPassword(req, res) {
-        const requestId = `admin-reset-password_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin reset password START', requestId, { 
-                ip: req.ip || req.connection.remoteAddress,
-                tokenProvided: !!req.body.token,
-                passwordProvided: !!req.body.password
-            });
+// Reset password with token (POST /admin/reset-password)
+async resetPassword(req, res) {
+    const requestId = `admin-reset-password_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+        Logger.info('Admin reset password START', requestId, { 
+            ip: req.ip || req.connection.remoteAddress,
+            tokenProvided: !!req.body.token,
+            passwordProvided: !!req.body.password
+        });
 
-            const { token, password } = req.body;
+        const { token, password } = req.body;
 
-            // Validate input
-            if (!token || !password) {
-                Logger.warn('Missing required fields for password reset', requestId);
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    "Token and password are required", 
-                    400,
-                    'ADMIN_RESET_MISSING_FIELDS'
-                );
-            }
-
-            const minPasswordLength = parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6;
-            if (password.length < minPasswordLength) {
-                Logger.warn('Password too short', requestId, { 
-                    providedLength: password.length,
-                    requiredLength: minPasswordLength 
-                });
-                return ResponseHandler.error(
-                    res, 
-                    "Validation failed", 
-                    `Password must be at least ${minPasswordLength} characters long`, 
-                    400,
-                    'ADMIN_PASSWORD_TOO_SHORT'
-                );
-            }
-
-            // Ensure MongoDB connection
-            await ConnectionHelper.ensureConnection();
-
-            // Find the password reset record
-            const passwordReset = await PasswordReset.findOne({ 
-                token: token,
-                used: false,
-                expiresAt: { $gt: new Date() }
-            }).populate('userId');
-
-            if (!passwordReset) {
-                Logger.warn('Invalid or expired reset token', requestId, { 
-                    tokenPrefix: token.substring(0, 8) 
-                });
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid token", 
-                    "Invalid or expired reset token", 
-                    400,
-                    'ADMIN_RESET_INVALID_TOKEN'
-                );
-            }
-
-            const admin = passwordReset.userId;
-
-            // Verify it's an admin user
-            if (!admin || admin.role !== 'admin') {
-                Logger.warn('Reset token not associated with admin user', requestId, { 
-                    userId: admin ? admin._id : 'null',
-                    role: admin ? admin.role : 'null' 
-                });
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid token", 
-                    "Invalid reset token", 
-                    400,
-                    'ADMIN_RESET_INVALID_TOKEN'
-                );
-            }
-
-            // Hash new password
-            Logger.info('Hashing new password', requestId, { adminId: admin._id });
-            const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
-            const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-            // Update admin password
-            admin.password = hashedPassword;
-            admin.lastLoginAt = new Date(); // Invalidate existing sessions for security
-            await admin.save();
-
-            // Mark token as used and delete it
-            await PasswordReset.deleteOne({ _id: passwordReset._id });
-            Logger.info('Password reset completed successfully', requestId, { 
-                adminId: admin._id,
-                email: admin.email 
-            });
-
-            return ResponseHandler.success(res, "Password has been reset successfully. You can now login with your new password.");
-
-        } catch (error) {
-            Logger.error('Admin reset password error', requestId, { 
-                errorName: error.name,
-                errorMessage: error.message 
-            });
+        // Validate input
+        if (!token || !password) {
+            Logger.warn('Missing required fields for password reset', requestId);
             return ResponseHandler.error(
                 res, 
-                "Server error", 
-                "Failed to reset password. Please try again later.", 
-                500,
-                'ADMIN_RESET_PASSWORD_FAILED'
+                "Validation failed", 
+                "Token and password are required", 
+                400,
+                'ADMIN_RESET_MISSING_FIELDS'
             );
         }
+
+        const minPasswordLength = parseInt(process.env.ADMIN_MIN_PASSWORD_LENGTH) || 6;
+        if (password.length < minPasswordLength) {
+            Logger.warn('Password too short', requestId);
+            return ResponseHandler.error(
+                res, 
+                "Validation failed", 
+                `Password must be at least ${minPasswordLength} characters long`, 
+                400,
+                'ADMIN_PASSWORD_TOO_SHORT'
+            );
+        }
+
+        // Ensure MongoDB connection
+        await ConnectionHelper.ensureConnection();
+
+        // Find valid reset token
+        const passwordReset = await PasswordReset.findOne({ 
+            token: token,
+            used: false,
+            expiresAt: { $gt: new Date() }
+        }).populate('userId');
+
+        if (!passwordReset) {
+            Logger.warn('Invalid or expired reset token', requestId);
+            return ResponseHandler.error(
+                res, 
+                "Invalid token", 
+                "Invalid or expired reset token", 
+                400,
+                'ADMIN_RESET_INVALID_TOKEN'
+            );
+        }
+
+        const admin = passwordReset.userId;
+
+        // Must be admin
+        if (!admin || admin.role !== 'admin') {
+            Logger.warn('Reset token not associated with admin user', requestId);
+            return ResponseHandler.error(
+                res, 
+                "Invalid token", 
+                "Invalid reset token", 
+                400,
+                'ADMIN_RESET_INVALID_TOKEN'
+            );
+        }
+
+        // Hash new password
+        Logger.info('Hashing new password', requestId, { adminId: admin._id });
+        const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Update password
+        admin.password = hashedPassword;
+        await admin.save();
+
+        // 1️⃣ Delete ALL Redis sessions for this admin
+        try {
+            const pattern = `session:admin:${admin._id}:*`;
+
+            for await (const key of redis.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+                await redis.del(key);
+                Logger.info('Deleted admin session key', requestId, { key });
+            }
+
+            Logger.info('All admin Redis sessions cleared', requestId, { adminId: admin._id });
+
+        } catch (redisErr) {
+            Logger.warn('Redis session cleanup failed (non-blocking)', requestId, {
+                error: redisErr.message
+            });
+        }
+
+        // Mark token as used (delete it completely)
+        await PasswordReset.deleteOne({ _id: passwordReset._id });
+
+        Logger.info('Password reset completed successfully', requestId, { 
+            adminId: admin._id,
+            email: admin.email 
+        });
+
+        return ResponseHandler.success(res, "Password has been reset successfully. You can now login with your new password.");
+
+    } catch (error) {
+        Logger.error('Admin reset password error', requestId, { 
+            errorName: error.name,
+            errorMessage: error.message 
+        });
+        return ResponseHandler.error(
+            res, 
+            "Server error", 
+            "Failed to reset password. Please try again later.", 
+            500,
+            'ADMIN_RESET_PASSWORD_FAILED'
+        );
     }
+}
 
    
     // Delete User and return updated list with pagination
-    async deleteUser(req, res) {
-        const requestId = `admin-delete-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin delete user START', requestId, { 
-                userId: req.params.userId,
-                ip: req.ip || req.connection.remoteAddress
+ async deleteUser(req, res) {
+    const requestId = `admin-delete-user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+        Logger.info('Admin delete user START', requestId, { 
+            userId: req.params.userId,
+            ip: req.ip || req.connection.remoteAddress
+        });
+
+        // Ensure DB connection
+        await ConnectionHelper.ensureConnection();
+
+        const { userId } = req.params;
+        const { 
+            page = 1, 
+            limit = 10, 
+            search = '', 
+            status = '' 
+        } = req.body;
+
+        Logger.info('Deleting user', requestId, { userId });
+
+        // 1️⃣ Check if user exists and is not admin
+        const userToDelete = await User.findById(userId);
+        if (!userToDelete) {
+            Logger.warn('User not found for deletion', requestId, { userId });
+            return ResponseHandler.error(
+                res,
+                "User not found",
+                "The specified user does not exist",
+                404,
+                'ADMIN_USER_NOT_FOUND'
+            );
+        }
+
+        if (userToDelete.role === 'admin') {
+            Logger.warn('Attempted to delete admin user', requestId, { 
+                userId,
+                email: userToDelete.email 
             });
-            
-            // Ensure database connection
-            await ConnectionHelper.ensureConnection();
+            return ResponseHandler.error(
+                res,
+                "Cannot delete admin",
+                "Admin users cannot be deleted",
+                403,
+                'ADMIN_CANNOT_DELETE_ADMIN'
+            );
+        }
 
-            const { userId } = req.params;
-            const { 
-                page = 1, 
-                limit = 10, 
-                search = '', 
-                status = '' 
-            } = req.body;
+        // 2️⃣ Delete Redis session for this USER
+        try {
+            const redisKey = `session:user:${userId}`;
+            const deleted = await redis.del(redisKey);
 
-            Logger.info('Deleting user', requestId, { userId });
-            
-            // 1. Check if user exists and is not an admin
-            const userToDelete = await User.findById(userId);
-            if (!userToDelete) {
-                Logger.warn('User not found for deletion', requestId, { userId });
-                return ResponseHandler.error(
-                    res, 
-                    "User not found", 
-                    "The specified user does not exist", 
-                    404,
-                    'ADMIN_USER_NOT_FOUND'
-                );
-            }
+            Logger.info('User Redis session deleted', requestId, { 
+                redisKey,
+                deleted 
+            });
+        } catch (redisErr) {
+            Logger.warn('Redis session deletion failed (non-blocking)', requestId, {
+                error: redisErr.message
+            });
+        }
 
-            if (userToDelete.role === 'admin') {
-                Logger.warn('Attempted to delete admin user', requestId, { 
-                    userId,
-                    email: userToDelete.email 
-                });
-                return ResponseHandler.error(
-                    res, 
-                    "Cannot delete admin", 
-                    "Admin users cannot be deleted", 
-                    403,
-                    'ADMIN_CANNOT_DELETE_ADMIN'
-                );
-            }
+        // 3️⃣ Delete the user from MongoDB
+        await User.findByIdAndDelete(userId);
+        Logger.info('User deleted successfully', requestId, { userId });
 
-            // 2. Delete the user from database
-            await User.findByIdAndDelete(userId);
-            Logger.info('User deleted successfully', requestId, { userId });
-
-            // delete related data if any (e.g., password resets,healthdata,workoutdata,goals,otp)
-            await PasswordReset.deleteMany({ userId: userId });
-            await dailyHealthData.deleteMany({ userId: userId });
-            await otpmodel.deleteMany({ userId: userId });
-            await Goals.deleteMany({ userId: userId });
+        // 4️⃣ Cascade delete related user data
+        try {
+            await PasswordReset.deleteMany({ userId });
+            await dailyHealthData.deleteMany({ userId });
+            await otpmodel.deleteMany({ userId });
+            await Goals.deleteMany({ userId });
 
             Logger.info('Related user data deleted', requestId, { userId });
 
-            // 3. Fetch all users (exclude admins from the list)
-            let users = await User.find({ role: { $ne: 'admin' } })
-                .select('name email phone gender age profileCompleted status signupAt lastLoginAt')
-                .lean();
-
-            Logger.info('Fetched users for updated list', requestId, { 
-                totalUsers: users.length 
+        } catch (cascadeErr) {
+            Logger.warn('Cascade delete warning', requestId, {
+                error: cascadeErr.message
             });
+        }
 
-            // 4. Apply search filtering
-            if (search && search.trim()) {
-                const searchLower = search.toLowerCase().trim();
-                users = users.filter(user => 
-                    user.name?.toLowerCase().includes(searchLower) ||
-                    user.email?.toLowerCase().includes(searchLower) ||
-                    user.phone?.includes(search.trim())
-                );
-                Logger.info('Applied search filter', requestId, { 
-                    searchTerm: search,
-                    filteredCount: users.length 
-                });
-            }
+        // 5️⃣ Fetch all users except admins
+        let users = await User.find({ role: { $ne: 'admin' } })
+            .select('name email phone gender age profileCompleted status signupAt lastLoginAt')
+            .lean();
 
-            // 5. Apply status filtering
-            if (status && status.trim()) {
-                users = users.filter(user => user.status === status);
-                Logger.info('Applied status filter', requestId, { 
-                    status,
-                    filteredCount: users.length 
-                });
-            }
+        Logger.info('Fetched users for updated list', requestId, { 
+            totalUsers: users.length 
+        });
 
-            // 6. Calculate pagination
-            const totalUsers = users.length;
-            const totalPages = Math.ceil(totalUsers / limit);
-            const currentPage = Math.max(1, Math.min(page, totalPages));
-            const startIndex = (currentPage - 1) * limit;
-            const endIndex = startIndex + parseInt(limit);
-            
-            // 7. Get paginated users
-            const paginatedUsers = users.slice(startIndex, endIndex);
+        // 6️⃣ Apply search filter
+        if (search && search.trim()) {
+            const searchLower = search.toLowerCase().trim();
+            users = users.filter(user => 
+                user.name?.toLowerCase().includes(searchLower) ||
+                user.email?.toLowerCase().includes(searchLower) ||
+                user.phone?.includes(search.trim())
+            );
 
-            // 8. Format users for response
-            const formattedUsers = paginatedUsers.map(user => ({
-                id: user._id.toString(),
-                name: user.name || 'N/A',
-                email: user.email || 'N/A',
-                phone: user.phone || 'N/A',
-                gender: user.gender || 'N/A',
-                age: user.age || 0,
-                profileCompleted: user.profileCompleted || false,
-                status: user.status || 'Inactive',
-                signupDate: user.signupAt?.toISOString() || new Date().toISOString(),
-                lastLogin: user.lastLoginAt?.toISOString() || null
-            }));
-
-            // 9. Calculate stats for all filtered users
-            const stats = {
-                totalUsers: totalUsers,
-                activeUsers: users.filter(u => u.status === 'Active').length,
-                completedProfiles: users.filter(u => u.profileCompleted === true).length
-            };
-
-            // 10. Build response
-            const responseData = {
-                users: formattedUsers,
-                pagination: {
-                    currentPage: currentPage,
-                    totalPages: totalPages || 1,
-                    totalUsers: totalUsers,
-                    hasNextPage: currentPage < totalPages,
-                    hasPrevPage: currentPage > 1
-                },
-                stats: stats
-            };
-
-            Logger.info('User deletion completed', requestId, { 
-                returnedUsers: formattedUsers.length,
-                totalUsers: totalUsers,
-                currentPage: currentPage 
+            Logger.info('Applied search filter', requestId, { 
+                searchTerm: search,
+                filteredCount: users.length 
             });
-            
-            return ResponseHandler.success(res, "User deleted successfully", responseData);
+        }
 
-        } catch (error) {
-            Logger.error('Admin delete user error', requestId, { 
-                errorName: error.name,
-                errorMessage: error.message 
+        // 7️⃣ Apply status filter
+        if (status && status.trim()) {
+            users = users.filter(user => user.status === status);
+
+            Logger.info('Applied status filter', requestId, { 
+                status,
+                filteredCount: users.length 
             });
-            
-            // Handle specific error types
-            if (error.name === 'CastError') {
-                return ResponseHandler.error(
-                    res, 
-                    "Invalid request", 
-                    "Invalid user ID format", 
-                    400,
-                    'ADMIN_INVALID_USER_ID'
-                );
-            }
-            
+        }
+
+        // 8️⃣ Pagination calculations
+        const totalUsers = users.length;
+        const totalPages = Math.ceil(totalUsers / limit);
+        const currentPage = Math.max(1, Math.min(page, totalPages));
+        const startIndex = (currentPage - 1) * limit;
+        const endIndex = startIndex + parseInt(limit);
+
+        const paginatedUsers = users.slice(startIndex, endIndex);
+
+        // 9️⃣ Format users for frontend
+        const formattedUsers = paginatedUsers.map(user => ({
+            id: user._id.toString(),
+            name: user.name || 'N/A',
+            email: user.email || 'N/A',
+            phone: user.phone || 'N/A',
+            gender: user.gender || 'N/A',
+            age: user.age || 0,
+            profileCompleted: user.profileCompleted || false,
+            status: user.status || 'Inactive',
+            signupDate: user.signupAt?.toISOString() || null,
+            lastLogin: user.lastLoginAt?.toISOString() || null
+        }));
+
+        // 🔟 Stats
+        const stats = {
+            totalUsers,
+            activeUsers: users.filter(u => u.status === 'Active').length,
+            completedProfiles: users.filter(u => u.profileCompleted).length
+        };
+
+        // 1️⃣1️⃣ Final response
+        const responseData = {
+            users: formattedUsers,
+            pagination: {
+                currentPage,
+                totalPages: totalPages || 1,
+                totalUsers,
+                hasNextPage: currentPage < totalPages,
+                hasPrevPage: currentPage > 1
+            },
+            stats
+        };
+
+        Logger.info('User deletion completed', requestId, { 
+            returnedUsers: formattedUsers.length,
+            totalUsers,
+            currentPage 
+        });
+
+        return ResponseHandler.success(res, "User deleted successfully", responseData);
+
+    } catch (error) {
+        Logger.error('Admin delete user error', requestId, { 
+            errorName: error.name,
+            errorMessage: error.message 
+        });
+
+        if (error.name === 'CastError') {
             return ResponseHandler.error(
-                res, 
-                "Server error", 
-                "Failed to delete user. Please try again later.", 
-                500,
-                'ADMIN_DELETE_USER_FAILED'
+                res,
+                "Invalid request",
+                "Invalid user ID format",
+                400,
+                'ADMIN_INVALID_USER_ID'
             );
         }
-    } 
+
+        return ResponseHandler.error(
+            res,
+            "Server error",
+            "Failed to delete user. Please try again later.",
+            500,
+            'ADMIN_DELETE_USER_FAILED'
+        );
+    }
+}
  
 
     // ============================================
@@ -1124,55 +1030,66 @@ class AdminAuthController {
     }
 
 
-// Admin Logout - Enhanced with admin-specific tracking and security monitoring
-    async logout(req, res) {
-        const requestId = `admin-logout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        try {
-            Logger.info('Admin logout START', requestId, { 
-                ip: req.ip || req.connection.remoteAddress,
-                adminId: req.user._id
-            });
-            
-            const admin = req.user;
-            Logger.info('Admin logout initiated', requestId, { 
-                adminId: admin._id,
-                email: admin.email,
-                role: admin.role 
-            });
-            
-            // Ensure MongoDB connection is ready
-            await ConnectionHelper.ensureConnection();
-            
-            // Record logout timestamp for session invalidation
-            const logoutTime = new Date();
-            admin.lastLoginAt = logoutTime;
-            await admin.save();
-            
-            Logger.info('Admin session invalidated', requestId, { 
-                adminId: admin._id,
-                email: admin.email,
-                logoutTime: logoutTime.toISOString() 
-            });
-            
-            return ResponseHandler.success(res, "Admin logged out successfully", {
-                logoutTime: logoutTime.toISOString(),
-                sessionInvalidated: true
-            });
-            
-        } catch (error) {
-            Logger.error('Admin logout error', requestId, { 
-                errorName: error.name,
-                errorMessage: error.message 
-            });
-            return ResponseHandler.error(
-                res, 
-                "Server error", 
-                "Admin logout failed", 
-                500,
-                'ADMIN_LOGOUT_FAILED'
+async logout(req, res) {
+    const requestId = `admin-logout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+        const admin = req.user;                  // Mongoose document
+        const adminId = admin._id.toString();
+        const { role, sessionId } = req.session; // From middleware
+
+        Logger.info('Admin logout START', requestId, { 
+            adminId,
+            email: admin.email,
+            role,
+            sessionId
+        });
+
+        // Block if somehow a user hits this route
+        if (role !== "admin") {
+            return ResponseHandler.forbidden(
+                res,
+                "Only admins can logout here",
+                "ADMIN_LOGOUT_NOT_ALLOWED"
             );
         }
+
+        // 1️⃣ Remove FCM token
+        admin.set('fcmToken', undefined);
+        admin.markModified('fcmToken');
+        await admin.save();
+
+        // 2️⃣ Delete ONLY the active admin session from Redis
+        try {
+            const key = `session:admin:${adminId}:${sessionId}`;
+            Logger.info(requestId, 'Deleting admin session key', { key });
+
+            const deleted = await redis.del(key);
+            Logger.info(requestId, 'Redis delete result', { deleted });
+        } catch (redisErr) {
+            Logger.warn(requestId, 'Redis cleanup failed (non-blocking)', {
+                error: redisErr.message
+            });
+        }
+
+        Logger.success(requestId, 'Admin logged out successfully', { adminId });
+
+        return ResponseHandler.success(res, "Admin logged out successfully");
+
+    } catch (error) {
+        Logger.error('Admin logout error', requestId, { 
+            errorName: error.name,
+            errorMessage: error.message,
+            stack: error.stack
+        });
+
+        return ResponseHandler.serverError(
+            res,
+            "Admin logout failed",
+            'ADMIN_LOGOUT_FAILED'
+        );
     }
+}
 
     // Get Individual User Details - Enhanced with comprehensive validation and security
     async getUser(req, res) {
