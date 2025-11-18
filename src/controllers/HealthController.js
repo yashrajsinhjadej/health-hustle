@@ -453,7 +453,7 @@ async addsleep(req, res) {
 
             todayHealth.sleep.entries.push({
                 duration: sleepDuration,
-                at: timeZoneUtil.getCurrentTimeInTimezone(timezone)
+                at: new Date().toISOString() 
             });
 
             todayHealth.sleep.duration = Number((currentDuration + sleepDuration).toFixed(2));
@@ -470,7 +470,7 @@ async addsleep(req, res) {
                     duration: sleepDuration,
                     entries: [{
                         duration: sleepDuration,
-                        at: timeZoneUtil.getCurrentTimeInTimezone(timezone)
+                        at: new Date().toISOString() 
                     }]
                 }
             });
@@ -807,7 +807,7 @@ async addwater(req, res) {
         const entry = {
             glasses: waterGlasses,
             ml: waterInMl,
-            at: timeZoneUtil.getCurrentTimeInTimezone(timezone)
+            at: new Date().toISOString() 
         };
 
         // --- Update existing record ---
@@ -1096,7 +1096,7 @@ async addCalories(req, res) {
 
         const entry = {
             consumed: caloriesConsumed,
-            at: timeZoneUtil.getCurrentTimeInTimezone(timezone)
+            at: new Date().toISOString() 
         };
 
         // --- Update existing ---
