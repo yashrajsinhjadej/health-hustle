@@ -1,5 +1,5 @@
-
-const Logger = require("../utils/logger");
+// utils/filterquerybuilder.js
+const Logger = require("./logger");
 
 
 function buildUserFilterQuery(schedule, timezone, requestId) {

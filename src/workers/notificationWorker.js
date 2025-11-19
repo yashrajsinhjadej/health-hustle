@@ -1,3 +1,4 @@
+// workers/notificationWorker.js
 require("dotenv").config();
 const { Worker } = require("bullmq");
 const Redis = require("ioredis");
@@ -9,16 +10,16 @@ const NotificationHistory = require("../models/NotificationHistory");
 const User = require("../models/User");
 const { notificationQueue } = require("../queues/notificationQueue");
 const Logger = require("../utils/logger");
+const { getJobId } = require("../services/Notifications/timezoneJobService");
+const { buildUserFilterQuery } = require("../utils/filterQueryBuilder");
 
 (async () => {
   try {
-    // 🟡 MongoDB Connection
     Logger.info("worker-startup", "⏳ Connecting to MongoDB...");
     await connectDB();
     await new Promise((r) => setTimeout(r, 1000));
     Logger.success("worker-startup", "✅ MongoDB connected. Starting BullMQ Worker...");
 
-    // 🔴 Redis Connection
     const connection = new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null,
     });
@@ -30,18 +31,18 @@ const Logger = require("../utils/logger");
       Logger.error("redis", "❌ Redis Worker error", { error: err.message })
     );
 
-    // ⚙️ Worker Logic
     const worker = new Worker(
       "notificationQueue",
       async (job) => {
         const requestId = Logger.generateId("notification-worker");
         Logger.info(requestId, `⚙️ Job started: ${job.name} (ID: ${job.id})`, job.data);
 
-        // Route to appropriate handler
         switch (job.name) {
-          case "instant-timezone-send":
-          case "daily-timezone-send":
-          case "scheduled-once-send":
+          case "instant-send-all":
+          case "scheduled-once-send":  // Both are global sends (no timezone filter)
+            return await handleInstantGlobalSend(job, requestId);
+
+          case "daily-timezone-send":  // Only daily needs timezone-aware logic
             return await handleNotificationSend(job, requestId);
 
           case "retry-failed-tokens":
@@ -58,7 +59,6 @@ const Logger = require("../utils/logger");
       }
     );
 
-    // 🎉 Worker Event Listeners
     worker.on("completed", (job) =>
       Logger.success("worker", `🎉 Job ${job.id} completed successfully`)
     );
@@ -74,71 +74,65 @@ const Logger = require("../utils/logger");
 })();
 
 /**
- * Handle notification send (instant, daily, scheduled_once)
+ * 🎯 Handle notification send (instant, daily, scheduled_once)
  */
 async function handleNotificationSend(job, requestId) {
-  const { scheduleId, timezone } = job.data;
-  const schedule = await NotificationSchedule.findById(scheduleId);
+  let { scheduleId, timezone } = job.data;
 
-  if (!schedule) throw new Error("NotificationSchedule not found");
+  // 🛑 ROOT FIX — Normalize timezone immediately
+  // 🛑 ROOT FIX — Normalize timezone immediately
+  const normalizedTimezone = timezone ? String(timezone).trim().toLowerCase() : null;
+
+  Logger.info(requestId, "📦 Processing notification job", {
+    jobName: job.name,
+    scheduleId,
+    originalTimezone: timezone,
+    normalizedTimezone,
+    jobId: job.id
+  });
+
+  const schedule = await NotificationSchedule.findById(scheduleId);
+  if (!schedule) {
+    Logger.error(requestId, "Schedule not found", { scheduleId });
+    throw new Error("NotificationSchedule not found");
+  }
+
   if (!schedule.isActive) {
     Logger.warn(requestId, `⚠️ Schedule ${scheduleId} inactive, skipping...`);
-    return { skipped: true };
+    return { skipped: true, reason: "schedule_inactive" };
   }
 
-  // For daily schedules, reschedule BEFORE processing (safety first)
-  if (schedule.scheduleType === "daily" && job.name === "daily-timezone-send") {
-    const delayMs = calculateDelayForNextDay(schedule.scheduledTime);
-    Logger.info(requestId, "🔄 Pre-scheduling next daily notification", {
-      delayMs,
-      timezone,
-    });
+  // Build user query using CENTRALIZED filter file
+  // Daily notifications are timezone-aware
+  const userQuery = buildUserFilterQuery(schedule, normalizedTimezone, requestId);
 
-    await notificationQueue.add(
-      "daily-timezone-send",
-      { scheduleId: schedule._id, timezone },
-      { delay: delayMs }
-    );
-  }
-
-  // 🎯 BUILD USER QUERY WITH FILTERS
-  const userQuery = buildUserQuery(schedule, timezone, requestId);
-
-  Logger.debug(requestId, "📋 User query built", { 
-    targetAudience: schedule.targetAudience,
-    hasFilters: schedule.targetAudience === "filtered",
-    query: userQuery 
+  Logger.debug(requestId, "📋 User query built", {
+    query: userQuery,
+    timezone: normalizedTimezone
   });
 
   const users = await User.find(userQuery).lean();
-  
-  // ✨ Additional safety filter - remove any users with invalid tokens
-  const validUsers = users.filter(user => {
-    const token = user.fcmToken?.token;
-    return token && typeof token === 'string' && token.trim().length > 0;
+
+  const validUsers = users.filter(u => {
+    const t = u.fcmToken?.token;
+    return t && typeof t === "string" && t.trim().length > 0;
   });
 
-  Logger.info(requestId, `📊 Found ${validUsers.length} users with valid FCM tokens (${users.length - validUsers.length} filtered out)`, { 
-    timezone,
-    targetAudience: schedule.targetAudience,
-    filtersApplied: schedule.targetAudience === "filtered"
+  Logger.info(requestId, `📊 Found ${validUsers.length} valid users`, {
+    totalUsers: users.length,
+    timezone: normalizedTimezone
   });
 
-  if (!validUsers.length) {
-    const update = {
-      status: schedule.scheduleType === "daily" ? "active" : "failed",
-      failureReason: "No valid users found matching criteria",
+  // -- No Users --
+  if (validUsers.length === 0) {
+    await NotificationSchedule.findByIdAndUpdate(scheduleId, {
       totalTargeted: 0,
-    };
+      status: schedule.scheduleType === "daily" ? "active" : "failed",
+      lastRunAt: new Date(),
+      lastRunStatus: "failed",
+      failureReason: "No valid users found"
+    });
 
-    if (schedule.scheduleType === "daily") {
-      update.lastRunStatus = "failed";
-      update.lastRunAt = new Date();
-    }
-
-    await NotificationSchedule.findByIdAndUpdate(scheduleId, update);
-    
-    // ✨ Save to NotificationHistory
     await NotificationHistory.create({
       scheduleId,
       firedAt: new Date(),
@@ -146,381 +140,256 @@ async function handleNotificationSend(job, requestId) {
       successCount: 0,
       failureCount: 0,
       status: "failed",
-      errorMessage: "No valid users found matching criteria",
+      errorMessage: "No valid users found"
     });
-    
-    throw new Error("No users with valid FCM tokens found matching criteria");
+
+    return { status: "no_users", timezone: normalizedTimezone };
   }
 
-  // 📨 Build FCM payload
+  // -- Schedule next daily job --
+  if (schedule.scheduleType === "daily" && job.name === "daily-timezone-send") {
+    const delayMs = calculateDelayForNextDay(schedule.scheduledTime);
+
+    Logger.info(requestId, "🔄 Scheduling next daily notification", {
+      normalizedTimezone,
+      delayMs
+    });
+
+    const nextJobId = getJobId(scheduleId, normalizedTimezone);
+
+    await notificationQueue.add(
+      "daily-timezone-send",
+      { scheduleId: schedule._id, timezone: normalizedTimezone },
+      {
+        delay: delayMs,
+        jobId: nextJobId,
+        removeOnComplete: true,
+        removeOnFail: false
+      }
+    );
+
+    Logger.success(requestId, "✅ Next daily job scheduled", {
+      jobId: nextJobId,
+      nextRun: new Date(Date.now() + delayMs).toISOString()
+    });
+  }
+
+  // Send Notification
+  const tokens = validUsers.map(u => u.fcmToken.token);
+
   const payload = {
-    notification: {
-      title: schedule.title,
-      body: schedule.message,
-    },
+    notification: { title: schedule.title, body: schedule.message },
+    data: { category: schedule.category || "Reminder", scheduleId: schedule._id.toString() }
   };
 
-  // 🚀 Send to all tokens (using validUsers)
-  const tokens = validUsers.map((u) => u.fcmToken.token);
   const result = await FCMService.sendToMultipleTokens(tokens, payload);
 
-  Logger.debug(requestId, "📦 FCM Result", result);
+  const retryable = result.failures.filter(f => isRetryableError(f.error));
+  const permanent = result.failures.filter(f => !isRetryableError(f.error));
 
-  // 🔍 Separate failures into retryable vs permanent
-  const retryableFailures = result.failures.filter((f) => isRetryableError(f.error));
-  const permanentFailures = result.failures.filter((f) => !isRetryableError(f.error));
+  if (permanent.length > 0) await deleteInvalidTokens(permanent, requestId);
 
-  Logger.info(requestId, "📊 Failure analysis", {
-    total: result.failures.length,
-    retryable: retryableFailures.length,
-    permanent: permanentFailures.length,
-  });
-
-  // 🗑️ Delete permanently failed tokens
-  if (permanentFailures.length > 0) {
-    await deleteInvalidTokens(permanentFailures, requestId);
-  }
-
-  // 🔄 Queue retry job for transient failures
-  if (retryableFailures.length > 0) {
-    Logger.info(requestId, `🔄 Queueing retry for ${retryableFailures.length} failed tokens`);
-    
+  // Retry job
+  if (retryable.length > 0) {
     await notificationQueue.add(
       "retry-failed-tokens",
-      {
-        scheduleId: schedule._id,
-        failedTokens: retryableFailures,
-        attempt: 1,
-        payload,
-      },
-      {
-        delay: 60000, // 1 minute initial delay
-        attempts: 3,
-        backoff: {
-          type: "exponential",
-          delay: 60000, // 1min, 2min, 4min
-        },
-      }
+      { scheduleId, failedTokens: retryable, attempt: 1, payload },
+      { delay: 60000, attempts: 3, backoff: { type: "exponential", delay: 60000 } }
     );
   }
 
-  // 🗂️ Save per-user logs (using validUsers)
-  const logs = validUsers.map((user) => {
-    const tokenFailed = result.failures.some((f) => f.token === user.fcmToken.token);
-    return {
-      userId: user._id,
-      scheduleId,
-      title: schedule.title,
-      message: schedule.message,
-      category:schedule.category || "Reminder",
-      status: tokenFailed ? "failed" : "sent",
-      sentAt: new Date(),
-      deviceToken: user.fcmToken.token,
-    };
-  });
+  // Save logs
+  const logs = validUsers.map(u => ({
+    userId: u._id,
+    scheduleId,
+    title: schedule.title,
+    message: schedule.message,
+    category: schedule.category || "Reminder",
+    status: result.failures.some(f => f.token === u.fcmToken.token) ? "failed" : "sent",
+    sentAt: new Date(),
+    deviceToken: u.fcmToken.token
+  }));
+
   await NotificationLog.insertMany(logs);
 
-  // 📈 Delivery Stats Calculation (using validUsers)
-  const totalUsers = validUsers.length;
-  const successRate = (result.successCount / totalUsers) * 100;
+  // Save schedule history
+  const total = validUsers.length;
+  const successRate = result.successCount / total;
 
-  const update = {
-    sentAt: new Date(),
-    totalTargeted: totalUsers,
-    successCount: result.successCount,
-    failureCount: result.failureCount,
-  };
+  let historyStatus = successRate === 1 ? "sent"
+    : successRate >= 0.5 ? "partial_success"
+      : "failed";
 
-  // Determine status based on schedule type
-  let historyStatus;
-  let historyErrorMessage;
-
-  if (schedule.scheduleType === "daily") {
-    update.status = "active"; // Keep daily active
-    update.lastRunAt = new Date();
-    update.nextRunAt = new Date(Date.now() + calculateDelayForNextDay(schedule.scheduledTime));
-
-    if (result.successCount === 0) {
-      update.lastRunStatus = "failed";
-      update.failureReason = "All tokens failed during FCM delivery";
-      historyStatus = "failed";
-      historyErrorMessage = "All tokens failed during FCM delivery";
-    } else if (successRate === 100) {
-      update.lastRunStatus = "completed";
-      update.failureReason = undefined;
-      historyStatus = "sent";
-    } else if (successRate >= 50) {
-      update.lastRunStatus = "partial_success";
-      update.failureReason = `${result.failureCount} tokens failed, ${result.successCount} succeeded`;
-      historyStatus = "partial_success";
-      historyErrorMessage = `${result.failureCount} tokens failed, ${result.successCount} succeeded`;
-    } else {
-      update.lastRunStatus = "failed";
-      update.failureReason = `${result.failureCount} failed out of ${totalUsers} users`;
-      historyStatus = "failed";
-      historyErrorMessage = `${result.failureCount} failed out of ${totalUsers} users`;
-    }
-  } else {
-    // For instant and scheduled_once
-    if (result.successCount === 0) {
-      update.status = "failed";
-      update.failureReason = "All tokens failed during FCM delivery";
-      historyStatus = "failed";
-      historyErrorMessage = "All tokens failed during FCM delivery";
-    } else if (successRate === 100) {
-      update.status = "completed";
-      historyStatus = "sent";
-    } else if (successRate >= 50) {
-      update.status = "partial_success";
-      update.failureReason = `${result.failureCount} tokens failed, ${result.successCount} succeeded`;
-      historyStatus = "partial_success";
-      historyErrorMessage = `${result.failureCount} tokens failed, ${result.successCount} succeeded`;
-    } else {
-      update.status = "failed";
-      update.failureReason = `${result.failureCount} failed out of ${totalUsers} users`;
-      historyStatus = "failed";
-      historyErrorMessage = `${result.failureCount} failed out of ${totalUsers} users`;
-    }
-  }
-
-  // 💾 Save schedule update
-  await NotificationSchedule.findByIdAndUpdate(scheduleId, update);
-  
-  // ✨ Save to NotificationHistory
   await NotificationHistory.create({
     scheduleId,
     firedAt: new Date(),
-    totalTargeted: totalUsers,
+    totalTargeted: total,
     successCount: result.successCount,
     failureCount: result.failureCount,
     status: historyStatus,
-    errorMessage: historyErrorMessage,
-  });
-  
-  Logger.success(requestId, `📬 Schedule ${scheduleId} processed`, {
-    scheduleType: schedule.scheduleType,
-    status: update.status,
-    lastRunStatus: update.lastRunStatus,
-    successRate: `${successRate.toFixed(1)}%`,
-    targetAudience: schedule.targetAudience,
+    errorMessage: historyStatus === "failed" ? "High failure rate" : null
   });
 
-  Logger.success(
-    requestId,
-    `✅ Job ${job.id} completed: ${result.successCount} sent / ${result.failureCount} failed`
-  );
+  Logger.success(requestId, "📬 Notification processed", {
+    scheduleId,
+    timezone: normalizedTimezone,
+    successRate
+  });
 
   return {
     successCount: result.successCount,
     failureCount: result.failureCount,
-    retryQueued: retryableFailures.length,
-    tokensDeleted: permanentFailures.length,
+    retryQueued: retryable.length,
+    timezone: normalizedTimezone
   };
 }
 
-/**
- * 🎯 BUILD USER QUERY WITH FILTERS
- * This function applies the filters from the schedule to the user query
- */
-function buildUserQuery(schedule, timezone, requestId) {
-  // Base query - all users must have valid FCM tokens
-  const query = {
-    isActive: true,
-    fcmToken: { $exists: true, $ne: null },
-    "fcmToken.token": { $exists: true, $ne: null, $ne: "" },
-    $or: [
-      { notificationsEnabled: true },
-      { notificationsEnabled: { $exists: false } },
-    ],
-  };
-
-  // Add timezone filter if provided
-  if (timezone) {
-    query.timezone = timezone;
-  }
-
-  // Apply filters only if targetAudience is "filtered"
-  if (schedule.targetAudience === "filtered" && schedule.filters) {
-    const filters = schedule.filters;
-
-    // Gender filter
-    if (filters.gender && Array.isArray(filters.gender) && filters.gender.length > 0) {
-      // Normalize to lowercase to match schema enum
-      const normalizedGenders = filters.gender.map(g => String(g).toLowerCase());
-      query.gender = { $in: normalizedGenders };
-      Logger.debug(requestId, "🎯 Applied gender filter", { 
-        original: filters.gender,
-        normalized: normalizedGenders 
-      });
-    }
-
-    // Platform filter
-    if (filters.platform && Array.isArray(filters.platform) && filters.platform.length > 0) {
-      // Normalize to lowercase
-      const normalizedPlatforms = filters.platform.map(p => String(p).toLowerCase());
-      query["fcmToken.platform"] = { $in: normalizedPlatforms };
-      Logger.debug(requestId, "🎯 Applied platform filter", { 
-        original: filters.platform,
-        normalized: normalizedPlatforms 
-      });
-    }
-
-    // Age range filter - using direct age field
-    if (filters.ageRange) {
-      const { min, max } = filters.ageRange;
-      
-      // Only apply filter if at least one value is provided
-      if ((min !== null && min !== undefined && !isNaN(min)) || 
-          (max !== null && max !== undefined && !isNaN(max))) {
-        
-        const ageQuery = {
-          $exists: true,
-          $type: "number"
-        };
-
-        if (min !== null && min !== undefined && !isNaN(min)) {
-          ageQuery.$gte = parseInt(min);
-        }
-
-        if (max !== null && max !== undefined && !isNaN(max)) {
-          ageQuery.$lte = parseInt(max);
-        }
-
-        query.age = ageQuery;
-        
-        Logger.debug(requestId, "🎯 Applied age filter", { 
-          ageRange: filters.ageRange,
-          ageQuery: query.age
-        });
-      }
-    }
-
-    Logger.info(requestId, "✅ Filters applied to user query", {
-      targetAudience: schedule.targetAudience,
-      filters: {
-        gender: filters.gender,
-        platform: filters.platform,
-        ageRange: filters.ageRange,
-      }
-    });
-  } else {
-    Logger.info(requestId, "📢 Sending to ALL users (no filters)", {
-      targetAudience: schedule.targetAudience
-    });
-  }
-
-  return query;
-}
-
-/**
- * Handle retry for failed tokens
- */
-async function handleRetry(job, requestId) {
-  const { scheduleId, failedTokens, attempt, payload } = job.data;
-
-  Logger.info(requestId, `🔄 Retry attempt ${attempt} for ${failedTokens.length} tokens`);
-
-  const schedule = await NotificationSchedule.findById(scheduleId);
-  if (!schedule) {
-    Logger.error(requestId, "Schedule not found for retry", { scheduleId });
-    return { skipped: true };
-  }
-
-  const tokens = failedTokens.map((f) => f.token);
-  const result = await FCMService.sendToMultipleTokens(tokens, payload);
-
-  Logger.info(requestId, `📊 Retry result: ${result.successCount} sent / ${result.failureCount} failed`);
-
-  // Separate again
-  const stillRetryable = result.failures.filter((f) => isRetryableError(f.error));
-  const nowPermanent = result.failures.filter((f) => !isRetryableError(f.error));
-
-  // Delete tokens that are now permanently failed
-  if (nowPermanent.length > 0) {
-    await deleteInvalidTokens(nowPermanent, requestId);
-  }
-
-  // If still have retryable failures and attempts left
-  if (stillRetryable.length > 0 && attempt < 3) {
-    Logger.info(requestId, `🔄 Queueing retry attempt ${attempt + 1}`);
-    
-    await notificationQueue.add(
-      "retry-failed-tokens",
-      {
-        scheduleId,
-        failedTokens: stillRetryable,
-        attempt: attempt + 1,
-        payload,
-      },
-      {
-        delay: 60000 * Math.pow(2, attempt), // Exponential backoff
-        attempts: 1,
-      }
-    );
-  } else if (stillRetryable.length > 0) {
-    Logger.warn(requestId, `⚠️ Max retries reached. ${stillRetryable.length} tokens still failing`, {
-      tokens: stillRetryable.map((f) => ({ token: f.token.substring(0, 20), error: f.error })),
-    });
-  }
-
-  // Update schedule stats
-  await NotificationSchedule.findByIdAndUpdate(scheduleId, {
-    $inc: {
-      successCount: result.successCount,
-      failureCount: result.failureCount - nowPermanent.length, // Don't count deleted tokens
-    },
-  });
-
-  return {
-    retryAttempt: attempt,
-    successCount: result.successCount,
-    failureCount: result.failureCount,
-    stillRetrying: stillRetryable.length,
-  };
-}
-
-/**
- * Check if error is retryable (transient) or permanent
- */
-function isRetryableError(errorCode) {
-  const retryableErrors = [
+function isRetryableError(code) {
+  return [
     "messaging/server-unavailable",
     "messaging/internal-error",
     "messaging/quota-exceeded",
     "messaging/timeout",
     "messaging/unavailable",
-    "batch-error",
-  ];
-
-  return retryableErrors.includes(errorCode);
+    "batch-error"
+  ].includes(code);
 }
 
-/**
- * Delete invalid FCM tokens from User collection
- */
 async function deleteInvalidTokens(permanentFailures, requestId) {
-  const tokensToDelete = permanentFailures.map((f) => f.token);
-
-  Logger.info(requestId, `🗑️ Deleting ${tokensToDelete.length} invalid tokens`, {
-    errors: permanentFailures.map((f) => f.error),
-  });
-
-  const result = await User.updateMany(
-    { "fcmToken.token": { $in: tokensToDelete } },
+  const invalidTokens = permanentFailures.map(f => f.token);
+  await User.updateMany(
+    { "fcmToken.token": { $in: invalidTokens } },
     { $unset: { fcmToken: "" } }
   );
+  Logger.info(requestId, `🗑️ Deleted ${invalidTokens.length} invalid tokens`);
+}
 
-  Logger.success(requestId, `✅ Deleted ${result.modifiedCount} invalid tokens from DB`);
+function calculateDelayForNextDay(scheduledTime) {
+  const [h, m] = scheduledTime.split(":").map(Number);
+  const now = new Date();
+  const next = new Date(now);
+  next.setDate(next.getDate() + 1);
+  next.setHours(h, m, 0, 0);
+  return next - now;
 }
 
 /**
- * 🕐 Calculate delay for next day's occurrence
+ * 🌍 Handle Global Instant Send (No Timezone Split)
  */
-function calculateDelayForNextDay(scheduledTime) {
-  const [hours, minutes] = scheduledTime.split(":").map(Number);
-  const now = new Date();
-  const nextFireTime = new Date(now);
-  nextFireTime.setDate(nextFireTime.getDate() + 1);
-  nextFireTime.setHours(hours, minutes, 0, 0);
-  return nextFireTime.getTime() - now.getTime();
+async function handleInstantGlobalSend(job, requestId) {
+  const { scheduleId } = job.data;
+
+  Logger.info(requestId, "🌍 Processing GLOBAL INSTANT notification", { scheduleId, jobId: job.id });
+
+  const schedule = await NotificationSchedule.findById(scheduleId);
+  if (!schedule) {
+    Logger.error(requestId, "Schedule not found", { scheduleId });
+    throw new Error("NotificationSchedule not found");
+  }
+
+  // Build query for ALL users (ignoring timezone)
+  const userQuery = buildUserFilterQuery(schedule, null, requestId);
+
+  Logger.debug(requestId, "📋 Global user query built", { query: userQuery });
+
+  // Fetch ALL matching users
+  const users = await User.find(userQuery).select("fcmToken _id").lean();
+
+  const validUsers = users.filter(u => {
+    const t = u.fcmToken?.token;
+    return t && typeof t === "string" && t.trim().length > 0;
+  });
+
+  Logger.info(requestId, `📊 Found ${validUsers.length} total valid users for global send`, {
+    totalFound: users.length
+  });
+
+  if (validUsers.length === 0) {
+    await updateScheduleAsFailed(scheduleId, "No valid users found");
+    await createHistoryEntry(scheduleId, 0, 0, 0, "failed", "No valid users found");
+    return { status: "no_users" };
+  }
+
+  // Send to all tokens
+  const tokens = validUsers.map(u => u.fcmToken.token);
+  const payload = {
+    notification: { title: schedule.title, body: schedule.message },
+    data: { category: schedule.category || "Reminder", scheduleId: schedule._id.toString() }
+  };
+
+  // Send in one go (FCMService handles chunking internally usually, or we rely on it)
+  const result = await FCMService.sendToMultipleTokens(tokens, payload);
+
+  // Handle Retries & Invalid Tokens
+  const retryable = result.failures.filter(f => isRetryableError(f.error));
+  const permanent = result.failures.filter(f => !isRetryableError(f.error));
+
+  if (permanent.length > 0) await deleteInvalidTokens(permanent, requestId);
+
+  if (retryable.length > 0) {
+    await notificationQueue.add(
+      "retry-failed-tokens",
+      { scheduleId, failedTokens: retryable, attempt: 1, payload },
+      { delay: 60000, attempts: 3, backoff: { type: "exponential", delay: 60000 } }
+    );
+  }
+
+  // Save Logs (Bulk Insert)
+  const logs = validUsers.map(u => ({
+    userId: u._id,
+    scheduleId,
+    title: schedule.title,
+    message: schedule.message,
+    category: schedule.category || "Reminder",
+    status: result.failures.some(f => f.token === u.fcmToken.token) ? "failed" : "sent",
+    sentAt: new Date(),
+    deviceToken: u.fcmToken.token
+  }));
+
+  await NotificationLog.insertMany(logs);
+
+  // Save ONE History Entry
+  const total = validUsers.length;
+  const successRate = result.successCount / total;
+  const historyStatus = successRate === 1 ? "sent" : successRate >= 0.5 ? "partial_success" : "failed";
+
+  await createHistoryEntry(scheduleId, total, result.successCount, result.failureCount, historyStatus, null);
+
+  // Update Schedule Status
+  await NotificationSchedule.findByIdAndUpdate(scheduleId, {
+    status: "completed", // Instant/Scheduled-once are one-time sends
+    lastRunAt: new Date(),
+    lastRunStatus: historyStatus,
+    totalTargeted: total
+  });
+
+  Logger.success(requestId, "🌍 Global Instant Notification Complete", {
+    scheduleId,
+    successCount: result.successCount,
+    failureCount: result.failureCount
+  });
+
+  return { successCount: result.successCount, failureCount: result.failureCount };
+}
+
+// Helper to create history entry
+async function createHistoryEntry(scheduleId, total, success, failure, status, errorMsg) {
+  await NotificationHistory.create({
+    scheduleId,
+    firedAt: new Date(),
+    totalTargeted: total,
+    successCount: success,
+    failureCount: failure,
+    status: status,
+    errorMessage: errorMsg
+  });
+}
+
+async function updateScheduleAsFailed(scheduleId, reason) {
+  await NotificationSchedule.findByIdAndUpdate(scheduleId, {
+    status: "failed",
+    lastRunAt: new Date(),
+    lastRunStatus: "failed",
+    failureReason: reason
+  });
 }
