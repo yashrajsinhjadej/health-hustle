@@ -1,8 +1,6 @@
+// controllers/fcmTokenController.js
 const User = require('../models/User');
 const moment = require('moment-timezone');
-const { ensureDailyJobsForTimezone } = require('../services/Notifications/timezoneJobService');
-
-// controllers/fcmTokenController.js
 
 const saveFcmToken = async (req, res) => {
   try {
@@ -37,20 +35,8 @@ const saveFcmToken = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized: missing user" });
     }
 
-    // ---------------------- OLD USER DATA ----------------------
-    const oldUser = await User.findById(userId).select('timezone fcmToken').lean();
-    const oldTimezone = oldUser?.timezone?.toLowerCase();  // old is normalized here
-    const oldToken = oldUser?.fcmToken?.token;
-
-    console.log('[saveFcmToken] User data:', {
-      userId,
-      oldTimezone,
-      newTimezone: normalizedTimezone,
-      oldToken: oldToken ? oldToken.substring(0, 20) + '...' : null,
-      newToken: token.substring(0, 20) + '...'
-    });
-
     // ---------------------- ATOMIC UPDATE ----------------------
+    // Simply save the token and timezone, no job creation here
     const result = await User.updateOne(
       { _id: userId },
       {
@@ -75,41 +61,11 @@ const saveFcmToken = async (req, res) => {
       });
     }
 
-    // ---------------------- CHANGE DETECTION ----------------------
-    const timezoneChanged = oldTimezone !== normalizedTimezone;
-    const tokenChanged = oldToken !== token;
-    const isNewRegistration = !oldTimezone || !oldToken;
-
-    console.log('[saveFcmToken] Change detection:', {
-      oldTimezone,
-      newTimezone: normalizedTimezone,
-      timezoneChanged,
-      tokenChanged,
-      isNewRegistration
+    console.log('[saveFcmToken] ✅ Token and timezone saved', {
+      userId,
+      timezone: normalizedTimezone,
+      platform: platform || 'android'
     });
-
-    // ---------------------- JOB CREATION ----------------------
-    if (timezoneChanged || tokenChanged || isNewRegistration) {
-      console.log('[saveFcmToken] ✨ Triggering job creation', {
-        userId,
-        oldTimezone,
-        newTimezone: normalizedTimezone,
-        timezoneChanged,
-        tokenChanged,
-        isNewRegistration
-      });
-
-      // ensureDailyJobsForTimezone will find all active daily schedules
-      // and create jobs for this timezone if they don't exist
-      ensureDailyJobsForTimezone(normalizedTimezone).catch(err => {
-        console.error('[saveFcmToken] Failed to create jobs for timezone:', err.message);
-      });
-    } else {
-      console.log('[saveFcmToken] ℹ️ No changes detected, skipping job creation', {
-        userId,
-        timezone: normalizedTimezone
-      });
-    }
 
     // ---------------------- RESPONSE ----------------------
     return res.json({

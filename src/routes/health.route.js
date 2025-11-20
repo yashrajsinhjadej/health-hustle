@@ -14,7 +14,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
     const requestId = Logger.generateId('health');
 
-    console.log('🏥 Health check route accessed');
+    Logger.info(requestId, 'Health check route accessed');
 
     try {
         const memUsage = process.memoryUsage();
@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
             dbStatus = 'connected';
             dbHost = mongoose.connection.host;
         } catch (dbErr) {
-            console.error('❌ MongoDB error during health check:', dbErr.message);
+            Logger.error(requestId, 'MongoDB error during health check', { error: dbErr.message });
         }
 
         /* ---------------------------------------

@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const Logger = require('../utils/logger');
 
 // ============================================
 // DEBUG ROUTES (Development Only)
 // ============================================
 if (process.env.NODE_ENV !== 'production') {
   router.use('/debug', require('./debug'));
-  console.log('🐛 Debug routes enabled (development mode)');
+  Logger.info('routes-init', 'Debug routes enabled (development mode)');
 }
 
 // ============================================

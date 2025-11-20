@@ -1,21 +1,27 @@
 // src/config/db.js
 const mongoose = require('mongoose');
+const Logger = require('../utils/logger');
 
 const connectDB = async () => {
+    const requestId = Logger.generateId('db-connect');
+
     try {
-        console.log('🔍 Starting MongoDB connection process...');
-        console.log('🔍 Environment:');
-        console.log('   - NODE_ENV:', process.env.NODE_ENV || 'not set');
-        console.log('   - VERCEL:', process.env.VERCEL || 'not set');
-        console.log('   - MONGODB_URI exists:', !!process.env.MONGODB_URI);
+        Logger.info(requestId, 'Starting MongoDB connection process');
+        Logger.debug(requestId, 'Environment check', {
+            NODE_ENV: process.env.NODE_ENV || 'not set',
+            VERCEL: process.env.VERCEL || 'not set',
+            MONGODB_URI_exists: !!process.env.MONGODB_URI
+        });
 
         if (!process.env.MONGODB_URI) {
-            console.error('❌ MONGODB_URI environment variable is not set');
+            Logger.error(requestId, 'MONGODB_URI environment variable is not set');
             return;
         }
 
-        console.log('🔍 MONGODB_URI preview:', process.env.MONGODB_URI.substring(0, 30) + '...');
-       
+        Logger.debug(requestId, 'MONGODB_URI preview', {
+            preview: process.env.MONGODB_URI.substring(0, 30) + '...'
+        });
+
         const mongoOptions = {
             maxPoolSize: 50,
             serverSelectionTimeoutMS: 20000,
@@ -33,33 +39,37 @@ const connectDB = async () => {
         };
 
         mongoose.connection.on('connecting', () =>
-            console.log('🔄 MongoDB connecting...')
+            Logger.info(requestId, 'MongoDB connecting...')
         );
 
         mongoose.connection.on('connected', () =>
-            console.log('✅ MongoDB connected successfully!')
+            Logger.success(requestId, 'MongoDB connected successfully!')
         );
 
         mongoose.connection.on('error', (err) => {
-            console.error('❌ MongoDB connection error:', err.message);
+            Logger.error(requestId, 'MongoDB connection error', { error: err.message });
         });
 
         mongoose.connection.on('disconnected', () =>
-            console.log('⚠️ MongoDB disconnected')
+            Logger.warn(requestId, 'MongoDB disconnected')
         );
 
         mongoose.connection.on('reconnected', () =>
-            console.log('🔁 MongoDB reconnected')
+            Logger.success(requestId, 'MongoDB reconnected')
         );
 
         await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
 
-        console.log('🚀 MongoDB Connected:');
-        console.log('   - Host:', mongoose.connection.host);
-        console.log('   - DB:', mongoose.connection.name);
+        Logger.success(requestId, 'MongoDB Connected', {
+            host: mongoose.connection.host,
+            database: mongoose.connection.name
+        });
 
     } catch (error) {
-        console.error('❌ MongoDB connection error:', error.message);
+        Logger.error(requestId, 'MongoDB connection error', {
+            error: error.message,
+            stack: error.stack
+        });
         if (process.env.NODE_ENV !== 'production') {
             process.exit(1);
         }
